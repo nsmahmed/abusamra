@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abu Samra Twin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens: smoked-glass console over the map (dark), frosted ivory (light) ===== */
+:root{
+  --glass:rgba(250,248,243,.86);--glass-2:rgba(255,255,255,.62);--solid:#F7F5EF;
+  --ink:#16171A;--ink-2:#3C3F45;--muted:#6E7076;--hair:rgba(22,23,26,.12);--hair-2:rgba(22,23,26,.07);
+  --maroon:#8A1538;--maroon-2:#B0204D;--maroon-soft:rgba(138,21,56,.10);
+  --sand:#B0812C;--sand-soft:rgba(176,129,44,.14);
+  --ok:#1C7C5A;--warn:#C27C0E;--bad:#B3123F;--info:#2F6FD0;
+  --shadow:0 18px 50px -18px rgba(20,16,10,.45),0 2px 6px rgba(20,16,10,.10);
+  --blur:saturate(150%) blur(18px);
+  --f-ui:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,sans-serif;
+  --f-disp:"Archivo","IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --r:14px;--r-s:9px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --glass:rgba(17,19,23,.80);--glass-2:rgba(32,35,41,.66);--solid:#14161A;
+  --ink:#EDEBE6;--ink-2:#C9C6BF;--muted:#8E8C87;--hair:rgba(255,255,255,.11);--hair-2:rgba(255,255,255,.06);
+  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.16);
+  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.14);
+  --ok:#41C597;--warn:#F0B03A;--bad:#FF5C86;--info:#7FB0FF;
+  --shadow:0 22px 60px -20px rgba(0,0,0,.75),0 2px 8px rgba(0,0,0,.35);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --glass:rgba(17,19,23,.80);--glass-2:rgba(32,35,41,.66);--solid:#14161A;
+  --ink:#EDEBE6;--ink-2:#C9C6BF;--muted:#8E8C87;--hair:rgba(255,255,255,.11);--hair-2:rgba(255,255,255,.06);
+  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.16);
+  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.14);
+  --ok:#41C597;--warn:#F0B03A;--bad:#FF5C86;--info:#7FB0FF;
+  --shadow:0 22px 60px -20px rgba(0,0,0,.75),0 2px 8px rgba(0,0,0,.35);color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+body{--sl:364px;--sr:428px;--cr:384px}body.foldL{--sl:64px}body.foldR{--sr:116px;--cr:64px}
+html,body{height:100%;margin:0}
+body{background:#1B1A17;color:var(--ink);font:13.5px/1.45 var(--f-ui);font-variant-numeric:tabular-nums;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.num{font-family:var(--f-num);font-feature-settings:"zero" 0}
+[hidden]{display:none!important}
+
+/* ===== Stage: the map is the whole page ===== */
+#stage{position:fixed;inset:0;overflow:hidden;background:#C9D6DC}
+#stage canvas{display:block;width:100%;height:100%}
+#labels,#tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.glass{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--hair);box-shadow:var(--shadow);border-radius:var(--r)}
+
+/* ===== Top bar ===== */
+.topbar{position:fixed;top:12px;left:12px;right:12px;z-index:20;display:flex;align-items:center;gap:10px;pointer-events:none}
+.topbar>*{pointer-events:auto}
+.brand{display:flex;align-items:center;gap:12px;padding:8px 14px 8px 10px;margin-right:auto;min-width:0}
+.mark{width:34px;height:34px;flex:none;border-radius:10px;background:var(--maroon);display:grid;place-items:center;color:#fff;box-shadow:inset 0 -6px 12px rgba(0,0,0,.18)}
+.brand h1{margin:0;font:700 15px/1.05 var(--f-disp);font-stretch:118%;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.brand small{display:block;font:500 12px/1.2 var(--f-ui);color:var(--muted);letter-spacing:0;text-transform:none;font-stretch:100%;white-space:nowrap}
+.brand .variant{font:600 10px/1 var(--f-disp);font-stretch:110%;letter-spacing:.12em;text-transform:uppercase;color:var(--sand);border:1px solid currentColor;border-radius:999px;padding:4px 8px;margin-left:4px;text-decoration:none;white-space:nowrap}
+.brand .variant:hover{background:var(--sand-soft)}
+.seg{display:inline-flex;padding:3px;gap:2px;border-radius:11px;background:var(--hair-2);border:1px solid var(--hair)}
+.seg button{border:0;background:transparent;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+.seg button:hover{background:var(--hair-2);color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--solid);font-weight:600}
+.seg.maroon button[aria-pressed="true"]{background:var(--maroon);color:#fff}
+.pod{display:flex;align-items:center;gap:10px;padding:6px}
+.clock{display:flex;align-items:center;gap:10px;padding:0 8px 0 6px}
+.clock .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--sand-soft);color:var(--sand)}
+.clock b{font:700 22px/1 var(--f-num);letter-spacing:-.02em}
+.clock span{display:block;font:500 10.5px/1.2 var(--f-disp);font-stretch:112%;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.iconbtn{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--hair);background:var(--glass-2);color:var(--ink-2)}
+.iconbtn:hover{color:var(--ink);border-color:var(--muted)}
+.sep{width:1px;align-self:stretch;background:var(--hair);margin:4px 2px}
+
+/* ===== Drawers (foldable) ===== */
+.drawer{position:fixed;top:76px;bottom:12px;z-index:15;width:340px;display:flex;flex-direction:column;transition:transform .35s cubic-bezier(.3,.7,.2,1),opacity .25s}
+#left{left:12px}#right{right:12px;width:360px}
+.drawer>.dh{display:flex;align-items:center;gap:10px;padding:14px 12px 10px 16px;border-bottom:1px solid var(--hair)}
+.drawer>.dh h2{margin:0;font:700 12px/1 var(--f-disp);font-stretch:120%;letter-spacing:.14em;text-transform:uppercase;flex:1}
+.drawer>.dh .k{font:500 11px/1 var(--f-num);color:var(--muted);border:1px solid var(--hair);border-radius:5px;padding:3px 5px}
+.drawer>.db{overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
+.drawer.folded{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
+#right.folded{transform:translateX(calc(100% + 24px))}
+.rail{position:fixed;z-index:14;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 6px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .25s}
+.rail.on{opacity:1;pointer-events:auto}
+.rail button{border:0;background:transparent;color:var(--ink-2);display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 4px}
+.rail .vt{writing-mode:vertical-rl;transform:rotate(180deg);font:700 11px/1 var(--f-disp);font-stretch:120%;letter-spacing:.16em;text-transform:uppercase}
+#railL{left:12px}#railR{right:12px}#railR .vt{transform:none}
+
+/* sections inside drawers */
+.sec{padding:14px 16px;border-bottom:1px solid var(--hair-2)}
+.sec:last-child{border-bottom:0}
+.sec h3{margin:0 0 4px;font:700 11px/1.2 var(--f-disp);font-stretch:115%;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.sec h3 .dot{width:6px;height:6px;border-radius:50%;background:var(--maroon)}
+.hint{color:var(--muted);font-size:12.5px;margin:2px 0 10px}
+details.grp{border-top:1px solid var(--hair-2)}
+details.grp:first-of-type{border-top:0}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:11px 0 9px;font:600 12.5px/1 var(--f-ui);color:var(--ink)}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .chev{margin-left:auto;transition:transform .2s;color:var(--muted)}
+details.grp[open]>summary .chev{transform:rotate(90deg)}
+details.grp>summary .cnt{font:600 10.5px/1 var(--f-num);color:var(--maroon);background:var(--maroon-soft);border-radius:999px;padding:3px 6px}
+.ctl{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:0 10px;margin:4px 0 12px}
+.ctl label{font-size:12.5px;color:var(--ink-2)}
+.ctl output{font:600 12.5px/1 var(--f-num);text-align:right;white-space:nowrap}
+.ctl output.changed{color:var(--maroon)}
+.ctl .base{grid-column:1/-1;font:500 11px/1.3 var(--f-num);color:var(--muted);min-height:0}
+.ctl .base:empty{display:none}
+input[type=range]{grid-column:1/-1;width:100%;height:22px;margin:4px 0 0;background:transparent;-webkit-appearance:none;appearance:none;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--ink) var(--p),var(--hair) var(--p))}
+input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:var(--hair)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:4px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--solid);border:2px solid var(--ink);margin-top:-6px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--solid);border:2px solid var(--ink)}
+.ctl.changed input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--maroon) var(--p),var(--hair) var(--p))}
+.ctl.changed input[type=range]::-webkit-slider-thumb{border-color:var(--maroon)}
+.btn{white-space:nowrap;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:7px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--maroon);border-color:var(--maroon);color:#fff}
+.btn.primary:hover{background:var(--maroon-2)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.55;cursor:wait}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.sticky{position:sticky;bottom:0;padding:12px 16px;background:linear-gradient(transparent,var(--glass) 30%);border-top:1px solid var(--hair-2)}
+select.sel{width:100%;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:8px 10px;margin-top:4px}
+
+/* forecast */
+table.cmp{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+table.cmp th,table.cmp td{padding:7px 2px;border-bottom:1px solid var(--hair-2);text-align:right;font-family:var(--f-num);font-size:12px}
+table.cmp th:first-child,table.cmp td:first-child{text-align:left;font-family:var(--f-ui);font-size:12.5px;color:var(--ink-2)}
+table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch:112%;letter-spacing:.1em;text-transform:uppercase}
+.up{color:var(--bad)}.down{color:var(--ok)}
+.chart svg{width:100%;height:auto;display:block;margin-top:10px}
+.chartkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--muted);margin-top:4px}
+.chartkey i{display:inline-block;width:14px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+.verdict{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--maroon-soft);font-size:12.5px;color:var(--ink)}
+
+/* ===== Right drawer: tabs ===== */
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--hair)}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 4px 10px;font:600 11px/1 var(--f-disp);font-stretch:112%;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--maroon)}
+.tabpane{display:none}.tabpane.on{display:block}
+.kgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{padding:11px 12px;border-radius:11px;background:var(--glass-2);border:1px solid var(--hair-2)}
+.kpi .l{font-size:11.5px;color:var(--muted);line-height:1.25}
+.kpi .v{font:700 22px/1.1 var(--f-num);letter-spacing:-.02em;margin-top:6px}
+.kpi .v small{font:500 11px var(--f-num);color:var(--muted);margin-left:3px}
+.kpi.wide{grid-column:1/-1;display:flex;align-items:center;gap:10px}
+.kpi.wide .v{margin:0 0 0 auto;font-size:15px;text-align:right}
+.kpi.alert{border-color:color-mix(in srgb,var(--bad) 45%,transparent);background:color-mix(in srgb,var(--bad) 8%,var(--glass-2))}
+.kpi.alert .v{color:var(--bad)}
+.occ{margin-top:12px;display:flex;flex-direction:column;gap:9px}
+.occ .r{display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:12px;cursor:pointer}
+.occ .r:hover .nm{color:var(--ink)}
+.occ .nm{color:var(--ink-2);display:flex;align-items:center;gap:7px}
+.occ .nm i{font:700 10px/16px var(--f-num);width:16px;height:16px;border-radius:5px;text-align:center;color:#fff;font-style:normal}
+.occ .vv{font:600 11.5px var(--f-num)}
+.occ .bar{grid-column:1/-1;height:5px;border-radius:5px;background:var(--hair-2);overflow:hidden}
+.occ .bar b{display:block;height:100%;border-radius:5px;background:var(--ok);transition:width .4s}
+.z-out{background:var(--sand)}.z-prop{background:var(--maroon)}.z-op{background:var(--ok)}
+
+/* plate feed */
+.feed{list-style:none;margin:0;padding:0;max-height:calc(100vh - 330px);overflow:auto}
+.feed li{display:grid;grid-template-columns:42px auto 1fr;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--hair-2);cursor:pointer}
+.feed li:hover{background:var(--hair-2)}
+.feed li.new{animation:flash 1s ease-out}
+@keyframes flash{from{background:var(--sand-soft)}to{background:transparent}}
+.feed .t{font:500 11.5px var(--f-num);color:var(--muted)}
+.feed .st{color:var(--ink-2);font-size:12px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plate{display:inline-flex;align-items:stretch;border:1.5px solid #1F2023;border-radius:5px;background:#FBFBF7;color:#121316;font:700 11.5px/1 var(--f-num);letter-spacing:.04em;overflow:hidden;white-space:nowrap;height:22px}
+.plate em{font-style:normal;font:700 8.5px/1 var(--f-disp);font-stretch:120%;letter-spacing:.06em;background:#1C5F43;color:#fff;padding:0 4px;display:grid;place-items:center}
+.plate span{padding:0 6px;display:grid;place-items:center}
+.plate.QAT em{background:#8A1538}.plate.KSA em{background:#0D6B3A}.plate.UAE em{background:#2B2B2B}.plate.KWT em{background:#1B5FA8}.plate.OMN em{background:#B3261E}.plate.BHR em{background:#C8102E}
+
+/* tracker */
+.track{display:flex;gap:6px}
+.track input{flex:1;min-width:0;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:8px 11px;font-family:var(--f-num);font-size:12.5px;text-transform:uppercase}
+.tcard{margin-top:12px;padding:12px;border-radius:12px;background:var(--glass-2);border:1px solid var(--hair-2)}
+.tcard .top{display:flex;align-items:center;gap:10px}
+.tcard .top .el{margin-left:auto;font:700 18px/1 var(--f-num)}
+.journey{list-style:none;margin:12px 0 0;padding:0 0 0 16px;border-left:2px solid var(--hair);font-size:12.5px}
+.journey li{position:relative;padding:4px 0;display:flex;justify-content:space-between;gap:8px}
+.journey li time{font:500 11.5px var(--f-num);color:var(--muted)}
+.journey li::before{content:"";position:absolute;left:-21px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--hair);border:2px solid var(--solid)}
+.journey li.done::before{background:var(--ok)}
+.journey li.now{font-weight:600}
+.journey li.now::before{background:var(--maroon);box-shadow:0 0 0 4px var(--maroon-soft)}
+.journey li.skip{color:var(--muted);text-decoration:line-through}
+
+/* ask */
+.ask textarea{width:100%;min-height:64px;resize:vertical;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:9px 11px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{border:1px solid var(--hair);background:transparent;border-radius:999px;padding:5px 10px;font-size:12px;text-align:start}
+.chip:hover{border-color:var(--maroon);color:var(--maroon)}
+.answer{white-space:pre-wrap;font-size:13.5px;margin-top:10px}
+.steps{font-size:12px;color:var(--muted);margin-top:8px}
+.steps div::before{content:"↻ ";color:var(--maroon)}
+
+/* ===== Stage labels in 3D ===== */
+.lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:999px;background:rgba(20,21,24,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#F2F0EA;font-size:11.5px;line-height:1.15;white-space:nowrap;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12)}
+.lbl::after{content:"";position:absolute;left:50%;bottom:-7px;width:1px;height:7px;background:rgba(255,255,255,.55)}
+.lbl .n{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#fff;font:700 11px/1 var(--f-num);flex:none}
+.lbl .n.out{background:#B0812C}.lbl .n.prop{background:#8A1538}.lbl .n.op{background:#1C7C5A}
+.lbl .t{display:flex;flex-direction:column}
+.lbl .ar{font-weight:600;direction:rtl}
+.lbl .en{color:#B9B6AE;font-size:10.5px}
+.lbl .v{font:700 11.5px var(--f-num);margin-left:2px;padding-left:9px;border-left:1px solid rgba(255,255,255,.18)}
+.lbl .v.hot{color:#FF7A9C}
+.lbl.compact .t .ar{display:none}
+.tag{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.tag .card{padding:8px 11px;border-radius:12px;background:rgba(20,21,24,.86);color:#F2F0EA;font-size:11.5px;box-shadow:0 10px 30px -10px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.14);white-space:nowrap}
+.tag .card b{font:700 13px var(--f-num)}
+.tag .stem{width:2px;height:22px;background:linear-gradient(#2F8CFF,transparent)}
+.callout{position:absolute;transform:translate(-50%,-100%);pointer-events:none;animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
+.callout div{padding:7px 12px;border-radius:999px;background:var(--sand);color:#1A1406;font:700 12px/1 var(--f-disp);font-stretch:110%;letter-spacing:.03em;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);white-space:nowrap}
+.callout.minus div{background:var(--bad);color:#fff}
+.callout.fade{transition:opacity .8s;opacity:0}
+@keyframes pop{from{transform:translate(-50%,-80%) scale(.6);opacity:0}}
+
+/* ===== Bottom: stage pipeline + map controls ===== */
+#flowstrip{position:fixed;left:var(--sl);right:var(--sr);bottom:12px;z-index:16;display:flex;align-items:stretch;gap:0;padding:6px;overflow-x:auto;scrollbar-width:none;transition:left .35s,right .35s}
+#flowstrip>.stg:first-child{margin-left:auto}#flowstrip>.stg:last-child{margin-right:auto}
+#flowstrip .stg{flex:none;width:106px;border:0;background:transparent;padding:6px 10px 7px;border-radius:10px;display:flex;flex-direction:column;gap:5px;text-align:left;position:relative}
+#flowstrip .stg:hover{background:var(--hair-2)}
+#flowstrip .stg+.stg::before{content:"";position:absolute;left:-5px;top:16px;width:8px;height:8px;border-top:1.5px solid var(--muted);border-right:1.5px solid var(--muted);transform:rotate(45deg);opacity:.6}
+#flowstrip .h{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#flowstrip .h span{overflow:hidden;text-overflow:ellipsis}
+#flowstrip .h i{font:700 9.5px/15px var(--f-num);width:15px;height:15px;border-radius:4px;color:#fff;text-align:center;font-style:normal;flex:none}
+#flowstrip .m{font:600 11px var(--f-num);color:var(--muted);white-space:nowrap}
+#flowstrip .m.hot{color:var(--bad)}
+#flowstrip .bar{height:3px;border-radius:3px;background:var(--hair);overflow:hidden}
+#flowstrip .bar b{display:block;height:100%;background:var(--ok);transition:width .4s}
+#flowstrip .stg.bn{background:color-mix(in srgb,var(--bad) 9%,transparent)}
+#flowstrip .stg.bn::after{content:"";position:absolute;top:4px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 25%,transparent)}
+.mapctl{position:fixed;right:var(--cr);bottom:12px;transition:right .35s;z-index:16;display:flex;flex-direction:column;gap:6px;padding:6px}
+.mapctl button{width:38px;height:38px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--ink-2);display:grid;place-items:center;position:relative}
+.mapctl button:hover{background:var(--hair-2);color:var(--ink)}
+.mapctl button[aria-pressed="true"]{background:var(--ink);color:var(--solid)}
+.mapctl button[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:46px;top:50%;transform:translateY(-50%);white-space:nowrap;padding:6px 9px;border-radius:8px;background:var(--solid);color:var(--ink);border:1px solid var(--hair);font-size:12px;box-shadow:var(--shadow)}
+.legend{position:fixed;left:var(--sl);top:76px;transition:left .35s;z-index:16;padding:9px 12px;font-size:11.5px;display:grid;grid-template-columns:auto auto;gap:5px 14px;color:var(--ink-2)}
+.legend span{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.toast{position:fixed;left:50%;top:78px;transform:translateX(-50%) translateY(-6px);z-index:30;background:var(--ink);color:var(--solid);padding:9px 15px;border-radius:10px;font-size:12.5px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;box-shadow:var(--shadow)}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.help{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(10,10,12,.45);backdrop-filter:blur(3px)}
+.help .box{width:min(560px,calc(100vw - 32px));padding:22px 24px}
+.help h2{margin:0 0 4px;font:800 20px/1.1 var(--f-disp);font-stretch:115%}
+.help ol{margin:14px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:9px;font-size:13px;color:var(--ink-2)}
+.help kbd{font:600 11px var(--f-num);border:1px solid var(--hair);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--glass-2)}
+.loading{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:#16171A;color:#EDEBE6;transition:opacity .6s}
+.loading.done{opacity:0;pointer-events:none}
+.loading .in{display:flex;flex-direction:column;align-items:center;gap:14px;font:600 11px/1 var(--f-disp);font-stretch:120%;letter-spacing:.2em;text-transform:uppercase}
+.loading .spin{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:#D2456F;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media (max-width:1180px){.legend{display:none}.brand small{display:none}#lighting button:not([aria-pressed="true"]):not(:first-child){display:none}}
+@media (max-width:900px){
+  .topbar{flex-wrap:wrap;right:12px}.brand{order:0;flex:1 1 100%}
+  .drawer{top:auto;bottom:12px;left:12px!important;right:12px!important;width:auto!important;height:58vh;z-index:25}
+  .drawer.folded{transform:translateY(calc(100% + 24px))}
+  #flowstrip{bottom:auto;top:150px}.rail{top:auto;bottom:16px;transform:none}#railL{left:16px}#railR{right:60px}
+  .mapctl{bottom:auto;top:150px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="loading" id="loading"><div class="in"><div class="spin"></div>Loading the twin</div></div>
+<main id="stage" aria-label="3D view of the port">
+  <div id="labels"></div>
+  <div id="tags"></div>
+</main>
+
+<header class="topbar">
+  <div class="brand glass">
+    <div class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 20h18M5 20V10l7-5 7 5v10M9 20v-5h6v5"/></svg></div>
+    <div><h1>Abu Samra Twin</h1><small lang="ar" dir="rtl">التوأم الرقمي لمنفذ أبو سمرة</small></div>
+    <a class="variant" id="variantLink" href="#"></a>
+  </div>
+  <div class="pod glass">
+    <div class="seg maroon" role="group" aria-label="Flow">
+      <button id="fImport" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14M12 6l6 6-6 6"/></svg>Import from KSA</button>
+      <button id="fExport" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12H6M12 6l-6 6 6 6"/></svg>Export to KSA</button>
+    </div>
+  </div>
+  <div class="pod glass">
+    <div class="clock"><div class="ic" id="skyIc" aria-hidden="true"></div><div><b id="clock" class="num">08:00</b><span id="day">Day 1</span></div></div>
+    <div class="sep"></div>
+    <div class="seg" role="group" aria-label="Simulation speed" id="speeds">
+      <button data-s="0" aria-pressed="false" title="Pause (space)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+      <button data-s="0.0166667" aria-pressed="false" title="Real time">1×</button>
+      <button data-s="0.1666667" aria-pressed="false" title="10 simulated seconds per second">10×</button>
+      <button data-s="2" aria-pressed="true">2 min/s</button>
+      <button data-s="10" aria-pressed="false">10 min/s</button>
+      <button data-s="60" aria-pressed="false">1 h/s</button>
+    </div>
+    <div class="sep"></div>
+    <div class="seg" role="group" aria-label="Lighting" id="lighting">
+      <button data-h="auto" aria-pressed="true" title="Follow the simulation clock">Auto</button>
+      <button data-h="6.4" aria-pressed="false" title="Dawn">Dawn</button>
+      <button data-h="11.5" aria-pressed="false" title="Midday">Day</button>
+      <button data-h="18.1" aria-pressed="false" title="Dusk">Dusk</button>
+      <button data-h="22.5" aria-pressed="false" title="Night">Night</button>
+    </div>
+  </div>
+  <div class="pod glass">
+    <button class="iconbtn" id="themeBtn" title="Light or dark panels" aria-label="Toggle panel theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
+    <button class="iconbtn" id="helpBtn" title="How to use the twin" aria-label="Help"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></button>
+  </div>
+</header>
+
+<aside id="left" class="drawer glass" aria-label="Scenario planner">
+  <div class="dh"><h2>Scenario planner</h2><span class="k">[</span><button class="iconbtn" id="foldL" aria-label="Fold planner"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button></div>
+  <div class="db">
+    <div class="sec">
+      <p class="hint" style="margin-bottom:4px">Change a resource and the live port reacts. New capacity shows up gold on the map, removed capacity red.</p>
+      <div id="controls"></div>
+    </div>
+    <div class="sec" id="fcBlock" hidden>
+      <h3><span class="dot"></span>Forecast: a typical day</h3>
+      <div id="fcOut"></div>
+    </div>
+    <div class="sec">
+      <h3><span class="dot"></span>Find the smallest change</h3>
+      <p class="hint">Pick a resource and a target. The twin tests values until the target is met.</p>
+      <select id="optRes" class="sel" aria-label="Resource"></select>
+      <div class="ctl" style="margin-top:12px"><label for="optTarget">Average time in port, at most</label><output id="optTargetV" class="num">4 h</output><input type="range" id="optTarget" min="1" max="12" step="0.5" value="4"></div>
+      <div class="row"><button class="btn" id="runOpt">Find it</button></div>
+      <div id="optOut"></div>
+    </div>
+    <div class="sec">
+      <h3><span class="dot"></span>About this prototype</h3>
+      <p class="hint" id="aboutTxt"></p>
+    </div>
+  </div>
+  <div class="sticky row" style="margin:0;flex-wrap:nowrap">
+    <button class="btn primary" id="runFc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19h16M7 15l4-5 3 3 5-7"/></svg>Run forecast</button>
+    <button class="btn ghost" id="resetBase" title="Undo all changes">Reset</button>
+    <button class="btn ghost" id="setBase" title="Use the current settings as the new baseline">Set baseline</button>
+  </div>
+</aside>
+<div class="rail glass" id="railL"><button id="unfoldL" aria-label="Open planner"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg><span class="vt">Planner</span></button></div>
+
+<aside id="right" class="drawer glass" aria-label="Live operations">
+  <div class="dh"><h2>Live operations</h2><span class="k">]</span><button class="iconbtn" id="foldR" aria-label="Fold live panel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="now" aria-selected="true">Now</button>
+    <button role="tab" data-tab="reads" aria-selected="false">Gate reads</button>
+    <button role="tab" data-tab="track" aria-selected="false">Track</button>
+    <button role="tab" data-tab="ask" aria-selected="false" id="askTab" hidden>Ask</button>
+  </div>
+  <div class="db">
+    <div class="tabpane on" data-pane="now">
+      <div class="sec"><div class="kgrid" id="kpis"></div></div>
+      <div class="sec"><h3><span class="dot"></span>Occupancy by stage</h3><p class="hint">Click a stage to fly there.</p><div class="occ" id="occ"></div></div>
+    </div>
+    <div class="tabpane" data-pane="reads">
+      <div class="sec">
+        <p class="hint">Every checkpoint pass, as the plate recognizer would log it. Click a plate to follow the truck.</p>
+        <ul class="feed" id="feed"></ul>
+        <div class="row"><button class="btn" id="csvBtn" hidden>Download event log (CSV)</button></div>
+      </div>
+    </div>
+    <div class="tabpane" data-pane="track">
+      <div class="sec">
+        <p class="hint">Type a plate, pick one, or click any truck on the map. The camera flies to it and follows.</p>
+        <div class="track"><input id="plateIn" list="plates" placeholder="KSA 4821 KDR" aria-label="Plate number"><datalist id="plates"></datalist><button class="btn primary" id="trackBtn">Track</button><button class="btn" id="randBtn" title="Pick a random truck">Any</button></div>
+        <div id="journey"></div>
+      </div>
+    </div>
+    <div class="tabpane ask" data-pane="ask">
+      <div class="sec">
+        <p class="hint">Claude runs the simulation to answer. Ask in Arabic or English.</p>
+        <div class="chips" id="chips"></div>
+        <textarea id="q" placeholder="What if traffic is 40% higher during Eid?" dir="auto"></textarea>
+        <div class="row"><button class="btn primary" id="askBtn">Ask</button><button class="btn" id="stopBtn" hidden>Stop</button></div>
+        <div class="steps" id="steps"></div>
+        <div class="answer" id="answer" dir="auto"></div>
+      </div>
+    </div>
+  </div>
+</aside>
+<div class="rail glass" id="railR"><button id="unfoldR" aria-label="Open live panel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg><span class="vt">Live</span></button></div>
+
+<nav id="flowstrip" class="glass" aria-label="Stages"></nav>
+<div class="mapctl glass" role="toolbar" aria-label="Map layers">
+  <button id="tLabels" aria-pressed="true" data-tip="Stage labels"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16v10H9l-5 4z"/></svg></button>
+  <button id="tRoute" aria-pressed="true" data-tip="Routes and zones"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 19c4-1 2-6 7-7s3-6 7-7"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/></svg></button>
+  <button id="tBays" aria-pressed="true" data-tip="Capacity markings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5v14M9 5v14M14 5v14M19 5v14M4 12h15"/></svg></button>
+  <button id="tStatus" aria-pressed="false" data-tip="Colour trucks by wait"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></button>
+  <button id="tFly" aria-pressed="true" data-tip="Fly to changes"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l18-7-7 18-2-8z"/></svg></button>
+  <button id="recenter" data-tip="Recenter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+</div>
+<div class="legend glass" id="legend" aria-hidden="true"></div>
+<div class="toast" id="toast"></div>
+<div class="help" id="help" hidden><div class="box glass" role="dialog" aria-labelledby="helpT">
+  <h2 id="helpT">Using the twin</h2>
+  <p class="hint">A live discrete-event simulation of every truck through Abu Samra, on a true-scale 3D model of the port.</p>
+  <ol>
+    <li><b>Look around.</b> Left-drag orbits, right-drag pans, the wheel zooms. Click any truck to follow it.</li>
+    <li><b>Change the port.</b> Open the planner <kbd>[</kbd> and move a slider. New lanes, bays and ramps appear gold on the map; removed ones turn red.</li>
+    <li><b>Compare a full day.</b> Run the 24-hour forecast to see time in port, queues and CO₂ against the baseline.</li>
+    <li><b>Watch it live.</b> The live panel <kbd>]</kbd> shows occupancy, plate reads, and the journey of any truck.</li>
+    <li><b>Control time.</b> Pick a speed (<kbd>space</kbd> pauses) and choose day or night lighting independently of the clock.</li>
+  </ol>
+  <div class="row" style="justify-content:flex-end"><button class="btn primary" id="helpClose">Got it</button></div>
+</div></div>
