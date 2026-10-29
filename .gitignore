@@ -1,0 +1,26 @@
+# Intermediate images from the imagery pipeline (rebuilt by the pipeline scripts)
+abu-samra-twin/pipeline/work/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Test screenshots and local output
+abu-samra-twin/tests/out*/
+*.log
+
+# Office lock files (created while a .pptx/.docx is open)
+~$*
+
+# Editor and OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini
