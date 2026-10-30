@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Abu Samra — 2D port map</title>
+  <title>Abu Samra — satellite port map</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <style>
     :root {
       --paper: #f3efe6;
@@ -12,40 +13,34 @@
       --line: #ddd6c8;
       --panel: #fffcf7;
       --accent: #0f6e78;
-      --trunk: #d35400;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
     body {
       font-family: "Segoe UI", system-ui, sans-serif;
       color: var(--ink);
-      background: var(--paper);
+      background: #cfc6b4;
       display: grid;
-      grid-template-columns: 300px 1fr;
+      grid-template-columns: 320px 1fr;
       height: 100%;
       overflow: hidden;
     }
     aside {
       background: var(--panel);
       border-right: 1px solid var(--line);
-      padding: 18px 16px 14px;
+      padding: 16px 16px 12px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       min-height: 0;
       overflow: auto;
+      z-index: 2;
     }
-    h1 {
-      font-size: 20px;
-      line-height: 1.2;
-      margin: 0;
-      font-weight: 650;
-    }
+    h1 { font-size: 20px; line-height: 1.2; margin: 0; font-weight: 650; }
     .ar { font-size: 15px; color: var(--muted); margin-top: 2px; }
-    .sub { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
+    .sub, .note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
     .row { display: flex; gap: 8px; }
-    button {
-      flex: 1;
+    button, .choice {
       border: 1px solid var(--line);
       background: #fff;
       color: var(--ink);
@@ -55,28 +50,19 @@
       font-size: 13px;
       cursor: pointer;
     }
-    button:hover { border-color: var(--accent); color: var(--accent); }
-    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
-    button.primary:hover { color: white; filter: brightness(1.05); }
-    .layers { display: flex; flex-direction: column; gap: 4px; }
-    .layers label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      padding: 3px 0;
-      cursor: pointer;
-    }
-    .swatch {
-      width: 14px;
-      height: 8px;
-      border-radius: 2px;
-      flex: 0 0 14px;
-    }
+    button { flex: 1; }
+    button:hover, .choice:hover { border-color: var(--accent); color: var(--accent); }
+    button.primary, button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.primary:hover, button.active:hover { color: #fff; }
+    .choices { display: flex; gap: 6px; }
+    .choice { flex: 1; text-align: center; }
+    .choice.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    label.slider { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+    input[type="range"] { width: 100%; }
+    .layers { display: flex; flex-direction: column; gap: 2px; }
+    .layers label { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 2px 0; cursor: pointer; }
+    .swatch { width: 14px; height: 8px; border-radius: 2px; flex: 0 0 14px; }
     .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
-    .legend { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 5px; }
-    .legend div { display: flex; align-items: center; gap: 8px; }
-    .line { height: 0; border-top-width: 3px; border-top-style: solid; width: 18px; }
     input[type="search"] {
       width: 100%;
       border: 1px solid var(--line);
@@ -84,75 +70,48 @@
       padding: 8px 10px;
       font: inherit;
       font-size: 13px;
-      background: #fff;
     }
-    #hits { display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow: auto; }
+    #hits { display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow: auto; }
     #hits button { text-align: left; flex: none; }
-    #inspector {
-      border-top: 1px solid var(--line);
-      padding-top: 10px;
-      font-size: 13px;
-      line-height: 1.45;
-      min-height: 72px;
-    }
-    #inspector strong { display: block; font-size: 14px; }
-    #inspector .muted { color: var(--muted); }
+    #inspector { border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; line-height: 1.45; min-height: 64px; }
+    #inspector strong { display: block; }
+    .muted { color: var(--muted); }
     .credit { margin-top: auto; font-size: 11px; color: var(--muted); line-height: 1.4; }
     #stage { position: relative; min-width: 0; min-height: 0; }
-    canvas { width: 100%; height: 100%; display: block; background: #efe6d6; cursor: grab; }
-    canvas.dragging { cursor: grabbing; }
-    #scale {
+    #map { position: absolute; inset: 0; }
+    .maplibregl-ctrl-attrib { font-size: 11px; }
+    #readout {
       position: absolute;
-      left: 16px;
-      bottom: 16px;
+      left: 12px;
+      bottom: 28px;
+      z-index: 2;
       background: rgba(255, 252, 247, 0.92);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 6px 8px 8px;
+      padding: 6px 8px;
       font-size: 12px;
-      min-width: 90px;
+      pointer-events: none;
     }
-    #scale .bar {
-      height: 8px;
-      border: 1.5px solid var(--ink);
-      border-top: none;
-      margin-top: 4px;
-    }
-    #north {
-      position: absolute;
-      right: 16px;
-      bottom: 16px;
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      background: rgba(255, 252, 247, 0.92);
-      border: 1px solid var(--line);
-      display: grid;
-      place-items: center;
-      font-size: 13px;
-      font-weight: 700;
-    }
-    #north span { transform: translateY(-6px); }
     #overlay {
       position: absolute;
       inset: 0;
+      z-index: 3;
       display: grid;
       place-items: center;
-      background: rgba(243, 239, 230, 0.86);
+      background: rgba(243, 239, 230, 0.72);
       padding: 24px;
     }
+    #overlay.hidden { display: none; }
     #overlay .card {
-      max-width: 460px;
-      background: white;
+      max-width: 480px;
+      background: #fff;
       border: 1px solid var(--line);
       border-radius: 12px;
-      padding: 18px 18px 16px;
-      box-shadow: 0 10px 30px rgba(40, 30, 10, 0.08);
+      padding: 18px;
     }
     #overlay h2 { margin: 0 0 8px; font-size: 18px; }
     #overlay p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
     code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--ink); }
-    #overlay.hidden { display: none; }
   </style>
 </head>
 <body>
@@ -161,596 +120,260 @@
       <h1>Abu Samra Border Post</h1>
       <div class="ar">منفذ أبو سمرة الحدودي</div>
     </div>
-    <p class="sub">Qatar customs land port on Salwa Road. North is up. Coordinates are meters from the port, east and north. One line is one mapped carriageway.</p>
-    <div class="row">
-      <button class="primary" id="fit-port" type="button">Fit port</button>
-      <button id="fit-area" type="button">Fit study area</button>
+    <p class="sub">Satellite photograph with the traced roads and buildings on top. The photo is what shows the booths, canopies, and desert. The lines are the measured map.</p>
+    <div class="choices" id="imagery">
+      <button type="button" class="choice active" data-imagery="google">Google</button>
+      <button type="button" class="choice" data-imagery="esri">Esri</button>
+      <button type="button" class="choice" data-imagery="off">Lines only</button>
     </div>
-    <input id="search" type="search" placeholder="Search name, road, gate…" autocomplete="off">
+    <div class="row">
+      <button type="button" class="primary" id="view-2d">2D</button>
+      <button type="button" id="view-3d">3D</button>
+    </div>
+    <div class="row">
+      <button type="button" id="fit-port">Fit port</button>
+      <button type="button" id="fit-area">Fit study area</button>
+    </div>
+    <label class="slider">Line strength <input id="strength" type="range" min="0" max="100" value="80"></label>
+    <input id="search" type="search" placeholder="Search Salwa, gate, building…" autocomplete="off">
     <div id="hits"></div>
     <div class="layers" id="layers"></div>
-    <div class="legend" id="legend"></div>
-    <div id="inspector"><span class="muted">Hover a road, building, or gate.</span></div>
-    <p class="credit">Map data © OpenStreetMap contributors, ODbL. Building outlines are footprints only. Lane counts appear only when OpenStreetMap tagged them.</p>
+    <div id="inspector"><span class="muted">Click a road, building, or gate.</span></div>
+    <p class="note">No surveyed roof heights are in the data, so buildings stay as outlines on the photograph. The 3D view tilts that photo onto the terrain instead of inventing structures.</p>
+    <p class="credit">Imagery © Google, or © Esri where selected. Roads and buildings © OpenStreetMap contributors, ODbL. Terrain is SRTM. This view is for checking accuracy.</p>
   </aside>
   <div id="stage">
-    <canvas id="map"></canvas>
-    <div id="scale"><span id="scale-label">—</span><div class="bar" id="scale-bar"></div></div>
-    <div id="north" title="North is up"><span>N</span></div>
+    <div id="map"></div>
+    <div id="readout">—</div>
     <div id="overlay">
       <div class="card">
-        <h2 id="overlay-title">Loading the port map…</h2>
-        <p id="overlay-body">Reading the local geometry.</p>
+        <h2 id="overlay-title">Loading the satellite map…</h2>
+        <p id="overlay-body">Fetching the photograph and the port geometry.</p>
       </div>
     </div>
   </div>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script>
-    const LAYER_DEFS = [
-      { id: "landuse", label: "Land use", on: true },
-      { id: "natural", label: "Coast and sand", on: true },
-      { id: "checkpoints", label: "Port extent", on: true },
-      { id: "buildings", label: "Buildings", on: true },
-      { id: "roads", label: "Roads", on: true },
-      { id: "aeroway", label: "Helipad", on: true },
-      { id: "boundaries", label: "Border line", on: true },
-      { id: "barriers", label: "Gates and blocks", on: true },
-      { id: "facilities", label: "Fuel", on: true },
-      { id: "parking", label: "Parking", on: true },
-      { id: "places", label: "Place names", on: true }
+    const GROUPS = [
+      { id: "landuse", file: "landuse", label: "Land use", on: false, color: "#c4a454" },
+      { id: "natural", file: "natural", label: "Coast and sand", on: false, color: "#2e86ab" },
+      { id: "port", file: "checkpoints", label: "Port extent", on: true, color: "#2ee6e6" },
+      { id: "buildings", file: "buildings", label: "Building outlines", on: true, color: "#ffffff" },
+      { id: "roads", file: "roads", label: "Roads", on: true, color: "#ff8c1a" },
+      { id: "aeroway", file: "aeroway", label: "Helipad", on: true, color: "#85c1e9" },
+      { id: "boundaries", file: "boundaries", label: "Border line", on: true, color: "#ff5c5c" },
+      { id: "barriers", file: "barriers", label: "Gates and blocks", on: true, color: "#ff3b30" },
+      { id: "facilities", file: "facilities", label: "Fuel", on: true, color: "#f5b041" },
+      { id: "parking", file: "parking", label: "Parking", on: true, color: "#5dade2" },
+      { id: "places", file: "places", label: "Place names", on: true, color: "#fdfefe" }
     ];
 
-    const ROAD_STYLE = {
-      motorway: ["#1b4f72", 4.5],
-      motorway_link: ["#1b4f72", 2.6],
-      trunk: ["#d35400", 3.4],
-      trunk_link: ["#e67e22", 2.2],
-      primary: ["#1a5276", 2.8],
-      secondary: ["#9a7d0a", 2.5],
-      secondary_link: ["#9a7d0a", 1.8],
-      tertiary: ["#5d4e75", 1.8],
-      residential: ["#5d6d7e", 1.6],
-      unclassified: ["#5d6d7e", 1.5],
-      service: ["#2c3e50", 1.35],
-      track: ["#8d6e63", 1.3],
-      footway: ["#7f8c8d", 1],
-      path: ["#7f8c8d", 1],
-      pedestrian: ["#7f8c8d", 1.1],
-      construction: ["#7f8c8d", 1.6],
-      proposed: ["#95a5a6", 1.2]
-    };
-
-    const canvas = document.getElementById("map");
-    const ctx = canvas.getContext("2d");
-    const overlay = document.getElementById("overlay");
-    const layers = {};
-    const view = { x: 0, y: 0, scale: 0.25 };
-    let hover = null;
-    let dragging = false;
-    let dragMoved = false;
-    let lastPointer = null;
+    const CLICK_LAYERS = ["roads-line", "buildings-outline", "port-outline", "barriers-circle", "facilities-circle", "parking-circle", "aeroway-outline", "boundaries-line"];
+    const collections = {};
+    let map;
+    let mode3d = false;
+    let portBounds = null;
+    let areaBounds = null;
 
     function showOverlay(title, body) {
       document.getElementById("overlay-title").textContent = title;
       document.getElementById("overlay-body").innerHTML = body;
-      overlay.classList.remove("hidden");
+      document.getElementById("overlay").classList.remove("hidden");
     }
 
     function hideOverlay() {
-      overlay.classList.add("hidden");
-    }
-
-    function resize() {
-      const dpr = window.devicePixelRatio || 1;
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      canvas.width = Math.max(1, Math.floor(width * dpr));
-      canvas.height = Math.max(1, Math.floor(height * dpr));
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw();
-    }
-
-    function worldToScreen(x, y) {
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      return [
-        width / 2 + (x - view.x) * view.scale,
-        height / 2 - (y - view.y) * view.scale
-      ];
-    }
-
-    function screenToWorld(sx, sy) {
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      return [
-        view.x + (sx - width / 2) / view.scale,
-        view.y - (sy - height / 2) / view.scale
-      ];
-    }
-
-    function walkCoords(coords, fn) {
-      if (!coords) return;
-      if (typeof coords[0] === "number") {
-        fn(coords[0], coords[1]);
-        return;
-      }
-      for (const child of coords) walkCoords(child, fn);
-    }
-
-    function featureBounds(feature) {
-      let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-      walkCoords(feature.geometry.coordinates, (x, y) => {
-        if (x < minx) minx = x;
-        if (y < miny) miny = y;
-        if (x > maxx) maxx = x;
-        if (y > maxy) maxy = y;
-      });
-      return { minx, miny, maxx, maxy };
-    }
-
-    function unionBounds(features) {
-      const box = { minx: Infinity, miny: Infinity, maxx: -Infinity, maxy: -Infinity };
-      for (const feature of features) {
-        const b = feature._bounds;
-        if (!b || !isFinite(b.minx)) continue;
-        box.minx = Math.min(box.minx, b.minx);
-        box.miny = Math.min(box.miny, b.miny);
-        box.maxx = Math.max(box.maxx, b.maxx);
-        box.maxy = Math.max(box.maxy, b.maxy);
-      }
-      return box;
-    }
-
-    function fitBounds(box, pad = 56) {
-      if (!box || !isFinite(box.minx)) return;
-      const width = Math.max(1, canvas.clientWidth - pad * 2);
-      const height = Math.max(1, canvas.clientHeight - pad * 2);
-      const bw = Math.max(20, box.maxx - box.minx);
-      const bh = Math.max(20, box.maxy - box.miny);
-      view.scale = Math.min(width / bw, height / bh);
-      view.x = (box.minx + box.maxx) / 2;
-      view.y = (box.miny + box.maxy) / 2;
-      draw();
-    }
-
-    function visibleWorld() {
-      const [x0, y1] = screenToWorld(0, 0);
-      const [x1, y0] = screenToWorld(canvas.clientWidth, canvas.clientHeight);
-      return { minx: Math.min(x0, x1), maxx: Math.max(x0, x1), miny: Math.min(y0, y1), maxy: Math.max(y0, y1) };
-    }
-
-    function overlaps(a, b) {
-      return a.minx <= b.maxx && a.maxx >= b.minx && a.miny <= b.maxy && a.maxy >= b.miny;
-    }
-
-    function traceLine(coords) {
-      coords.forEach((point, index) => {
-        const [sx, sy] = worldToScreen(point[0], point[1]);
-        if (index === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      });
-    }
-
-    function traceRings(rings) {
-      for (const ring of rings) {
-        ring.forEach((point, index) => {
-          const [sx, sy] = worldToScreen(point[0], point[1]);
-          if (index === 0) ctx.moveTo(sx, sy);
-          else ctx.lineTo(sx, sy);
-        });
-        ctx.closePath();
-      }
-    }
-
-    function landuseStyle(props) {
-      const kind = props.landuse || props.leisure || "";
-      if (kind === "military" || /exclusion/i.test(props.name_en || "")) return ["rgba(176, 74, 74, 0.13)", "rgba(150, 50, 50, 0.55)"];
-      if (kind === "industrial") return ["rgba(120, 90, 160, 0.16)", "rgba(90, 60, 130, 0.45)"];
-      if (kind === "residential") return ["rgba(196, 164, 84, 0.14)", "rgba(150, 120, 50, 0.35)"];
-      return ["rgba(120, 150, 90, 0.12)", "rgba(80, 110, 60, 0.35)"];
-    }
-
-    function drawPolygon(feature, fill, stroke, width) {
-      const rings = feature.geometry.coordinates;
-      if (!rings || !rings.length) return;
-      ctx.beginPath();
-      traceRings(rings);
-      ctx.fillStyle = fill;
-      ctx.fill("evenodd");
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = width;
-      ctx.setLineDash([]);
-      ctx.stroke();
-    }
-
-    function drawRoads(features, viewBox) {
-      for (const feature of features) {
-        if (!overlaps(feature._bounds, viewBox)) continue;
-        const props = feature.properties;
-        const style = ROAD_STYLE[props.highway] || ["#2c3e50", 1.4];
-        const dashed = props.highway === "track" || props.highway === "construction" || props.highway === "proposed" || props.status === "construction";
-        ctx.beginPath();
-        traceLine(feature.geometry.coordinates);
-        ctx.strokeStyle = style[0];
-        ctx.lineWidth = style[1];
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.setLineDash(dashed ? [7, 5] : []);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-
-    function drawPoint(feature, drawMark) {
-      const [x, y] = feature.geometry.coordinates;
-      const [sx, sy] = worldToScreen(x, y);
-      drawMark(sx, sy, feature);
-    }
-
-    function drawLayers() {
-      const viewBox = visibleWorld();
-      const pad = 40 / view.scale;
-      viewBox.minx -= pad;
-      viewBox.maxx += pad;
-      viewBox.miny -= pad;
-      viewBox.maxy += pad;
-
-      for (const def of LAYER_DEFS) {
-        if (!def.on) continue;
-        const collection = layers[def.id];
-        if (!collection) continue;
-        const features = collection.features || [];
-        if (def.id === "landuse") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "Polygon" || !overlaps(feature._bounds, viewBox)) continue;
-            const [fill, stroke] = landuseStyle(feature.properties);
-            drawPolygon(feature, fill, stroke, 1);
-          }
-        } else if (def.id === "natural") {
-          for (const feature of features) {
-            if (!overlaps(feature._bounds, viewBox)) continue;
-            const kind = feature.properties.natural || feature.properties.waterway || "";
-            if (feature.geometry.type === "Polygon") {
-              const water = kind === "coastline" || kind === "beach" || kind === "water";
-              drawPolygon(feature, water ? "rgba(90, 150, 180, 0.25)" : "rgba(214, 196, 150, 0.35)", water ? "#2e86ab" : "#b7a27a", 1);
-            } else if (feature.geometry.type === "LineString") {
-              ctx.beginPath();
-              traceLine(feature.geometry.coordinates);
-              ctx.strokeStyle = kind === "coastline" ? "#1a6f8a" : "#a89060";
-              ctx.lineWidth = kind === "coastline" ? 2 : 1;
-              ctx.setLineDash([]);
-              ctx.stroke();
-            }
-          }
-        } else if (def.id === "checkpoints") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "Polygon") continue;
-            drawPolygon(feature, "rgba(15, 110, 120, 0.07)", "#0f6e78", 2.4);
-          }
-        } else if (def.id === "buildings") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "Polygon" || !overlaps(feature._bounds, viewBox)) continue;
-            drawPolygon(feature, "#e4d8c8", "#7d6f5e", 1);
-          }
-        } else if (def.id === "roads") {
-          drawRoads(features, viewBox);
-        } else if (def.id === "aeroway") {
-          for (const feature of features) {
-            if (feature.geometry.type === "Polygon") {
-              drawPolygon(feature, "rgba(170, 205, 230, 0.85)", "#1a5276", 1.5);
-              const b = feature._bounds;
-              const [sx, sy] = worldToScreen((b.minx + b.maxx) / 2, (b.miny + b.maxy) / 2);
-              ctx.fillStyle = "#1a5276";
-              ctx.font = "700 12px Segoe UI, sans-serif";
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillText("H", sx, sy);
-            }
-          }
-        } else if (def.id === "boundaries") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "LineString") continue;
-            ctx.beginPath();
-            traceLine(feature.geometry.coordinates);
-            ctx.strokeStyle = "#a32020";
-            ctx.lineWidth = 2;
-            ctx.setLineDash([10, 6]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          }
-        } else if (def.id === "barriers") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "Point" || !overlaps(feature._bounds, viewBox)) continue;
-            drawPoint(feature, (sx, sy) => {
-              const gate = feature.properties.barrier === "gate";
-              ctx.fillStyle = gate ? "#b03a2e" : "#6c3483";
-              ctx.strokeStyle = "#fff";
-              ctx.lineWidth = 1.5;
-              ctx.beginPath();
-              if (gate) {
-                ctx.rect(sx - 4.5, sy - 4.5, 9, 9);
-              } else {
-                ctx.moveTo(sx, sy - 6);
-                ctx.lineTo(sx + 6, sy);
-                ctx.lineTo(sx, sy + 6);
-                ctx.lineTo(sx - 6, sy);
-                ctx.closePath();
-              }
-              ctx.fill();
-              ctx.stroke();
-            });
-          }
-        } else if (def.id === "facilities" || def.id === "parking") {
-          for (const feature of features) {
-            if (feature.geometry.type !== "Point") continue;
-            drawPoint(feature, (sx, sy) => {
-              ctx.beginPath();
-              ctx.fillStyle = def.id === "parking" ? "#1a5276" : "#d68910";
-              ctx.arc(sx, sy, 6, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.fillStyle = "#fff";
-              ctx.font = "700 9px Segoe UI, sans-serif";
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillText(def.id === "parking" ? "P" : "F", sx, sy + 0.5);
-            });
-          }
-        } else if (def.id === "places") {
-          ctx.textAlign = "left";
-          ctx.textBaseline = "bottom";
-          for (const feature of features) {
-            if (feature.geometry.type !== "Point") continue;
-            const [sx, sy] = worldToScreen(feature.geometry.coordinates[0], feature.geometry.coordinates[1]);
-            const label = feature.properties.name_en || feature.properties.name || "";
-            ctx.font = "600 13px Segoe UI, sans-serif";
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "rgba(255,252,247,0.9)";
-            ctx.strokeText(label, sx + 8, sy - 6);
-            ctx.fillStyle = "#1c1915";
-            ctx.fillText(label, sx + 8, sy - 6);
-          }
-        }
-      }
-      drawRoadLabels(viewBox);
-      if (hover) drawHover(hover);
-    }
-
-    function drawRoadLabels(viewBox) {
-      if (view.scale < 0.18) return;
-      const collection = layers.roads;
-      if (!collection || !LAYER_DEFS.find((item) => item.id === "roads").on) return;
-      const occupied = [];
-      ctx.font = "600 12px Segoe UI, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      for (const feature of collection._labels || []) {
-        if (!overlaps(feature._bounds, viewBox)) continue;
-        const coords = feature.geometry.coordinates;
-        const mid = coords[Math.floor(coords.length / 2)];
-        const [sx, sy] = worldToScreen(mid[0], mid[1]);
-        const text = feature.properties.name_en || feature.properties.name;
-        const width = ctx.measureText(text).width + 8;
-        const box = { x: sx - width / 2, y: sy - 10, w: width, h: 16 };
-        if (occupied.some((item) => item.x < box.x + box.w && item.x + item.w > box.x && item.y < box.y + box.h && item.y + item.h > box.y)) continue;
-        occupied.push(box);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(239, 230, 214, 0.92)";
-        ctx.strokeText(text, sx, sy);
-        ctx.fillStyle = feature.properties.highway === "trunk" || feature.properties.highway === "motorway" ? "#9a3d00" : "#1c1915";
-        ctx.fillText(text, sx, sy);
-      }
-    }
-
-    function drawHover(feature) {
-      const geom = feature.geometry;
-      ctx.save();
-      ctx.strokeStyle = "#111";
-      ctx.lineWidth = 4;
-      ctx.setLineDash([]);
-      if (geom.type === "LineString") {
-        ctx.beginPath();
-        traceLine(geom.coordinates);
-        ctx.stroke();
-      } else if (geom.type === "Polygon") {
-        ctx.beginPath();
-        traceRings(geom.coordinates);
-        ctx.stroke();
-      } else if (geom.type === "Point") {
-        const [sx, sy] = worldToScreen(geom.coordinates[0], geom.coordinates[1]);
-        ctx.beginPath();
-        ctx.arc(sx, sy, 10, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    function drawScale() {
-      const target = 120;
-      const meters = target / view.scale;
-      const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-      let nice = steps[steps.length - 1];
-      for (const step of steps) {
-        if (step >= meters * 0.6) {
-          nice = step;
-          break;
-        }
-      }
-      const px = nice * view.scale;
-      document.getElementById("scale-label").textContent = nice >= 1000 ? (nice / 1000) + " km" : nice + " m";
-      document.getElementById("scale-bar").style.width = Math.max(24, Math.round(px)) + "px";
-    }
-
-    function draw() {
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = "#efe6d6";
-      ctx.fillRect(0, 0, width, height);
-      drawLayers();
-      drawScale();
-    }
-
-    function distToSegment(px, py, ax, ay, bx, by) {
-      const dx = bx - ax;
-      const dy = by - ay;
-      const len2 = dx * dx + dy * dy;
-      if (len2 === 0) return Math.hypot(px - ax, py - ay);
-      let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-      t = Math.max(0, Math.min(1, t));
-      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-    }
-
-    function pointInRing(x, y, ring) {
-      let inside = false;
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const xi = ring[i][0];
-        const yi = ring[i][1];
-        const xj = ring[j][0];
-        const yj = ring[j][1];
-        const crosses = (yi > y) !== (yj > y);
-        if (crosses && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-      }
-      return inside;
-    }
-
-    function featureDistance(feature, wx, wy) {
-      const geom = feature.geometry;
-      if (geom.type === "Point") {
-        return Math.hypot(wx - geom.coordinates[0], wy - geom.coordinates[1]);
-      }
-      if (geom.type === "Polygon" && geom.coordinates[0] && pointInRing(wx, wy, geom.coordinates[0])) return 0;
-      let best = Infinity;
-      const lines = geom.type === "LineString" ? [geom.coordinates] : (geom.coordinates || []);
-      for (const line of lines) {
-        for (let i = 1; i < line.length; i++) {
-          best = Math.min(best, distToSegment(wx, wy, line[i - 1][0], line[i - 1][1], line[i][0], line[i][1]));
-        }
-      }
-      return best;
-    }
-
-    function pick(sx, sy) {
-      const [wx, wy] = screenToWorld(sx, sy);
-      const limit = 10 / view.scale;
-      let best = null;
-      let bestDist = limit;
-      for (const def of LAYER_DEFS) {
-        if (!def.on || def.id === "landuse" || def.id === "natural") continue;
-        const collection = layers[def.id];
-        if (!collection) continue;
-        for (const feature of collection.features) {
-          const b = feature._bounds;
-          if (wx < b.minx - limit || wx > b.maxx + limit || wy < b.miny - limit || wy > b.maxy + limit) continue;
-          const dist = featureDistance(feature, wx, wy);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = feature;
-          }
-        }
-      }
-      return best;
-    }
-
-    function displayName(props) {
-      return props.name_en || props.name || props.highway || props.barrier || props.building || props.aeroway || "Unnamed";
-    }
-
-    function showInspector(feature) {
-      const box = document.getElementById("inspector");
-      if (!feature) {
-        box.innerHTML = '<span class="muted">Hover a road, building, or gate.</span>';
-        return;
-      }
-      const props = feature.properties;
-      const lines = [];
-      lines.push("<strong>" + escapeHtml(displayName(props)) + "</strong>");
-      if (props.name_ar) lines.push('<div class="muted">' + escapeHtml(props.name_ar) + "</div>");
-      const bits = [];
-      if (props.highway) bits.push(props.highway);
-      if (props.barrier) bits.push(props.barrier);
-      if (props.building && props.building !== "yes") bits.push(props.building);
-      if (props.amenity) bits.push(props.amenity);
-      if (props.aeroway) bits.push(props.aeroway);
-      if (props.scope) bits.push(props.scope === "port" ? "inside port" : "approach");
-      if (bits.length) lines.push('<div class="muted">' + escapeHtml(bits.join(" · ")) + "</div>");
-      if (props.length_m) lines.push(Math.round(props.length_m).toLocaleString() + " m");
-      if (props.area_m2) lines.push(Math.round(props.area_m2).toLocaleString() + " m²");
-      if (props.highway) {
-        lines.push(props.lanes_tagged ? props.lanes + " lanes tagged" : "lanes not tagged");
-        if (props.oneway_mode) lines.push("oneway: " + props.oneway_mode);
-      }
-      lines.push('<div class="muted">OSM ' + escapeHtml(props.osm_type + "/" + props.osm_id) + "</div>");
-      box.innerHTML = lines.join("");
+      document.getElementById("overlay").classList.add("hidden");
     }
 
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
     }
 
-    function buildUi() {
+    function roadWidth(extra) {
+      return [
+        "interpolate", ["linear"], ["zoom"],
+        13, ["+", extra, ["match", ["get", "highway"], "motorway", 1.5, "motorway_link", 1.1, "trunk", 1.3, "trunk_link", 0.9, "secondary", 1.0, "service", 0.35, "track", 0.35, 0.6]],
+        16, ["+", extra, ["match", ["get", "highway"], "motorway", 2.8, "motorway_link", 1.8, "trunk", 2.3, "trunk_link", 1.4, "secondary", 1.7, "service", 0.8, "track", 0.7, 1.1]],
+        19, ["+", extra, ["match", ["get", "highway"], "motorway", 5.5, "motorway_link", 3.2, "trunk", 4.2, "trunk_link", 2.4, "secondary", 3, "service", 1.6, "track", 1.3, 2]]
+      ];
+    }
+
+    const ROAD_COLOR = [
+      "match", ["get", "highway"],
+      "motorway", "#5dade2",
+      "motorway_link", "#5dade2",
+      "trunk", "#ff8c1a",
+      "trunk_link", "#ffb347",
+      "primary", "#5dade2",
+      "secondary", "#f7dc6f",
+      "secondary_link", "#f7dc6f",
+      "tertiary", "#d7bde2",
+      "service", "#f4f6f7",
+      "residential", "#d5d8dc",
+      "unclassified", "#d5d8dc",
+      "track", "#e5d0c1",
+      "construction", "#f4f6f7",
+      "proposed", "#d5d8dc",
+      "#ffffff"
+    ];
+
+    function featureBounds(feature) {
+      let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
+      const walk = (coords) => {
+        if (typeof coords[0] === "number") {
+          minLon = Math.min(minLon, coords[0]);
+          maxLon = Math.max(maxLon, coords[0]);
+          minLat = Math.min(minLat, coords[1]);
+          maxLat = Math.max(maxLat, coords[1]);
+          return;
+        }
+        coords.forEach(walk);
+      };
+      walk(feature.geometry.coordinates);
+      return [[minLon, minLat], [maxLon, maxLat]];
+    }
+
+    function unionBounds(features) {
+      let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
+      for (const feature of features) {
+        const box = featureBounds(feature);
+        minLon = Math.min(minLon, box[0][0]);
+        minLat = Math.min(minLat, box[0][1]);
+        maxLon = Math.max(maxLon, box[1][0]);
+        maxLat = Math.max(maxLat, box[1][1]);
+      }
+      return [[minLon, minLat], [maxLon, maxLat]];
+    }
+
+    function displayName(props) {
+      return props.name_en || props.name || props.highway || props.barrier || props.building || props.aeroway || "Unnamed";
+    }
+
+    function addVectorLayers() {
+      const solid = ["!", ["in", ["get", "highway"], ["literal", ["track", "construction", "proposed"]]]];
+      const dashed = ["in", ["get", "highway"], ["literal", ["track", "construction", "proposed"]]];
+      map.addLayer({ id: "landuse-fill", type: "fill", source: "landuse", layout: { visibility: "none" }, paint: { "fill-color": "#c4a454", "fill-opacity": 0.18 } });
+      map.addLayer({ id: "natural-line", type: "line", source: "natural", layout: { visibility: "none" }, paint: { "line-color": "#2e86ab", "line-width": 1.5 } });
+      map.addLayer({ id: "port-outline", type: "line", source: "port", paint: { "line-color": "#2ee6e6", "line-width": 2.5, "line-opacity": 0.95 } });
+      map.addLayer({ id: "buildings-outline", type: "line", source: "buildings", paint: { "line-color": "#ffffff", "line-width": 1.3, "line-opacity": 0.9 } });
+      map.addLayer({ id: "roads-casing", type: "line", source: "roads", filter: solid, paint: { "line-color": "#1c1c1c", "line-width": roadWidth(1.6), "line-opacity": 0.55 } });
+      map.addLayer({ id: "roads-line", type: "line", source: "roads", filter: solid, paint: { "line-color": ROAD_COLOR, "line-width": roadWidth(0), "line-opacity": 0.92 } });
+      map.addLayer({ id: "roads-dash", type: "line", source: "roads", filter: dashed, paint: { "line-color": "#e5d0c1", "line-width": roadWidth(0), "line-dasharray": [2, 1.4], "line-opacity": 0.9 } });
+      map.addLayer({ id: "aeroway-outline", type: "line", source: "aeroway", paint: { "line-color": "#85c1e9", "line-width": 2 } });
+      map.addLayer({ id: "boundaries-line", type: "line", source: "boundaries", paint: { "line-color": "#ff5c5c", "line-width": 2, "line-dasharray": [3, 2] } });
+      map.addLayer({
+        id: "barriers-circle",
+        type: "circle",
+        source: "barriers",
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 3, 18, 6],
+          "circle-color": ["match", ["get", "barrier"], "gate", "#ff3b30", "#8e44ad"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.2
+        }
+      });
+      map.addLayer({ id: "facilities-circle", type: "circle", source: "facilities", paint: { "circle-radius": 6, "circle-color": "#f5b041", "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
+      map.addLayer({ id: "parking-circle", type: "circle", source: "parking", paint: { "circle-radius": 6, "circle-color": "#5dade2", "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
+      map.addLayer({
+        id: "places-label",
+        type: "symbol",
+        source: "places",
+        layout: { "text-field": ["coalesce", ["get", "name_en"], ["get", "name"]], "text-size": 13, "text-offset": [0, -1.1], "text-font": ["Open Sans Bold"] },
+        paint: { "text-color": "#ffffff", "text-halo-color": "#1c1915", "text-halo-width": 1.2 }
+      });
+    }
+
+    function setGroupVisibility(group, visible) {
+      const layers = {
+        landuse: ["landuse-fill"],
+        natural: ["natural-line"],
+        port: ["port-outline"],
+        buildings: ["buildings-outline"],
+        roads: ["roads-casing", "roads-line", "roads-dash"],
+        aeroway: ["aeroway-outline"],
+        boundaries: ["boundaries-line"],
+        barriers: ["barriers-circle"],
+        facilities: ["facilities-circle"],
+        parking: ["parking-circle"],
+        places: ["places-label"]
+      };
+      const value = visible ? "visible" : "none";
+      for (const id of layers[group] || []) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", value);
+      }
+    }
+
+    function applyStrength() {
+      const value = Number(document.getElementById("strength").value) / 100;
+      for (const id of ["roads-line", "roads-dash", "roads-casing", "buildings-outline", "port-outline", "boundaries-line"]) {
+        if (!map.getLayer(id)) continue;
+        const prop = id === "roads-casing" ? Math.min(0.7, value * 0.6) : value;
+        map.setPaintProperty(id, "line-opacity", prop);
+      }
+    }
+
+    function setImagery(name) {
+      if (!map.getLayer("sat-google")) return;
+      map.setLayoutProperty("sat-google", "visibility", name === "google" ? "visible" : "none");
+      map.setLayoutProperty("sat-esri", "visibility", name === "esri" ? "visible" : "none");
+      document.querySelectorAll("#imagery .choice").forEach((button) => {
+        button.classList.toggle("active", button.dataset.imagery === name);
+      });
+    }
+
+    function set3d(enabled, instant) {
+      mode3d = enabled;
+      document.getElementById("view-2d").classList.toggle("active", !enabled);
+      document.getElementById("view-2d").classList.toggle("primary", !enabled);
+      document.getElementById("view-3d").classList.toggle("active", enabled);
+      document.getElementById("view-3d").classList.toggle("primary", enabled);
+      try {
+        map.setTerrain(enabled ? { source: "dem", exaggeration: 1 } : null);
+      } catch (error) {
+        console.warn(error);
+      }
+      const camera = { pitch: enabled ? 62 : 0, bearing: enabled ? -25 : 0 };
+      if (instant) map.jumpTo(camera);
+      else map.easeTo({ ...camera, duration: 700 });
+    }
+
+    function showInspector(feature) {
+      const box = document.getElementById("inspector");
+      if (!feature) {
+        box.innerHTML = '<span class="muted">Click a road, building, or gate.</span>';
+        return;
+      }
+      const props = feature.properties || {};
+      const bits = [];
+      if (props.highway) bits.push(props.highway);
+      if (props.barrier) bits.push(props.barrier);
+      if (props.amenity) bits.push(props.amenity);
+      if (props.aeroway) bits.push(props.aeroway);
+      if (props.scope) bits.push(props.scope === "port" ? "inside port" : "approach");
+      const rows = ["<strong>" + escapeHtml(displayName(props)) + "</strong>"];
+      if (props.name_ar) rows.push('<div class="muted">' + escapeHtml(props.name_ar) + "</div>");
+      if (bits.length) rows.push('<div class="muted">' + escapeHtml(bits.join(" · ")) + "</div>");
+      if (props.length_m) rows.push(Math.round(Number(props.length_m)).toLocaleString() + " m");
+      if (props.area_m2) rows.push(Math.round(Number(props.area_m2)).toLocaleString() + " m²");
+      if (props.highway) rows.push(props.lanes_tagged === true || props.lanes_tagged === "true" ? props.lanes + " lanes tagged" : "lanes not tagged");
+      if (props.oneway_mode) rows.push("oneway: " + escapeHtml(props.oneway_mode));
+      rows.push('<div class="muted">OSM ' + escapeHtml((props.osm_type || "") + "/" + (props.osm_id || "")) + "</div>");
+      box.innerHTML = rows.join("");
+    }
+
+    function buildLayerList() {
       const host = document.getElementById("layers");
       host.innerHTML = "";
-      for (const def of LAYER_DEFS) {
-        const count = layers[def.id] ? layers[def.id].features.length : 0;
+      for (const group of GROUPS) {
+        const count = collections[group.file] ? collections[group.file].features.length : 0;
         const label = document.createElement("label");
-        const color = def.id === "roads" ? "#d35400" : def.id === "checkpoints" ? "#0f6e78" : def.id === "buildings" ? "#7d6f5e" : def.id === "boundaries" ? "#a32020" : def.id === "barriers" ? "#b03a2e" : "#8a8175";
-        label.innerHTML = '<input type="checkbox"' + (def.on ? " checked" : "") + '><span class="swatch" style="background:' + color + '"></span><span>' + def.label + '</span><span class="count">' + count + "</span>";
+        label.innerHTML = '<input type="checkbox"' + (group.on ? " checked" : "") + '><span class="swatch" style="background:' + group.color + '"></span><span>' + group.label + '</span><span class="count">' + count + "</span>";
         label.querySelector("input").addEventListener("change", (event) => {
-          def.on = event.target.checked;
-          draw();
+          group.on = event.target.checked;
+          setGroupVisibility(group.id, group.on);
         });
         host.appendChild(label);
       }
-      const legend = document.getElementById("legend");
-      const items = [
-        ["#d35400", "Salwa Road trunk"],
-        ["#1b4f72", "Motorway"],
-        ["#9a7d0a", "Secondary"],
-        ["#2c3e50", "Service / yard"],
-        ["#8d6e63", "Track"]
-      ];
-      legend.innerHTML = items.map(([color, name]) => '<div><span class="line" style="border-top-color:' + color + '"></span>' + name + "</div>").join("");
-    }
-
-    function indexLabels() {
-      const roads = layers.roads;
-      if (!roads) return;
-      const best = new Map();
-      for (const feature of roads.features) {
-        const name = feature.properties.name_en || feature.properties.name;
-        if (!name) continue;
-        const kind = feature.properties.highway;
-        if (kind !== "motorway" && kind !== "trunk" && kind !== "secondary" && kind !== "primary") continue;
-        const length = feature.properties.length_m || 0;
-        const current = best.get(name + "|" + kind);
-        if (!current || length > current.properties.length_m) best.set(name + "|" + kind, feature);
-      }
-      roads._labels = [...best.values()];
-    }
-
-    function prepare(collection) {
-      for (const feature of collection.features) feature._bounds = featureBounds(feature);
-      return collection;
-    }
-
-    async function loadAll() {
-      if (location.protocol === "file:") {
-        showOverlay(
-          "Open this page through a local server",
-          "Browsers block the map files when the page is opened directly. From the project folder run:<br><br><code>python -m http.server 8765</code><br><br>Then open <code>http://127.0.0.1:8765/view/</code>"
-        );
-        return;
-      }
-      const ids = LAYER_DEFS.map((item) => item.id);
-      const loaded = await Promise.all(ids.map(async (id) => {
-        const response = await fetch("../data/processed/local/" + id + ".json");
-        if (!response.ok) throw new Error(id + " returned " + response.status);
-        return [id, prepare(await response.json())];
-      }));
-      for (const [id, collection] of loaded) layers[id] = collection;
-      indexLabels();
-      buildUi();
-      hideOverlay();
-      fitBounds(unionBounds(layers.checkpoints.features));
     }
 
     function search(query) {
@@ -759,13 +382,14 @@
       const q = query.trim().toLowerCase();
       if (q.length < 2) return;
       const matches = [];
-      for (const def of LAYER_DEFS) {
-        const collection = layers[def.id];
+      for (const group of GROUPS) {
+        const collection = collections[group.file];
         if (!collection) continue;
         for (const feature of collection.features) {
-          const props = feature.properties;
+          const props = feature.properties || {};
           const blob = [props.name, props.name_en, props.name_ar, props.highway, props.barrier, props.amenity].filter(Boolean).join(" ").toLowerCase();
-          if (blob.includes(q)) matches.push(feature);
+          if (!blob.includes(q)) continue;
+          matches.push(feature);
           if (matches.length >= 8) break;
         }
         if (matches.length >= 8) break;
@@ -773,92 +397,130 @@
       for (const feature of matches) {
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = displayName(feature.properties);
+        button.textContent = displayName(feature.properties || {});
         button.addEventListener("click", () => {
-          fitBounds(feature._bounds, 120);
-          hover = feature;
+          map.fitBounds(featureBounds(feature), { padding: 80, maxZoom: 18, duration: 600 });
           showInspector(feature);
-          draw();
         });
         hits.appendChild(button);
       }
     }
 
-    canvas.addEventListener("pointerdown", (event) => {
-      dragging = true;
-      dragMoved = false;
-      lastPointer = [event.clientX, event.clientY];
-      canvas.classList.add("dragging");
-      canvas.setPointerCapture(event.pointerId);
-    });
-    canvas.addEventListener("pointermove", (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const sx = event.clientX - rect.left;
-      const sy = event.clientY - rect.top;
-      if (dragging && lastPointer) {
-        const dx = event.clientX - lastPointer[0];
-        const dy = event.clientY - lastPointer[1];
-        if (Math.hypot(dx, dy) > 3) dragMoved = true;
-        view.x -= dx / view.scale;
-        view.y += dy / view.scale;
-        lastPointer = [event.clientX, event.clientY];
-        draw();
+    async function loadData() {
+      const files = [...new Set(GROUPS.map((group) => group.file))];
+      await Promise.all(files.map(async (file) => {
+        const response = await fetch("../data/processed/wgs84/" + file + ".geojson");
+        if (!response.ok) throw new Error(file + " returned " + response.status);
+        collections[file] = await response.json();
+      }));
+      for (const group of GROUPS) {
+        map.addSource(group.id, { type: "geojson", data: collections[group.file] });
+      }
+      addVectorLayers();
+      for (const group of GROUPS) setGroupVisibility(group.id, group.on);
+      applyStrength();
+      portBounds = unionBounds(collections.checkpoints.features);
+      areaBounds = unionBounds(GROUPS.flatMap((group) => collections[group.file].features));
+      buildLayerList();
+      const params = new URLSearchParams(location.search);
+      const start3d = params.get("mode") === "3d";
+      if (params.get("lon") && params.get("lat")) {
+        map.jumpTo({
+          center: [Number(params.get("lon")), Number(params.get("lat"))],
+          zoom: Number(params.get("zoom") || 16),
+          pitch: start3d ? 62 : 0,
+          bearing: start3d ? -25 : 0
+        });
+      } else {
+        map.fitBounds(portBounds, { padding: 48, duration: 0, pitch: start3d ? 62 : 0, bearing: start3d ? -25 : 0 });
+      }
+      if (start3d) set3d(true, true);
+      hideOverlay();
+    }
+
+    function boot() {
+      if (location.protocol === "file:") {
+        showOverlay("Open this page through the local server", "From the project folder run:<br><br><code>python view/serve.py</code><br><br>Then open <code>http://127.0.0.1:8765/view/</code>");
         return;
       }
-      const next = pick(sx, sy);
-      if (next !== hover) {
-        hover = next;
-        showInspector(next);
-        draw();
+      if (typeof maplibregl === "undefined") {
+        showOverlay("The map library did not load", "Check the network connection and reload the page.");
+        return;
       }
-    });
-    canvas.addEventListener("pointerup", (event) => {
-      dragging = false;
-      canvas.classList.remove("dragging");
-      if (!dragMoved) {
-        const rect = canvas.getBoundingClientRect();
-        hover = pick(event.clientX - rect.left, event.clientY - rect.top);
-        showInspector(hover);
-        draw();
-      }
-    });
-    canvas.addEventListener("wheel", (event) => {
-      event.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const sx = event.clientX - rect.left;
-      const sy = event.clientY - rect.top;
-      const before = screenToWorld(sx, sy);
-      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-      view.scale = Math.min(80, Math.max(0.02, view.scale * factor));
-      const after = screenToWorld(sx, sy);
-      view.x += before[0] - after[0];
-      view.y += before[1] - after[1];
-      draw();
-    }, { passive: false });
+      map = new maplibregl.Map({
+        container: "map",
+        style: {
+          version: 8,
+          glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+          sources: {
+            google: {
+              type: "raster",
+              tiles: [0, 1, 2, 3].map((n) => "https://mt" + n + ".google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}"),
+              tileSize: 256,
+              maxzoom: 20,
+              attribution: "© Google"
+            },
+            esri: {
+              type: "raster",
+              tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+              tileSize: 256,
+              maxzoom: 17,
+              attribution: "© Esri, Maxar, Earthstar Geographics"
+            },
+            dem: {
+              type: "raster-dem",
+              tiles: [location.origin + "/tiles/terrarium/{z}/{x}/{y}.png"],
+              encoding: "terrarium",
+              tileSize: 256,
+              maxzoom: 15
+            }
+          },
+          layers: [
+            { id: "sat-google", type: "raster", source: "google" },
+            { id: "sat-esri", type: "raster", source: "esri", layout: { visibility: "none" } }
+          ]
+        },
+        center: [50.8424, 24.7415],
+        zoom: 15.2,
+        maxZoom: 20,
+        maxPitch: 70,
+        attributionControl: true
+      });
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-right");
+      map.on("load", () => {
+        loadData().catch((error) => {
+          showOverlay("The port geometry did not load", escapeHtml(error.message));
+        });
+      });
+      map.on("mousemove", (event) => {
+        const zoom = map.getZoom();
+        document.getElementById("readout").textContent =
+          event.lngLat.lat.toFixed(5) + ", " + event.lngLat.lng.toFixed(5) + "  ·  z" + zoom.toFixed(1);
+      });
+      map.on("click", (event) => {
+        const features = map.queryRenderedFeatures(event.point, { layers: CLICK_LAYERS.filter((id) => map.getLayer(id)) });
+        showInspector(features[0] || null);
+      });
+      map.on("error", (event) => {
+        const message = String(event.error || event);
+        if (message.toLowerCase().includes("terrain") || message.toLowerCase().includes("terrarium")) {
+          document.getElementById("inspector").innerHTML = '<span class="muted">Terrain tiles did not load. Use python view/serve.py so the 3D ground can be fetched.</span>';
+        }
+      });
+    }
 
-    document.getElementById("fit-port").addEventListener("click", () => {
-      if (layers.checkpoints) fitBounds(unionBounds(layers.checkpoints.features));
+    document.getElementById("imagery").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-imagery]");
+      if (button) setImagery(button.dataset.imagery);
     });
-    document.getElementById("fit-area").addEventListener("click", () => {
-      const all = LAYER_DEFS.flatMap((def) => (layers[def.id] && layers[def.id].features) || []);
-      fitBounds(unionBounds(all));
-    });
+    document.getElementById("view-2d").addEventListener("click", () => set3d(false));
+    document.getElementById("view-3d").addEventListener("click", () => set3d(true));
+    document.getElementById("fit-port").addEventListener("click", () => portBounds && map.fitBounds(portBounds, { padding: 48, duration: 500 }));
+    document.getElementById("fit-area").addEventListener("click", () => areaBounds && map.fitBounds(areaBounds, { padding: 32, duration: 500 }));
+    document.getElementById("strength").addEventListener("input", () => applyStrength());
     document.getElementById("search").addEventListener("input", (event) => search(event.target.value));
-    window.addEventListener("resize", resize);
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "+" || event.key === "=") view.scale = Math.min(80, view.scale * 1.15);
-      else if (event.key === "-" || event.key === "_") view.scale = Math.max(0.02, view.scale / 1.15);
-      else if (event.key === "f") {
-        if (layers.checkpoints) fitBounds(unionBounds(layers.checkpoints.features));
-        return;
-      } else return;
-      draw();
-    });
-
-    resize();
-    loadAll().catch((error) => {
-      showOverlay("The map data did not load", escapeHtml(error.message) + "<br><br>From the project folder run <code>python -m http.server 8765</code> and open <code>http://127.0.0.1:8765/view/</code>.");
-    });
+    boot();
   </script>
 </body>
 </html>
