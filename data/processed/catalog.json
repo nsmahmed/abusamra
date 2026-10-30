@@ -1,0 +1,123 @@
+{
+  "site_id": "abu-samra-border-post",
+  "ready_for": [
+    "2d_map",
+    "3d_terrain_and_road_network"
+  ],
+  "not_included": [
+    "surveyed building heights",
+    "satellite imagery",
+    "live traffic or vehicle positions",
+    "the Saudi Salwa border post"
+  ],
+  "start_here": {
+    "roads_local": "data/processed/local/roads.json",
+    "port_footprint_local": "data/processed/local/port_footprint.json",
+    "barriers_local": "data/processed/local/barriers.json",
+    "road_graph": "data/processed/road_graph.json",
+    "terrain": "data/processed/elevation/dem.json",
+    "terrain_csv": "data/processed/elevation/dem_posts.csv",
+    "loader": "from abu_samra.loaders import load_layer, load_road_graph, load_dem, iter_dem_posts"
+  },
+  "frame": {
+    "geographic": "EPSG:4326",
+    "projected": "EPSG:32639",
+    "local": "EPSG:32639 meters translated so the port centroid is the origin",
+    "axes": "x east, y north, elevation up. Not a Y-up 3D scene."
+  },
+  "local_origin": {
+    "longitude": 50.84343268,
+    "latitude": 24.741135178,
+    "easting": 484167.8828590267,
+    "northing": 2736293.5647674147,
+    "utm_zone": 39,
+    "epsg": 32639
+  },
+  "lane_policy": "Draw one ribbon per road way. lanes is null when OpenStreetMap did not tag a count.",
+  "layers": {
+    "checkpoints": {
+      "purpose": "Customs and border-control extent, plus customs or immigration offices. The Abu Samra Border Post polygon is the port footprint.",
+      "features": 1,
+      "wgs84": "data/processed/wgs84/checkpoints.geojson",
+      "local": "data/processed/local/checkpoints.json"
+    },
+    "barriers": {
+      "purpose": "Walls, fences, gates, blocks, and booths that constrain vehicle movement.",
+      "features": 10,
+      "wgs84": "data/processed/wgs84/barriers.geojson",
+      "local": "data/processed/local/barriers.json"
+    },
+    "roads": {
+      "purpose": "Linear roads, including each mapped Salwa Road carriageway through the port and the approach and exit. One way is one drawn carriageway, not a guess at lane count.",
+      "features": 392,
+      "wgs84": "data/processed/wgs84/roads.geojson",
+      "local": "data/processed/local/roads.json"
+    },
+    "road_areas": {
+      "purpose": "Road or service-area polygons.",
+      "features": 0,
+      "wgs84": "data/processed/wgs84/road_areas.geojson",
+      "local": "data/processed/local/road_areas.json"
+    },
+    "traffic_control": {
+      "purpose": "Signals, stop and give-way points, and crossings.",
+      "features": 0,
+      "wgs84": "data/processed/wgs84/traffic_control.geojson",
+      "local": "data/processed/local/traffic_control.json"
+    },
+    "parking": {
+      "purpose": "Parking and vehicle holding areas.",
+      "features": 1,
+      "wgs84": "data/processed/wgs84/parking.geojson",
+      "local": "data/processed/local/parking.json"
+    },
+    "buildings": {
+      "purpose": "Building footprints for context. Heights are not surveyed.",
+      "features": 110,
+      "wgs84": "data/processed/wgs84/buildings.geojson",
+      "local": "data/processed/local/buildings.json"
+    },
+    "facilities": {
+      "purpose": "Support sites such as fuel, offices, weighbridges, and toilets.",
+      "features": 2,
+      "wgs84": "data/processed/wgs84/facilities.geojson",
+      "local": "data/processed/local/facilities.json"
+    },
+    "landuse": {
+      "purpose": "Mapped ground cover around the roads.",
+      "features": 5,
+      "wgs84": "data/processed/wgs84/landuse.geojson",
+      "local": "data/processed/local/landuse.json"
+    },
+    "natural": {
+      "purpose": "Natural cover such as sand or water.",
+      "features": 8,
+      "wgs84": "data/processed/wgs84/natural.geojson",
+      "local": "data/processed/local/natural.json"
+    },
+    "aeroway": {
+      "purpose": "Airside features, including the border-post helipad.",
+      "features": 1,
+      "wgs84": "data/processed/wgs84/aeroway.geojson",
+      "local": "data/processed/local/aeroway.json"
+    },
+    "boundaries": {
+      "purpose": "Administrative or border lines that cross the study area.",
+      "features": 1,
+      "wgs84": "data/processed/wgs84/boundaries.geojson",
+      "local": "data/processed/local/boundaries.json"
+    },
+    "places": {
+      "purpose": "Place names.",
+      "features": 2,
+      "wgs84": "data/processed/wgs84/places.geojson",
+      "local": "data/processed/local/places.json"
+    },
+    "other": {
+      "purpose": "Remaining tagged features, kept so mapped detail is not dropped.",
+      "features": 0,
+      "wgs84": "data/processed/wgs84/other.geojson",
+      "local": "data/processed/local/other.json"
+    }
+  }
+}

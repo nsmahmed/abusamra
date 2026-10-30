@@ -1,0 +1,13 @@
+Abu Samra customs port — data sources
+
+Map data © OpenStreetMap contributors, licensed under ODbL.
+https://www.openstreetmap.org/copyright
+
+Elevation: SRTM 1 arc-second tile N24E050.
+SRTM is US public-domain data, fetched from the public elevation-tiles-prod S3 bucket.
+Elevations are orthometric meters (EGM96), not a building survey.
+
+A few elevations are compared with the keyless Open-Meteo elevation API.
+
+This dataset is a geometric foundation for a later 2D/3D model.
+It does not include surveyed building dimensions.

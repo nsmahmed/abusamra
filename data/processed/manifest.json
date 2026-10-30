@@ -1,0 +1,230 @@
+{
+  "site": {
+    "id": "abu-samra-border-post",
+    "name_en": "Abu Samra Border Post",
+    "name_ar": "منفذ أبو سمرة الحدودي",
+    "kind": "land_border_customs_port",
+    "country": "Qatar",
+    "municipality": "Al Rayyan",
+    "road": "Salwa Road",
+    "operator": "Qatar General Authority of Customs",
+    "operator_ar": "الهيئة العامة للجمارك",
+    "hours": "24 hours, 7 days",
+    "paired_crossing": {
+      "name_en": "Salwa Border Post",
+      "name_ar": "منفذ سلوى",
+      "country": "Saudi Arabia",
+      "note": "About 8 km southwest of Abu Samra. Not included in this dataset."
+    },
+    "osm_way_id": 1456475677,
+    "references": [
+      "https://www.openstreetmap.org/way/1456475677",
+      "https://www.customs.gov.qa/English/Contact/Pages/Contact-Numbers.aspx",
+      "https://en.wikipedia.org/wiki/Abu_Samra"
+    ]
+  },
+  "fetched_at": "2026-10-30T12:37:49.478825+00:00",
+  "port_footprint_source": "openstreetmap_cache",
+  "aoi": {
+    "south": 24.724781406405853,
+    "west": 50.819479079125664,
+    "north": 24.772679663344782,
+    "east": 50.87322006137395
+  },
+  "port_bbox": {
+    "south": 24.7338092,
+    "west": 50.8333185,
+    "north": 24.7492074,
+    "east": 50.8514724
+  },
+  "margins_m": {
+    "south": 1000,
+    "west": 1400,
+    "north": 2600,
+    "east": 2200
+  },
+  "local_origin": {
+    "longitude": 50.84343268,
+    "latitude": 24.741135178,
+    "easting": 484167.8828590267,
+    "northing": 2736293.5647674147,
+    "utm_zone": 39,
+    "epsg": 32639
+  },
+  "frame": {
+    "geographic": "EPSG:4326",
+    "projected": "EPSG:32639",
+    "local": "EPSG:32639 meters translated so the port centroid is the origin",
+    "axes": "x east, y north, elevation up. Not a Y-up 3D scene."
+  },
+  "coverage": {
+    "roads": {
+      "features": 392,
+      "length_m": 108736.1,
+      "inside_port_length_m": 59727.1,
+      "approach_length_m": 49009.0,
+      "lanes_tagged_length_pct": 18.9,
+      "length_m_by_highway": {
+        "construction": 806.8,
+        "footway": 37.4,
+        "motorway": 5669.3,
+        "residential": 653.9,
+        "secondary": 10632.4,
+        "secondary_link": 143.1,
+        "service": 60408.6,
+        "tertiary": 390.2,
+        "track": 13783.2,
+        "trunk": 14738.5,
+        "trunk_link": 410.7,
+        "unclassified": 1062.2
+      }
+    },
+    "road_graph": {
+      "nodes": 728,
+      "directed_edges": 1545,
+      "vehicle_operational_directed_edges": 1535,
+      "vehicle_centerline_m": 107592.3,
+      "inside_port_centerline_m": 56389.4,
+      "components": 6,
+      "lanes_tagged_directed_edges": 124
+    },
+    "barriers": {
+      "gate": 9,
+      "block": 1
+    },
+    "buildings": {
+      "features": 110,
+      "area_m2": 69130.9
+    },
+    "parking_features": 1,
+    "checkpoints": 1,
+    "traffic_control": 0,
+    "aeroway": 1,
+    "named_features": [
+      {
+        "layer": "boundaries",
+        "name_en": "Border Saudi Arabia - Qatar",
+        "name_ar": "الحدود السعودية - قطر"
+      },
+      {
+        "layer": "checkpoints",
+        "name_en": "Abu Samra Border Post",
+        "name_ar": "منفذ أبو سمرة الحدودي"
+      },
+      {
+        "layer": "facilities",
+        "name_en": "Woqod",
+        "name_ar": null
+      },
+      {
+        "layer": "landuse",
+        "name_en": "Border Exclusion Zone",
+        "name_ar": "منطقة استبعاد الحدود"
+      },
+      {
+        "layer": "parking",
+        "name_en": "Qatari-Saudi Border",
+        "name_ar": null
+      },
+      {
+        "layer": "places",
+        "name_en": "Abu Samra",
+        "name_ar": null
+      },
+      {
+        "layer": "places",
+        "name_en": "As Salwa",
+        "name_ar": "السلوى"
+      },
+      {
+        "layer": "roads",
+        "name_en": "Qatar Border Patrol Road",
+        "name_ar": "طريق حرس الحدود القطري"
+      },
+      {
+        "layer": "roads",
+        "name_en": "Salwa Road",
+        "name_ar": "طريق سلوى"
+      }
+    ],
+    "layer_counts": {
+      "checkpoints": 1,
+      "barriers": 10,
+      "roads": 392,
+      "road_areas": 0,
+      "traffic_control": 0,
+      "parking": 1,
+      "buildings": 110,
+      "facilities": 2,
+      "landuse": 5,
+      "natural": 8,
+      "aeroway": 1,
+      "boundaries": 1,
+      "places": 2,
+      "other": 0
+    }
+  },
+  "elevation": {
+    "rows": 175,
+    "cols": 196,
+    "stats": {
+      "min_m": -11.0,
+      "max_m": 24.0,
+      "mean_m": 2.49,
+      "voids": 0,
+      "posts": 34300
+    },
+    "helipad_sample_m": 2.77,
+    "helipad_published_m": 5,
+    "open_meteo_crosscheck": [
+      {
+        "latitude": 24.7730556,
+        "longitude": 50.8191667,
+        "srtm_m": -9.0,
+        "open_meteo_m": 0.0,
+        "open_meteo_minus_srtm_m": 9.0
+      },
+      {
+        "latitude": 24.7730556,
+        "longitude": 50.8733333,
+        "srtm_m": 2.0,
+        "open_meteo_m": 2.0,
+        "open_meteo_minus_srtm_m": 0.0
+      },
+      {
+        "latitude": 24.7247222,
+        "longitude": 50.8191667,
+        "srtm_m": 1.0,
+        "open_meteo_m": 2.0,
+        "open_meteo_minus_srtm_m": 1.0
+      },
+      {
+        "latitude": 24.7247222,
+        "longitude": 50.8733333,
+        "srtm_m": 4.0,
+        "open_meteo_m": 2.0,
+        "open_meteo_minus_srtm_m": -2.0
+      },
+      {
+        "latitude": 24.7488889,
+        "longitude": 50.8463889,
+        "srtm_m": 3.0,
+        "open_meteo_m": 1.0,
+        "open_meteo_minus_srtm_m": -2.0
+      }
+    ],
+    "path": "data/processed/elevation/dem.json"
+  },
+  "overpass_endpoints": [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass-api.de/api/interpreter"
+  ],
+  "files": {
+    "catalog": "data/processed/catalog.json",
+    "road_graph": "data/processed/road_graph.json",
+    "turn_restrictions": "data/processed/turn_restrictions.json",
+    "port_footprint_local": "data/processed/local/port_footprint.json",
+    "dem": "data/processed/elevation/dem.json"
+  }
+}
