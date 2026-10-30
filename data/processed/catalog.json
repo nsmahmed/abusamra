@@ -7,7 +7,7 @@
   "not_included": [
     "surveyed building heights",
     "satellite imagery",
-    "live traffic or vehicle positions",
+    "live GPS vehicle positions",
     "the Saudi Salwa border post"
   ],
   "start_here": {
@@ -15,6 +15,7 @@
     "port_footprint_local": "data/processed/local/port_footprint.json",
     "barriers_local": "data/processed/local/barriers.json",
     "road_graph": "data/processed/road_graph.json",
+    "operations": "data/processed/operations.json",
     "terrain": "data/processed/elevation/dem.json",
     "terrain_csv": "data/processed/elevation/dem_posts.csv",
     "loader": "from abu_samra.loaders import load_layer, load_road_graph, load_dem, iter_dem_posts"

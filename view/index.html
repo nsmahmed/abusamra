@@ -80,6 +80,30 @@
     #stage { position: relative; min-width: 0; min-height: 0; }
     #map { position: absolute; inset: 0; }
     .maplibregl-ctrl-attrib { font-size: 11px; }
+    #ops {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 2;
+      width: min(380px, calc(100% - 24px));
+      color: #f4f7f6;
+      background: rgba(12, 22, 28, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      padding: 12px 14px 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+    #ops strong { font-size: 14px; letter-spacing: 0.01em; }
+    #ops .ar { color: rgba(244, 247, 246, 0.72); font-size: 12px; }
+    .ops-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    #ops-clock { font-variant-numeric: tabular-nums; font-size: 13px; color: #7dcea0; }
+    .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .ops-grid div { background: rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 6px 8px; }
+    .ops-grid em { display: block; font-style: normal; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .ops-grid span { font-size: 11px; color: rgba(244, 247, 246, 0.72); }
+    #ops-meta { margin: 8px 0 0; font-size: 11px; color: rgba(244, 247, 246, 0.75); }
+    .ops-key { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 11px; color: rgba(244, 247, 246, 0.8); }
+    .ops-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
     #readout {
       position: absolute;
       left: 12px;
@@ -120,7 +144,7 @@
       <h1>Abu Samra Border Post</h1>
       <div class="ar">منفذ أبو سمرة الحدودي</div>
     </div>
-    <p class="sub">Satellite photograph with the traced roads and buildings on top. The photo is what shows the booths, canopies, and desert. The lines are the measured map.</p>
+    <p class="sub">Satellite photograph, the traced roads, and a live customs operation running on those roads.</p>
     <div class="choices" id="imagery">
       <button type="button" class="choice active" data-imagery="google">Google</button>
       <button type="button" class="choice" data-imagery="esri">Esri</button>
@@ -134,16 +158,46 @@
       <button type="button" id="fit-port">Fit port</button>
       <button type="button" id="fit-area">Fit study area</button>
     </div>
+    <div class="row">
+      <button type="button" class="primary" id="sim-toggle">Pause</button>
+      <button type="button" id="sim-focus">Watch the lanes</button>
+    </div>
+    <label class="slider">Traffic speed <span id="sim-speed-label">8×</span>
+      <input id="sim-speed" type="range" min="1" max="16" value="8">
+    </label>
+    <div class="layers"><label><input id="sim-visible" type="checkbox" checked><span class="swatch" style="background:#2ecc71"></span><span>Live operations</span></label></div>
     <label class="slider">Line strength <input id="strength" type="range" min="0" max="100" value="80"></label>
     <input id="search" type="search" placeholder="Search Salwa, gate, building…" autocomplete="off">
     <div id="hits"></div>
     <div class="layers" id="layers"></div>
     <div id="inspector"><span class="muted">Click a road, building, or gate.</span></div>
-    <p class="note">No surveyed roof heights are in the data, so buildings stay as outlines on the photograph. The 3D view tilts that photo onto the terrain instead of inventing structures.</p>
+    <p class="note">Cars queue on the mapped arrival and departure carriageways under the inspection roofs. Trucks hold in the yard aisles, stop beside the inspection platforms, and pass the two cargo x-ray lanes. Buildings stay as outlines because roof heights are not surveyed.</p>
     <p class="credit">Imagery © Google, or © Esri where selected. Roads and buildings © OpenStreetMap contributors, ODbL. Terrain is SRTM. This view is for checking accuracy.</p>
   </aside>
   <div id="stage">
     <div id="map"></div>
+    <div id="ops">
+      <div class="ops-head">
+        <div>
+          <strong>Land customs · Abu Samra</strong>
+          <div class="ar">العمليات · منفذ أبو سمرة</div>
+        </div>
+        <span id="ops-clock">08:00</span>
+      </div>
+      <div class="ops-grid">
+        <div><em id="n-arr">0</em><span>Arrivals waiting</span></div>
+        <div><em id="n-dep">0</em><span>Departures waiting</span></div>
+        <div><em id="n-yard">0</em><span>Trucks in the yards</span></div>
+        <div><em id="n-scan">0</em><span>Cargo scanners busy</span></div>
+      </div>
+      <p id="ops-meta">Passenger and cargo clearances appear as vehicles move through.</p>
+      <div class="ops-key">
+        <span><i style="background:#2ecc71"></i>Arrival lane</span>
+        <span><i style="background:#5dade2"></i>Departure lane</span>
+        <span><i style="background:#f5b041"></i>Truck platform</span>
+        <span><i style="background:#e74c3c"></i>Cargo x-ray</span>
+      </div>
+    </div>
     <div id="readout">—</div>
     <div id="overlay">
       <div class="card">
@@ -153,6 +207,7 @@
     </div>
   </div>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="sim.js"></script>
   <script>
     const GROUPS = [
       { id: "landuse", file: "landuse", label: "Land use", on: false, color: "#c4a454" },
@@ -168,7 +223,7 @@
       { id: "places", file: "places", label: "Place names", on: true, color: "#fdfefe" }
     ];
 
-    const CLICK_LAYERS = ["roads-line", "buildings-outline", "port-outline", "barriers-circle", "facilities-circle", "parking-circle", "aeroway-outline", "boundaries-line"];
+    const CLICK_LAYERS = ["sim-vehicles", "sim-booths", "sim-scanners", "sim-sites-fill", "roads-line", "buildings-outline", "port-outline", "barriers-circle", "facilities-circle", "parking-circle", "aeroway-outline", "boundaries-line"];
     const collections = {};
     let map;
     let mode3d = false;
@@ -352,6 +407,7 @@
       if (props.scope) bits.push(props.scope === "port" ? "inside port" : "approach");
       const rows = ["<strong>" + escapeHtml(displayName(props)) + "</strong>"];
       if (props.name_ar) rows.push('<div class="muted">' + escapeHtml(props.name_ar) + "</div>");
+      if (props.detail) rows.push(escapeHtml(props.detail));
       if (bits.length) rows.push('<div class="muted">' + escapeHtml(bits.join(" · ")) + "</div>");
       if (props.length_m) rows.push(Math.round(Number(props.length_m)).toLocaleString() + " m");
       if (props.area_m2) rows.push(Math.round(Number(props.area_m2)).toLocaleString() + " m²");
@@ -436,6 +492,10 @@
       }
       if (start3d) set3d(true, true);
       hideOverlay();
+      AbuSamraSim.start(map).catch((error) => {
+        const meta = document.getElementById("ops-meta");
+        if (meta) meta.textContent = "Operations did not load. " + error.message;
+      });
     }
 
     function boot() {
