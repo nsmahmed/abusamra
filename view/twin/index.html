@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Abu Samra Land Port · Digital Twin</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <header class="brand glass">
+    <div class="logo"><span>GAC</span></div>
+    <div class="titles">
+      <div class="eyebrow">General Authority of Customs · الهيئة العامة للجمارك</div>
+      <h1>Abu Samra Land Port <em>Digital Twin</em></h1>
+      <div class="ar">منفذ أبو سمرة البري · التوأم الرقمي</div>
+    </div>
+  </header>
+
+  <div class="live glass">
+    <span class="pulse"></span>
+    <span>Live simulation</span>
+    <b id="clock">09:00</b>
+  </div>
+
+  <aside class="panel left glass">
+    <div class="panel-head">
+      <h2>Customs process</h2>
+      <div class="chips">
+        <button type="button" id="toggle-flows" class="chip">Flow paths</button>
+        <button type="button" id="toggle-labels" class="chip">Labels</button>
+      </div>
+    </div>
+    <div id="steps"></div>
+  </aside>
+
+  <aside class="panel right glass">
+    <h2>Operations now</h2>
+    <div class="kpis">
+      <div class="kpi wide">
+        <span class="k-label">Trucks inside the port</span>
+        <span class="k-value" id="k-trucks">0</span>
+      </div>
+      <div class="kpi wide">
+        <span class="k-label">Holding yard occupancy</span>
+        <span class="k-value"><span id="k-yard">0</span> <small id="k-yard-cap"></small></span>
+        <span class="bar"><i id="k-yard-bar"></i></span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">X-ray scans / hour</span>
+        <span class="k-value" id="k-scans">0</span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">Avg. truck clearance</span>
+        <span class="k-value"><span id="k-clear">—</span> <small>min</small></span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">At inspection ramps</span>
+        <span class="k-value" id="k-ramps">0</span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">Trucks released</span>
+        <span class="k-value" id="k-released">0</span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">Travellers cleared</span>
+        <span class="k-value" id="k-pass">0</span>
+      </div>
+      <div class="kpi">
+        <span class="k-label">Booths serving</span>
+        <span class="k-value" id="k-booths">0/0</span>
+      </div>
+      <div class="kpi wide subtle">
+        <span class="k-label">Passenger vehicles on the approach</span>
+        <span class="k-value" id="k-cars">0</span>
+      </div>
+    </div>
+  </aside>
+
+  <nav class="dock glass">
+    <button type="button" id="play" class="icon" title="Pause or resume"><span class="i-pause"></span><span class="i-play"></span></button>
+    <div class="group">
+      <button type="button" class="chip" data-speed="1">1×</button>
+      <button type="button" class="chip" data-speed="5">5×</button>
+      <button type="button" class="chip" data-speed="20">20×</button>
+      <button type="button" class="chip" data-speed="60">60×</button>
+    </div>
+    <span class="sep"></span>
+    <div class="group">
+      <button type="button" class="chip" data-light="day">Day</button>
+      <button type="button" class="chip" data-light="sunset">Sunset</button>
+      <button type="button" class="chip" data-light="night">Night</button>
+    </div>
+    <span class="sep"></span>
+    <div class="group">
+      <button type="button" class="chip" data-view="overview">Overview</button>
+      <button type="button" class="chip" data-view="gates">Gates</button>
+      <button type="button" class="chip" data-view="yard">Yard</button>
+      <button type="button" class="chip" data-view="xray">X-ray</button>
+      <button type="button" class="chip" data-view="ramps">Ramps</button>
+      <button type="button" class="chip" data-view="booths">Booths</button>
+    </div>
+    <span class="sep"></span>
+    <button type="button" class="chip accent" id="tour">Guided tour</button>
+    <button type="button" class="chip" id="follow">Follow a truck</button>
+  </nav>
+
+  <section id="vehicle" class="glass">
+    <button type="button" id="vehicle-close" aria-label="Close">×</button>
+    <div id="vehicle-body"></div>
+  </section>
+
+  <p class="note">Replica built from OpenStreetMap roads and footprints, SRTM terrain, and the GAC truck process. Building heights and traffic are representative.</p>
+
+  <div id="loader">
+    <div class="loader-card">
+      <div class="logo big"><span>GAC</span></div>
+      <h2>Abu Samra Land Port</h2>
+      <p class="ar">منفذ أبو سمرة البري</p>
+      <div class="progress"><i id="loader-bar"></i></div>
+      <p id="loader-step">Starting</p>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

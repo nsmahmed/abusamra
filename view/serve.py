@@ -26,7 +26,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "public, max-age=86400")
+        tiles = self.path.startswith("/tiles/")
+        self.send_header("Cache-Control", "public, max-age=86400" if tiles else "no-cache")
         super().end_headers()
 
     def do_GET(self):
