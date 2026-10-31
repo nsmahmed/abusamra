@@ -116,6 +116,7 @@ async function main() {
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
   world.rampSlots.forEach((slot) => placeStatic(slot, "ramp"));
   sim.reserveDocks(world.rampSlots.map((slot) => [slot.x, slot.y]));
+  sim.reserveParked(world.yardSlots);
   fleet.commit();
 
   status("Warming up traffic");
@@ -211,8 +212,9 @@ async function main() {
       return camPose(x.x, x.y, 150, 58, 120);
     },
     gates: () => {
-      const g = data.portals[0] || data.gates[0];
-      return camPose(g.x, g.y, 190, 60, 160);
+      const p = data.portals[0] || data.gates[0];
+      const g = data.gates.find((item) => item.ref === "inbound-gate") || p;
+      return camPose((p.x + g.x) / 2, (p.y + g.y) / 2, 260, 58, 160);
     },
     booths: () => {
       const b = data.booths[0];

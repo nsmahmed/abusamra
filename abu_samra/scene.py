@@ -36,6 +36,9 @@ CUSTOMS_CANOPY = 295856183
 TRUCK_PLATFORMS = (1485001841, 1485001842)
 SCANNER_HALL = 1485001846
 SCANNER_ROADS = (1202482927, 1202482922)
+# Service road leaving the roundabout toward the main parking; every inbound truck takes it,
+# and the radiation portals and appointment gates stand along it.
+INBOUND_APPROACH = 1168194979
 PLATFORM_LANES = (1409965497, 1328553508)
 
 MAJOR = {"motorway", "trunk", "primary", "secondary"}
@@ -447,7 +450,7 @@ def build_scene() -> dict:
     def plan(flow: str, start: str, end: str, specs) -> list[dict]:
         made = []
         for index, (aisle, scanner, ramp) in enumerate(specs):
-            ways = [aisle] + ([scanner] if scanner else []) + ([ramp] if ramp else [])
+            ways = ([INBOUND_APPROACH] if flow == "inbound" else []) + [aisle] + ([scanner] if scanner else []) + ([ramp] if ramp else [])
             edges = graph.journey(start, ways, end)
             if not edges:
                 continue
@@ -512,8 +515,14 @@ def build_scene() -> dict:
         turn = _turnoff_s(prefix or lead["edges"], lead["path"], lead["cum"], from_end=False)
         first_stop = min(stop["s"] for stop in lead["stops"])
         limit = min(prefix_len - 15, first_stop - 60) if prefix else first_stop - 60
-        s_portal = min(turn + 40, limit - 90)
-        s_gate = min(turn + 130, limit)
+        if flow == "inbound":
+            approach = graph.way_chain(INBOUND_APPROACH)[0]["xy"][0]
+            turn = _nearest_s(lead["path"], lead["cum"], approach)
+            s_portal = min(turn + 50, limit - 90)
+            s_gate = min(turn + 230, limit)
+        else:
+            s_portal = min(turn + 40, limit - 90)
+            s_gate = min(turn + 130, limit)
         suffix = common_suffix(group)
         last_stop = max(stop["s"] for stop in lead["stops"])
         if suffix:

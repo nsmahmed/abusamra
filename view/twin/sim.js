@@ -107,6 +107,8 @@ export class Simulation {
     this.tmp2 = {};
     this.platforms = data.canopies.filter((c) => c.role === "platform").map((c) => c.ring);
     this.docks = [];
+    this.parked = [];
+    this.indexLanes();
 
     const station = (ref, kind, extra = {}) => {
       if (!this.stations.has(ref)) this.stations.set(ref, { ref, kind, busy: 0, lanes: [0], load: [0], openUntil: 0, active: 0, ...extra });
@@ -231,14 +233,12 @@ export class Simulation {
           const oAlong = Math.abs(dot) * (o.spec.length / 2) + cross * (o.spec.width / 2);
           const oLat = cross * (o.spec.length / 2) + Math.abs(dot) * (o.spec.width / 2);
           const reach = halfW + oLat + 0.35;
-          const lat = Math.abs(rx * v.dy - ry * v.dx);
-          if (lat > reach) {
-            /* On curves the straight projection misses vehicles ahead; check the route itself. */
-            if (dot < 0.3 || ahead < 4) continue;
+          if (ahead < 6) {
+            if (Math.abs(rx * v.dy - ry * v.dx) > reach) continue;
+          } else {
+            /* Further out, test against the route itself: it may curve toward or away from o. */
             const d = Math.hypot(rx, ry);
-            const p = v.route.at(v.s + d, this.tmp);
-            const shift = v.shift + v.side;
-            if (Math.hypot(o.x - p.x, o.y - p.y) > reach + Math.abs(shift)) continue;
+            if (this.offPath(v, o, d, reach) && this.offPath(v, o, d * 1.15, reach)) continue;
             ahead = d;
           }
           if (o.state === "drive") {
@@ -254,6 +254,19 @@ export class Simulation {
       }
     }
     return best;
+  }
+
+  /* True when o stands clear of the lane d metres ahead along v's route. */
+  offPath(v, o, d, reach) {
+    const a = v.route.at(v.s + d - 2, this.tmp);
+    const ax = a.x;
+    const ay = a.y;
+    const p = v.route.at(v.s + d + 2, this.tmp2);
+    const n = Math.hypot(p.x - ax, p.y - ay) || 1;
+    const shift = v.shift + v.side;
+    const px = (ax + p.x) / 2 - ((p.y - ay) / n) * shift;
+    const py = (ay + p.y) / 2 + ((p.x - ax) / n) * shift;
+    return Math.hypot(o.x - px, o.y - py) > reach;
   }
 
   /* True when the queue ahead loops back to this vehicle: a real deadlock, not a normal queue. */
@@ -290,6 +303,7 @@ export class Simulation {
   stopTarget(stop, v) {
     if (stop.kind === "xray") return stop.s - 16;
     if (stop.kind === "ramp") return v.dock ? v.dock.s : stop.s - 25;
+    if (stop.kind === "yard" && v.dock) return v.dock.s;
     return stop.s;
   }
 
@@ -298,12 +312,129 @@ export class Simulation {
     for (const [x, y] of points) this.docks.push({ x, y, v: null });
   }
 
+  /* Static parked trucks in the yards, as { x, y, h }; yard bays must not overlap them. */
+  reserveParked(slots) {
+    this.parked = slots.map(({ x, y, h }) => ({ x, y, dx: Math.sin(h), dy: Math.cos(h) }));
+  }
+
+  /* Samples every route every 3 m into a 10 m grid, then marks each route's crossing boxes:
+     stretches where another route (or a later pass of the same one) cuts across at an angle. */
+  indexLanes() {
+    this.lanes = new Map();
+    const samples = new Map();
+    for (const route of this.routes) {
+      const list = [];
+      for (let s = 3; s < route.length - 3; s += 3) {
+        const a = route.at(s - 3, this.tmp);
+        const ax = a.x;
+        const ay = a.y;
+        const b = route.at(s + 3, this.tmp2);
+        const n = Math.hypot(b.x - ax, b.y - ay) || 1;
+        const c = route.at(s, this.tmp);
+        const p = { route, s, x: c.x, y: c.y, dx: (b.x - ax) / n, dy: (b.y - ay) / n };
+        list.push(p);
+        const key = Math.floor(p.x / 10) * 100003 + Math.floor(p.y / 10);
+        if (!this.lanes.has(key)) this.lanes.set(key, []);
+        this.lanes.get(key).push(p);
+      }
+      samples.set(route, list);
+    }
+    for (const route of this.routes) {
+      const hits = [];
+      for (const p of samples.get(route)) {
+        const near = this.lanesNear(p.x, p.y, 4.5);
+        if (near.some((q) => (q.route !== route || Math.abs(q.s - p.s) > 60) && Math.abs(q.dx * p.dx + q.dy * p.dy) < 0.85)) hits.push(p.s);
+      }
+      route.boxes = [];
+      for (const s of hits) {
+        const last = route.boxes[route.boxes.length - 1];
+        if (last && s - last[1] <= 7) last[1] = s + 4;
+        else route.boxes.push([s - 4, s + 4]);
+      }
+    }
+  }
+
+  lanesNear(x, y, r) {
+    const out = [];
+    const cx = Math.floor(x / 10);
+    const cy = Math.floor(y / 10);
+    for (let i = -1; i <= 1; i += 1) {
+      for (let j = -1; j <= 1; j += 1) {
+        const list = this.lanes.get((cx + i) * 100003 + cy + j);
+        if (list) for (const q of list) if (Math.hypot(q.x - x, q.y - y) < r) out.push(q);
+      }
+    }
+    return out;
+  }
+
+  /* True when a parked truck at this spot would stand in another route's lane. */
+  spotOnTraffic(spot, route, s) {
+    for (const t of [-8, -4, 0, 4, 8]) {
+      const near = this.lanesNear(spot.x + spot.dx * t, spot.y + spot.dy * t, 4.4);
+      if (near.some((q) => q.route !== route || Math.abs(q.s - s) > 40)) return true;
+    }
+    return false;
+  }
+
+  /* A truck parked at s would stand in, or pull out into, a crossing. */
+  nearBox(route, s) {
+    return route.boxes.some((b) => s + 16 > b[0] && s - 16 < b[1]);
+  }
+
+  /* The next crossing box the vehicle's front has not yet entered. */
+  boxAhead(v) {
+    const front = v.s + v.spec.length / 2;
+    for (const box of v.route.boxes) {
+      if (box[1] < front) continue;
+      return box[0] > front - 0.5 ? box : null;
+    }
+    return null;
+  }
+
+  /* Yard trucks pull out of the lane to the kerb side so traffic behind can pass while they wait. */
+  chooseBay(v, stop) {
+    return this.findBay(v, stop, true) || this.findBay(v, stop, false);
+  }
+
+  findBay(v, stop, aisleOnly) {
+    const r = v.route;
+    const spec = v.spec;
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]) {
+      const s = stop.s + k * 19;
+      if (s < v.s + 10 || s > r.length - 40 || this.nearBox(r, s)) continue;
+      if (aisleOnly && (r.speedClass(s - 8) !== 0 || r.speedClass(s + 8) !== 0)) continue;
+      const a = r.at(s - 3, this.tmp);
+      const ax = a.x;
+      const ay = a.y;
+      const b = r.at(s + 3, this.tmp2);
+      const n = Math.hypot(b.x - ax, b.y - ay) || 1;
+      const dx = (b.x - ax) / n;
+      const dy = (b.y - ay) / n;
+      const c = r.at(s, this.tmp);
+      const shift = v.shift - 4.5;
+      const spot = { x: c.x - dy * shift, y: c.y + dx * shift, dx, dy };
+      if (this.docks.some((d) => Math.hypot(d.x - spot.x, d.y - spot.y) < 18)) continue;
+      if (this.parked.some((p) => Math.abs(p.x - spot.x) < 20 && Math.abs(p.y - spot.y) < 20 && footprintDepth(spot, spec, p, spec) > 0)) continue;
+      if (this.spotOnTraffic(spot, r, s)) continue;
+      const dock = { x: spot.x, y: spot.y, v, s, shift: -4.5 };
+      this.docks.push(dock);
+      return dock;
+    }
+    return null;
+  }
+
+  /* A truck leaving a bay waits until its lane is clear behind and beside it. */
+  laneClear(v) {
+    const c = v.route.at(v.s, this.tmp);
+    return !this.vehicles.some((o) => o !== v && o.state !== "dwell" && Math.hypot(o.x - c.x, o.y - c.y) < 24);
+  }
+
   /* Inspection trucks pull out of the lane to a free dock beside the platform. */
   chooseDock(v, stop) {
     const r = v.route;
     for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -2]) {
       const s = stop.s + k * 19;
-      if (s < 30 || s > r.length - 40) continue;
+      if (s < 30 || s > r.length - 40 || this.nearBox(r, s)) continue;
       const a = r.at(s - 3, this.tmp);
       const ax = a.x;
       const ay = a.y;
@@ -318,6 +449,7 @@ export class Simulation {
       const x = c.x - dy * shift;
       const y = c.y + dx * shift;
       if (this.docks.some((d) => Math.hypot(d.x - x, d.y - y) < 18)) continue;
+      if (this.spotOnTraffic({ x, y, dx, dy }, r, s)) continue;
       const dock = { x, y, v, s, shift };
       this.docks.push(dock);
       return dock;
@@ -382,8 +514,8 @@ export class Simulation {
       if (v.type === "bus") this.stats.buses += 1;
     }
     if (stop.kind === "xray") this.stats.scans.push(this.time);
-    if (stop.kind === "ramp") {
-      this.stats.inspections += 1;
+    if (stop.kind === "ramp") this.stats.inspections += 1;
+    if (v.dock) {
       this.docks = this.docks.filter((d) => d.v !== v);
       v.dock = null;
     }
@@ -501,7 +633,7 @@ export class Simulation {
         continue;
       }
       this.spawn(route);
-      route.nextSpawn = this.time + (route.kind === "car" ? rnd(30, 80) : route.flow === "inbound" ? rnd(650, 1050) : rnd(800, 1300));
+      route.nextSpawn = this.time + (route.kind === "car" ? rnd(45, 110) : route.flow === "inbound" ? rnd(1050, 1650) : rnd(1250, 1950));
     }
 
     const grid = this.buildGrid();
@@ -515,6 +647,7 @@ export class Simulation {
           v.side += (v.dock.shift - v.side) * Math.min(1, dt * 0.35);
           this.position(v);
         }
+        if (v.dwell <= 0 && v.dock && v.dwell > -120 && !this.laneClear(v)) continue;
         if (v.dwell <= 0) this.finish(v, stop);
         continue;
       }
@@ -523,6 +656,10 @@ export class Simulation {
         if (Math.abs(v.side) < 0.05) v.side = 0;
       }
       if (stop && stop.kind === "ramp" && !v.dock && stop.s - v.s < 60) v.dock = this.chooseDock(v, stop);
+      if (stop && stop.kind === "yard" && !v.dock && !v.noBay && stop.s - v.s < 60) {
+        v.dock = this.chooseBay(v, stop);
+        v.noBay = !v.dock;
+      }
       const spec = v.spec;
       let target = spec.vmax[route.speedClass(v.s + 10)];
       let distance = Infinity;
@@ -549,10 +686,21 @@ export class Simulation {
         const o = v.leader;
         const lv = o.state === "drive" ? Math.max(0, o.speed * (o.dx * v.dx + o.dy * v.dy)) : 0;
         target = Math.min(target, Math.sqrt(lv * lv + 2 * 3 * Math.max(0, gap - 2.5)), Math.max(0, gap - 2.5) * 1.2);
-        const parkHere = stop && stop.kind === "yard" && distance < 160 && route.speedClass(v.s) === 0;
+        const parkHere = stop && stop.kind === "yard" && !v.dock && distance < 160 && route.speedClass(v.s) === 0;
         if (parkHere && gap < 4 && v.speed < 0.4) {
           this.arrive(v, stop);
           continue;
+        }
+      }
+      /* Don't block the box: only enter a crossing when there is room to clear it completely. */
+      const box = this.boxAhead(v);
+      if (box) {
+        const front = v.s + spec.length / 2;
+        const exit = box[1] + spec.length + 2;
+        const stopAt = stop ? this.stopTarget(stop, v) + spec.length / 2 : Infinity;
+        if (front + gap < exit && !(stopAt >= front && stopAt < exit)) {
+          const d = Math.max(0, box[0] - front - 1);
+          target = Math.min(target, Math.sqrt(2 * 3 * d), d * 1.2);
         }
       }
       const delta = target - v.speed;
