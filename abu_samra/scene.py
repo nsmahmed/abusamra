@@ -202,7 +202,9 @@ class Graph:
                     node = edge["from"]
                 return path[::-1]
             for edge in self.out.get(node, []):
-                cost = edge["length_m"] * (0.8 if edge["highway"] in MAJOR else 1.0)
+                # Parked trucks fill the aisles, so through traffic keeps to the service roads.
+                factor = 0.8 if edge["highway"] in MAJOR else 30.0 if edge.get("service") == "parking_aisle" else 1.0
+                cost = edge["length_m"] * factor
                 nd = d + cost
                 if nd < dist.get(edge["to"], math.inf):
                     dist[edge["to"]] = nd
@@ -396,6 +398,7 @@ def build_scene() -> dict:
         if not lanes:
             continue
         yards.append({"id": yard["id"], "name": yard["name"], "pads": _yard_pads(lanes), "lanes": lanes})
+    yards.extend(_overflow_lots(roads, yards))
 
     # --- passenger booth lanes (cars and buses) ---
     car_routes = []
@@ -749,6 +752,33 @@ def _yard_pads(lanes: list[dict]) -> list[list[list[float]]]:
         c1 = block[-1][0] + 7
         pads.append([[_r(a * ux + c * vx), _r(a * uy + c * vy)] for a, c in ((a0, c0), (a1, c0), (a1, c1), (a0, c1))])
     return pads
+
+
+def _overflow_lots(roads: list[dict], yards: list[dict]) -> list[dict]:
+    """Mapped parking aisles outside the holding yards, grouped into paved lots."""
+    known = [lane["p"][len(lane["p"]) // 2] for yard in yards for lane in yard["lanes"]]
+    loose = []
+    for road in roads:
+        if road["c"] != "aisle" or _length(road["p"]) < 40:
+            continue
+        mid = road["p"][len(road["p"]) // 2]
+        if any(math.hypot(mid[0] - k[0], mid[1] - k[1]) < 4 for k in known):
+            continue
+        loose.append({"p": road["p"], "m": mid})
+    groups: list[list[dict]] = []
+    for lane in loose:
+        near = [g for g in groups if any(math.hypot(lane["m"][0] - o["m"][0], lane["m"][1] - o["m"][1]) < 40 for o in g)]
+        merged = [lane] + [o for g in near for o in g]
+        groups = [g for g in groups if g not in near] + [merged]
+    lots = []
+    for group in groups:
+        pads = _yard_pads(group)
+        if not pads:
+            continue
+        n = len(lots) + 1
+        lanes = [{"way": f"lot-{n}-{i}", "p": lane["p"]} for i, lane in enumerate(group)]
+        lots.append({"id": f"lot-{n}", "name": "Overflow truck parking", "extra": 1, "pads": pads, "lanes": lanes})
+    return lots
 
 
 def _segment_distance(p, a, b) -> float:

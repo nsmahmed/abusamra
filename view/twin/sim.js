@@ -6,6 +6,27 @@ const smooth = (e0, e1, x) => {
   return t * t * (3 - 2 * t);
 };
 
+/* How deep two vehicle rectangles interpenetrate (separating-axis test); 0 when apart.
+   Rectangles are trimmed slightly so bumpers can kiss. */
+function footprintDepth(a, sa, b, sb) {
+  const box = (p, s) => {
+    const l = s.length / 2 - 0.2;
+    const w = s.width / 2 - 0.15;
+    return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([i, j]) => [p.x + p.dx * l * i - p.dy * w * j, p.y + p.dy * l * i + p.dx * w * j]);
+  };
+  const A = box(a, sa);
+  const B = box(b, sb);
+  let depth = Infinity;
+  for (const [ux, uy] of [[a.dx, a.dy], [-a.dy, a.dx], [b.dx, b.dy], [-b.dy, b.dx]]) {
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of A) { const t = x * ux + y * uy; a0 = Math.min(a0, t); a1 = Math.max(a1, t); }
+    for (const [x, y] of B) { const t = x * ux + y * uy; b0 = Math.min(b0, t); b1 = Math.max(b1, t); }
+    depth = Math.min(depth, Math.min(a1, b1) - Math.max(a0, b0));
+    if (depth <= 0) return 0;
+  }
+  return depth;
+}
+
 class Route {
   constructor(raw) {
     const n = raw.p.length;
@@ -84,6 +105,8 @@ export class Simulation {
     this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0 };
     this.tmp = {};
     this.tmp2 = {};
+    this.platforms = data.canopies.filter((c) => c.role === "platform").map((c) => c.ring);
+    this.docks = [];
 
     const station = (ref, kind, extra = {}) => {
       if (!this.stations.has(ref)) this.stations.set(ref, { ref, kind, busy: 0, lanes: [0], load: [0], openUntil: 0, active: 0, ...extra });
@@ -127,7 +150,13 @@ export class Simulation {
       lane: -1,
       laneOffset: null,
       laneReg: new Map(),
-      ghost: 0,
+      leader: null,
+      dock: null,
+      side: 0,
+      ignore: null,
+      ignoreFor: 0,
+      jam: 0,
+      ghost: false,
       stuck: 0,
       x: route.x[0],
       y: route.y[0],
@@ -156,8 +185,10 @@ export class Simulation {
   }
 
   startClear(route) {
+    const x = route.x[0];
+    const y = route.y[0];
     for (const v of this.vehicles) {
-      if (v.route === route && v.s < 26) return false;
+      if (Math.abs(v.x - x) < 40 && Math.abs(v.y - y) < 40 && Math.hypot(v.x - x, v.y - y) < 30) return false;
     }
     return true;
   }
@@ -165,7 +196,7 @@ export class Simulation {
   buildGrid() {
     const grid = new Map();
     for (const v of this.vehicles) {
-      const key = Math.floor(v.x / 30) * 100003 + Math.floor(v.y / 30);
+      const key = Math.floor(v.x / 40) * 100003 + Math.floor(v.y / 40);
       let cell = grid.get(key);
       if (!cell) grid.set(key, (cell = []));
       cell.push(v);
@@ -173,29 +204,69 @@ export class Simulation {
     return grid;
   }
 
+  /* Gap to the nearest vehicle whose footprint lies in this vehicle's path, including traffic
+     crossing or merging at an angle. When two vehicles see each other, the one nearer the
+     conflict goes first; exact ties resolve by id so exactly one yields. */
   leaderGap(v, grid) {
     let best = Infinity;
-    const cx = Math.floor(v.x / 30);
-    const cy = Math.floor(v.y / 30);
-    for (let gx = cx - 1; gx <= cx + 1; gx += 1) {
-      for (let gy = cy - 1; gy <= cy + 1; gy += 1) {
+    v.leader = null;
+    const cx = Math.floor(v.x / 40);
+    const cy = Math.floor(v.y / 40);
+    const halfL = v.spec.length / 2;
+    const halfW = v.spec.width / 2;
+    for (let gx = cx - 2; gx <= cx + 2; gx += 1) {
+      for (let gy = cy - 2; gy <= cy + 2; gy += 1) {
         const cell = grid.get(gx * 100003 + gy);
         if (!cell) continue;
         for (const o of cell) {
-          if (o === v) continue;
+          if (o === v || (o === v.ignore && v.ignoreFor > 0)) continue;
+          const dot = o.dx * v.dx + o.dy * v.dy;
+          if (dot < -0.5) continue;
           const rx = o.x - v.x;
           const ry = o.y - v.y;
-          const ahead = rx * v.dx + ry * v.dy;
-          if (ahead <= 0.5 || ahead > 45) continue;
+          let ahead = rx * v.dx + ry * v.dy;
+          if (ahead < -0.3 || ahead > 70 + halfL) continue;
+          if (ahead <= 0.3 && v.id < o.id) continue;
+          const cross = Math.abs(o.dx * v.dy - o.dy * v.dx);
+          const oAlong = Math.abs(dot) * (o.spec.length / 2) + cross * (o.spec.width / 2);
+          const oLat = cross * (o.spec.length / 2) + Math.abs(dot) * (o.spec.width / 2);
+          const reach = halfW + oLat + 0.35;
           const lat = Math.abs(rx * v.dy - ry * v.dx);
-          if (lat > 2.3 || lat > ahead) continue;
-          if (o.dx * v.dx + o.dy * v.dy < 0.35) continue;
-          const gap = ahead - (v.spec.length + o.spec.length) / 2;
-          if (gap < best) best = gap;
+          if (lat > reach) {
+            /* On curves the straight projection misses vehicles ahead; check the route itself. */
+            if (dot < 0.3 || ahead < 4) continue;
+            const d = Math.hypot(rx, ry);
+            const p = v.route.at(v.s + d, this.tmp);
+            const shift = v.shift + v.side;
+            if (Math.hypot(o.x - p.x, o.y - p.y) > reach + Math.abs(shift)) continue;
+            ahead = d;
+          }
+          if (o.state === "drive") {
+            const aheadO = -(rx * o.dx + ry * o.dy);
+            if (aheadO > 0 && (aheadO > ahead || (aheadO === ahead && v.id < o.id))) continue;
+          }
+          const gap = ahead - halfL - oAlong;
+          if (gap < best) {
+            best = gap;
+            v.leader = o;
+          }
         }
       }
     }
     return best;
+  }
+
+  /* True when the queue ahead loops back to this vehicle: a real deadlock, not a normal queue. */
+  deadlocked(v) {
+    const seen = new Set([v]);
+    let o = v.leader;
+    for (let n = 0; o && n < 60; n += 1) {
+      if (o.state !== "drive" || o.speed > 0.3) return false;
+      if (seen.has(o)) return o === v;
+      seen.add(o);
+      o = o.leader;
+    }
+    return false;
   }
 
   dwellFor(v, stop) {
@@ -210,14 +281,72 @@ export class Simulation {
       case "yard":
         return rnd(480, 1300);
       case "ramp":
-        return rnd(700, 1500);
+        return rnd(360, 720);
       default:
         return 20;
     }
   }
 
-  stopTarget(stop) {
-    return stop.kind === "xray" ? stop.s - 16 : stop.s;
+  stopTarget(stop, v) {
+    if (stop.kind === "xray") return stop.s - 16;
+    if (stop.kind === "ramp") return v.dock ? v.dock.s : stop.s - 25;
+    return stop.s;
+  }
+
+  /* Static parked trucks occupy some platform docks; the simulation must not dock on top of them. */
+  reserveDocks(points) {
+    for (const [x, y] of points) this.docks.push({ x, y, v: null });
+  }
+
+  /* Inspection trucks pull out of the lane to a free dock beside the platform. */
+  chooseDock(v, stop) {
+    const r = v.route;
+    for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -2]) {
+      const s = stop.s + k * 19;
+      if (s < 30 || s > r.length - 40) continue;
+      const a = r.at(s - 3, this.tmp);
+      const ax = a.x;
+      const ay = a.y;
+      const b = r.at(s + 3, this.tmp2);
+      const n = Math.hypot(b.x - ax, b.y - ay) || 1;
+      const dx = (b.x - ax) / n;
+      const dy = (b.y - ay) / n;
+      const c = r.at(s, this.tmp);
+      const lat = this.platformSide(c.x, c.y, dx, dy);
+      if (lat === null || Math.abs(lat) < 5.5 || Math.abs(lat) > 10.5) continue;
+      const shift = Math.sign(lat) * (Math.abs(lat) - 1.75);
+      const x = c.x - dy * shift;
+      const y = c.y + dx * shift;
+      if (this.docks.some((d) => Math.hypot(d.x - x, d.y - y) < 18)) continue;
+      const dock = { x, y, v, s, shift };
+      this.docks.push(dock);
+      return dock;
+    }
+    return null;
+  }
+
+  /* Signed lateral offset (left positive) from a lane point to the nearest platform edge. */
+  platformSide(x, y, dx, dy) {
+    let best = Infinity;
+    let lat = null;
+    for (const ring of this.platforms) {
+      for (let i = 0; i < ring.length; i += 1) {
+        const p = ring[i];
+        const q = ring[(i + 1) % ring.length];
+        const ex = q[0] - p[0];
+        const ey = q[1] - p[1];
+        const span = ex * ex + ey * ey || 1;
+        const t = Math.max(0, Math.min(1, ((x - p[0]) * ex + (y - p[1]) * ey) / span));
+        const nx = p[0] + ex * t - x;
+        const ny = p[1] + ey * t - y;
+        const d = Math.hypot(nx, ny);
+        if (d < best) {
+          best = d;
+          lat = nx * -dy + ny * dx;
+        }
+      }
+    }
+    return lat;
   }
 
   arrive(v, stop) {
@@ -253,7 +382,11 @@ export class Simulation {
       if (v.type === "bus") this.stats.buses += 1;
     }
     if (stop.kind === "xray") this.stats.scans.push(this.time);
-    if (stop.kind === "ramp") this.stats.inspections += 1;
+    if (stop.kind === "ramp") {
+      this.stats.inspections += 1;
+      this.docks = this.docks.filter((d) => d.v !== v);
+      v.dock = null;
+    }
     if (stop.kind === "gate" && !ref.endsWith("release") && v.type === "truck") {
       v.phase = "in";
       v.enteredAt = this.time;
@@ -326,8 +459,37 @@ export class Simulation {
     const c = r.at(v.s, this.tmp);
     v.dx = dx;
     v.dy = dy;
-    v.x = c.x - dy * v.shift;
-    v.y = c.y + dx * v.shift;
+    const shift = v.shift + v.side;
+    v.x = c.x - dy * shift;
+    v.y = c.y + dx * shift;
+  }
+
+  /* Advance along the route unless the move would push this vehicle into another's footprint.
+     Returns the blocking vehicle, or null when the move went ahead. */
+  moveGuarded(v, dt, grid) {
+    const before = { x: v.x, y: v.y, dx: v.dx, dy: v.dy };
+    const s0 = v.s;
+    v.s += v.speed * dt;
+    this.position(v);
+    const cx = Math.floor(v.x / 40);
+    const cy = Math.floor(v.y / 40);
+    for (let gx = cx - 1; gx <= cx + 1; gx += 1) {
+      for (let gy = cy - 1; gy <= cy + 1; gy += 1) {
+        const cell = grid.get(gx * 100003 + gy);
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === v || Math.abs(o.x - v.x) > 24 || Math.abs(o.y - v.y) > 24) continue;
+          if (o === v.ignore && v.ignoreFor > 0 && (v.ghost || (o.x - v.x) * v.dx + (o.y - v.y) * v.dy < 0)) continue;
+          if (o.dx * v.dx + o.dy * v.dy < -0.8) continue;
+          const depth = footprintDepth(v, v.spec, o, o.spec);
+          if (depth === 0 || depth <= footprintDepth(before, v.spec, o, o.spec) - 1e-6) continue;
+          v.s = s0;
+          Object.assign(v, before);
+          return o;
+        }
+      }
+    }
+    return null;
   }
 
   step(dt) {
@@ -339,7 +501,7 @@ export class Simulation {
         continue;
       }
       this.spawn(route);
-      route.nextSpawn = this.time + (route.kind === "car" ? rnd(30, 80) : route.flow === "inbound" ? rnd(520, 900) : rnd(700, 1200));
+      route.nextSpawn = this.time + (route.kind === "car" ? rnd(30, 80) : route.flow === "inbound" ? rnd(650, 1050) : rnd(800, 1300));
     }
 
     const grid = this.buildGrid();
@@ -349,55 +511,83 @@ export class Simulation {
       const stop = route.stops[v.stopIdx];
       if (v.state === "dwell") {
         v.dwell -= dt;
+        if (v.dock) {
+          v.side += (v.dock.shift - v.side) * Math.min(1, dt * 0.35);
+          this.position(v);
+        }
         if (v.dwell <= 0) this.finish(v, stop);
         continue;
       }
+      if (v.side) {
+        v.side *= Math.max(0, 1 - dt * 0.3);
+        if (Math.abs(v.side) < 0.05) v.side = 0;
+      }
+      if (stop && stop.kind === "ramp" && !v.dock && stop.s - v.s < 60) v.dock = this.chooseDock(v, stop);
       const spec = v.spec;
       let target = spec.vmax[route.speedClass(v.s + 10)];
       let distance = Infinity;
       this.updateLanes(v);
       if (stop) {
         if (v.state === "scan") {
-          target = 0.24;
+          target = 0.45;
           if (v.s >= stop.s + 16) this.finish(v, stop);
         } else {
-          distance = this.stopTarget(stop) - v.s;
+          distance = this.stopTarget(stop, v) - v.s;
           target = Math.min(target, Math.sqrt(2 * 1.8 * Math.max(0, distance - 0.2)) + (distance > 0.3 ? 0.25 : 0));
-          if (distance <= 0.4) {
-            v.s = Math.max(v.s, this.stopTarget(stop));
+          if (distance <= 0.4 && stop.kind === "ramp" && !v.dock) {
+            target = 0;
+          } else if (distance <= 0.4) {
+            v.s = Math.max(v.s, this.stopTarget(stop, v));
             this.arrive(v, stop);
             continue;
           }
         }
       }
-      if (v.ghost > 0) {
-        v.ghost -= dt;
-      } else {
-        const gap = this.leaderGap(v, grid);
-        if (gap < Infinity) {
-          target = Math.min(target, Math.max(0, gap - 2.2) * 0.7);
-          if (stop && (stop.kind === "yard" || stop.kind === "ramp") && distance < 90 && gap < 4 && v.speed < 0.4) {
-            this.arrive(v, stop);
-            continue;
-          }
+      if (v.ignoreFor > 0) v.ignoreFor -= dt;
+      const gap = this.leaderGap(v, grid);
+      if (gap < Infinity) {
+        const o = v.leader;
+        const lv = o.state === "drive" ? Math.max(0, o.speed * (o.dx * v.dx + o.dy * v.dy)) : 0;
+        target = Math.min(target, Math.sqrt(lv * lv + 2 * 3 * Math.max(0, gap - 2.5)), Math.max(0, gap - 2.5) * 1.2);
+        const parkHere = stop && stop.kind === "yard" && distance < 160 && route.speedClass(v.s) === 0;
+        if (parkHere && gap < 4 && v.speed < 0.4) {
+          this.arrive(v, stop);
+          continue;
         }
       }
       const delta = target - v.speed;
-      v.speed += Math.max(-4.5 * dt, Math.min(spec.accel * dt, delta));
-      if (v.speed < 0.05) {
+      v.speed += Math.max(-7 * dt, Math.min(spec.accel * dt, delta));
+      const blocker = v.speed > 0 ? this.moveGuarded(v, dt, grid) : null;
+      if (blocker) {
+        v.leader = blocker;
+        v.speed = 0;
+      }
+      const locked = v.speed < 0.05 && v.leader && this.deadlocked(v);
+      if (locked) {
         v.stuck += dt;
-        if (v.stuck > 120) {
-          v.ghost = 25;
+        const o = v.leader;
+        const leads = (o.x - v.x) * v.dx + (o.y - v.y) * v.dy < (v.x - o.x) * o.dx + (v.y - o.y) * o.dy;
+        if ((v.stuck > 6 && leads) || (v.stuck > 20 && !(o.ignore === v && o.ignoreFor > 0))) {
+          v.ignore = v.leader;
+          v.ignoreFor = 12;
           v.stuck = 0;
         }
       } else {
         v.stuck = 0;
       }
-      v.s += v.speed * dt;
-      this.position(v);
+      /* Last resort: a break that still cannot move for 30 s lets this vehicle squeeze past. */
+      v.jam = v.speed < 0.05 && (locked || v.ignoreFor > 0) ? v.jam + dt : 0;
+      if (v.jam > 30 && v.leader) {
+        v.ignore = v.leader;
+        v.ignoreFor = 12;
+        v.ghost = true;
+        v.jam = 0;
+      }
+      if (v.ignoreFor <= 0) v.ghost = false;
       if (v.s >= route.length - 1) removed.push(v);
     }
     if (removed.length) {
+      this.docks = this.docks.filter((d) => !removed.includes(d.v));
       for (const v of removed) {
         this.dropLanes(v);
         this.fleet.release(v);
@@ -411,7 +601,7 @@ export class Simulation {
   advance(seconds) {
     let left = seconds;
     while (left > 0) {
-      const dt = Math.min(0.5, left);
+      const dt = Math.min(0.3, left);
       this.step(dt);
       left -= dt;
     }
@@ -422,8 +612,8 @@ export class Simulation {
     if (v.type !== "truck") {
       return { cx: v.x, cz: -v.y, cyaw: Math.atan2(v.dx, -v.dy) };
     }
-    const sx = -v.dy * v.shift;
-    const sy = v.dx * v.shift;
+    const sx = -v.dy * (v.shift + v.side);
+    const sy = v.dx * (v.shift + v.side);
     const f0 = r.at(v.s + 4.0, this.tmp);
     const f0x = f0.x;
     const f0y = f0.y;

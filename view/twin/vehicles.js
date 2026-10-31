@@ -232,7 +232,7 @@ export class Fleet {
   }
 
   compose(x, z, yaw, scale = 1) {
-    this.p.set(x, 0.07, z);
+    this.p.set(x, 0.17, z);
     this.q.setFromAxisAngle(this.up, yaw);
     this.s.setScalar(scale);
     return this.m.compose(this.p, this.q, this.s);
@@ -280,7 +280,7 @@ export class Fleet {
 }
 
 export const VEHICLE_SPECS = {
-  car: { length: 4.6, front: 2.3, vmax: [7, 11, 22], accel: 2.6 },
-  bus: { length: 11.8, front: 5.9, vmax: [5, 9, 18], accel: 1.4 },
-  truck: { length: 17.0, front: 8.6, vmax: [4.5, 8.5, 16], accel: 1.1 },
+  car: { length: 4.6, width: 1.9, front: 2.3, vmax: [7, 11, 22], accel: 2.6 },
+  bus: { length: 11.8, width: 2.55, front: 5.9, vmax: [5, 9, 18], accel: 1.4 },
+  truck: { length: 17.0, width: 2.55, front: 8.6, vmax: [4.5, 8.5, 16], accel: 1.1 },
 };

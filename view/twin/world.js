@@ -6,12 +6,26 @@ import * as T from "./textures.js";
    Headings h are clockwise from north; a group with rotation.y = PI - h faces along h,
    and its local +X points to the left of travel. */
 
+/* Ground layers are stacked a few centimetres apart so coplanar surfaces never fight for depth.
+   Yard paving sits below the road so roads always read as continuous through yard entrances. */
 const H = {
   dirt: 0.03,
-  pad: 0.055,
-  road: 0.06,
-  mark: 0.085,
+  pad: 0.07,
+  curb: 0.1,
+  aisle: 0.12,
+  road: 0.16,
+  mark: 0.21,
 };
+const BAY = 18.5;
+
+/* Bay centres along a parking lane of length L: trucks fill whole bays between the lane ends. */
+function bayCentres(L) {
+  const count = Math.floor((L - 2) / BAY);
+  const start = (L - count * BAY) / 2;
+  const out = [];
+  for (let k = 0; k < count; k += 1) out.push(start + BAY * (k + 0.5));
+  return { start, count, centres: out };
+}
 const MAROON = "#7a1631";
 
 const norm = (x, y) => {
@@ -68,6 +82,15 @@ function subline(points, cum, s0, s1) {
   for (let i = 0; i < points.length; i += 1) if (cum[i] > s0 && cum[i] < s1) out.push(points[i]);
   out.push(pointAt(points, cum, s1).slice(0, 2));
   return out;
+}
+
+function extendLine(points, d) {
+  if (points.length < 2) return points;
+  const a = norm(points[1][0] - points[0][0], points[1][1] - points[0][1]);
+  const n = points.length;
+  const b = norm(points[n - 1][0] - points[n - 2][0], points[n - 1][1] - points[n - 2][1]);
+  if (!a || !b) return points;
+  return [[points[0][0] - a[0] * d, points[0][1] - a[1] * d], ...points, [points[n - 1][0] + b[0] * d, points[n - 1][1] + b[1] * d]];
 }
 
 function inside(x, y, ring) {
@@ -484,7 +507,7 @@ export function buildWorld(scene, data, renderer) {
   const yardPads = new Flat(8);
   for (const road of data.roads) {
     if (road.c === "dirt") dirt.ribbon(road.p, road.w, H.dirt);
-    else if (road.c === "aisle") yardPads.ribbon(road.p, road.w, H.road);
+    else if (road.c === "aisle") yardPads.ribbon(road.p, road.w, H.aisle);
     else asphalt.ribbon(road.p, road.w, H.road);
   }
   for (const [x, y, r] of data.joints) asphalt.disc(x, y, r, H.road);
@@ -521,18 +544,21 @@ export function buildWorld(scene, data, renderer) {
   for (const yard of data.yards) {
     for (const pad of yard.pads) {
       yardPads.poly(pad, H.pad);
-      concrete.ribbon([...pad, pad[0]], 0.6, H.pad + 0.02);
+      concrete.ribbon([...pad, pad[0]], 0.6, H.curb);
     }
     for (const lane of yard.lanes) {
-      white.line(lane.p, 3.9, 0.14, H.mark, 2, 2);
-      white.line(lane.p, -3.9, 0.14, H.mark, 2, 2);
       const P = dedupe(lane.p);
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
-      for (let s = 9; s < L - 4; s += 18.5) {
-        const [x, y, h] = pointAt(P, cum, s);
-        const a = { x, y, h };
-        white.rect(a, -3.9, 3.9, -0.07, 0.07, H.mark);
+      const { start, count } = bayCentres(L);
+      const ext = extendLine(P, 4);
+      yardPads.ribbon(ext, 9.4, H.pad);
+      if (!count) continue;
+      white.line(P, 3.9, 0.14, H.mark, start, L - start - count * BAY);
+      white.line(P, -3.9, 0.14, H.mark, start, L - start - count * BAY);
+      for (let k = 0; k <= count; k += 1) {
+        const [x, y, h] = pointAt(P, cum, start + k * BAY);
+        white.rect({ x, y, h }, -3.9, 3.9, -0.08, 0.08, H.mark);
       }
     }
   }
@@ -1035,6 +1061,29 @@ export function buildWorld(scene, data, renderer) {
   /* ---------- parked trucks in yards and at the inspection ramps ---------- */
   const activeAisles = new Set();
   for (const route of data.routes) for (const stop of route.stops) if (stop.kind === "yard") activeAisles.add(String(stop.ref));
+  const travelled = new Map();
+  for (const route of data.routes) {
+    for (const [x, y] of route.p) {
+      const key = Math.floor(x / 10) * 100003 + Math.floor(y / 10);
+      if (!travelled.has(key)) travelled.set(key, []);
+      travelled.get(key).push([x, y]);
+    }
+  }
+  const nearRoute = (x, y, r) => {
+    for (let i = -1; i <= 1; i += 1) {
+      for (let j = -1; j <= 1; j += 1) {
+        const list = travelled.get((Math.floor(x / 10) + i) * 100003 + Math.floor(y / 10) + j);
+        if (list && list.some(([px, py]) => Math.hypot(px - x, py - y) < r)) return true;
+      }
+    }
+    return false;
+  };
+  /* A parked truck must not sit where simulated traffic drives. */
+  const slotFree = (x, y, h, clear = 3.6) => {
+    const dx = Math.sin(h);
+    const dy = Math.cos(h);
+    return [-7, -3.5, 0, 3.5, 7].every((k) => !nearRoute(x + dx * k, y + dy * k, clear));
+  };
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
@@ -1042,12 +1091,14 @@ export function buildWorld(scene, data, renderer) {
       const P = dedupe(lane.p);
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
-      for (let s = 9.5; s < L - 8; s += 18.5) {
+      for (const c of bayCentres(L).centres) {
         yardCapacity += 1;
         if (activeAisles.has(String(lane.way))) continue;
-        if (Math.random() > 0.64) continue;
-        const [x, y, h] = pointAt(P, cum, s);
-        yardSlots.push({ x, y, h });
+        if (Math.random() > (yard.extra ? 0.4 : 0.64)) continue;
+        const [x0, y0, h] = pointAt(P, cum, c);
+        const x = x0 - Math.sin(h) * 0.25;
+        const y = y0 - Math.cos(h) * 0.25;
+        if (slotFree(x, y, h)) yardSlots.push({ x, y, h });
       }
     }
   }
@@ -1084,10 +1135,10 @@ export function buildWorld(scene, data, renderer) {
         const off = side * (half + 2.1);
         const x = cx + ux * a - uy * off;
         const y = cy + uy * a + ux * off;
-        if (rampStops.some((p) => Math.hypot(p[0] - x, p[1] - y) < 14)) continue;
-        if (roads.clearance(x, y) < -1.5 && Math.random() < 0.5) continue;
+        if (rampStops.some((p) => Math.hypot(p[0] - x, p[1] - y) < 20)) continue;
         if (Math.random() > 0.6) continue;
-        rampSlots.push({ x, y, h: side > 0 ? h : h + Math.PI });
+        const heading = side > 0 ? h : h + Math.PI;
+        if (slotFree(x, y, heading, 11)) rampSlots.push({ x, y, h: heading });
       }
     }
   }

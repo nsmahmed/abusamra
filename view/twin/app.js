@@ -115,6 +115,7 @@ async function main() {
   };
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
   world.rampSlots.forEach((slot) => placeStatic(slot, "ramp"));
+  sim.reserveDocks(world.rampSlots.map((slot) => [slot.x, slot.y]));
   fleet.commit();
 
   status("Warming up traffic");
