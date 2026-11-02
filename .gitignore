@@ -24,3 +24,6 @@ abu-samra-twin/tests/out*/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Private share bundle (uploaded by hand to Netlify, never committed)
+share/
