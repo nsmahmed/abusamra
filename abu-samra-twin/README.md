@@ -1,43 +1,60 @@
-# Abu Samra Digital Twin
+# WASL: the Abu Samra Digital Twin
 
-A live 3D digital twin of the **Abu Samra land border customs port**, the truck crossing between Qatar and Saudi Arabia. It runs in a web browser as a single HTML file, with nothing to install. It comes in two versions with the same features:
+WASL (وصل) is a live 3D digital twin of the **Abu Samra land border customs port**, the truck crossing between Qatar and Saudi Arabia. It runs in a web browser as a single HTML file, `dist/wasl.html`, with nothing to install. The port is drawn as a clean, illustrated rendering of the real site at true scale.
 
-- **Satellite view** (`dist/abu-samra-twin.html`): the port on real Google Earth imagery.
-- **Illustrated view** (`dist/abu-samra-twin-illustrated.html`): the same port as a clean, rendered illustration.
+WASL lets a planner do four things in one place, in this order:
 
-A link in the title bar switches between them.
+1. **Watch today.** Every truck moves through the port in real time. Live panels show occupancy, the current bottleneck, plate reads and any truck's journey.
+2. **Ask what-if.** Move a slider, or type the change in plain English or Arabic. The port rebuilds itself and forecasts a full day against the baseline.
+3. **Seek a goal.** Say where average time in port should be. WASL searches the levers and returns three costed plans: fast, balanced and cost-smart, each with its effect over the next three years.
+4. **See the plan.** One click applies a plan to the twin, so leadership sees the new lanes, ramps and parking in place.
 
 ## Objective
 
-Truck queues at Abu Samra cost time and fuel, and they produce emissions. Their impact reaches well beyond the port gates. Today, decisions about lanes, parking, inspection staffing and new infrastructure are made without a safe way to test them first.
+Truck queues at Abu Samra cost time and fuel, and they produce emissions. Their impact reaches well beyond the port gates. Today, decisions about lanes, parking, inspection staffing, digital clearance and new infrastructure are made without a safe way to test them first.
 
-The twin provides that test environment. It places a true-scale 3D model of the port on the ground and drives it with a simulation of every import and export truck. Each truck drives the real roads from the GAC trip maps and stops at the radiation portals, gates, parking, X-ray scanning, inspection and release. Planners can change the port and watch the effect play out before committing money or staff.
+WASL is that test environment. It places a true-scale 3D model of the port on the ground and drives it with a simulation of every import and export truck. Each truck drives the real roads from the GAC trip maps and stops at the radiation portals, gates, parking, X-ray scanning, inspection and release.
 
-## What it can be used for
+## Features
 
-- **Operational awareness:** shows where trucks are queuing right now, which stage is the bottleneck, and how full each parking area and ramp yard is.
-- **What-if planning:** shows what happens if there are 40% more trucks during Eid, if X-ray capacity is expanded, or if two release lanes are added.
-  - Every change appears on the map: new lanes, bays and ramps are drawn in gold, removed ones in red.
-  - The twin forecasts a full day for each scenario and compares it with the baseline.
-- **Investment decisions:** the optimizer finds the smallest increase in a resource (gates, lanes, parking or ramps) that meets a target time in port. It also reports when that resource is not the real constraint.
-- **Truck tracking:** follow any plate. The camera flies to the truck and keeps it in view, with an optional chase camera. You can also export gate-read events in the same format a real plate-recognition system would produce.
-- **Plain-language questions:** when the page is opened as a claude.ai artifact, a copilot answers questions such as "what is the cheapest way to get average time under 4 hours?" in Arabic or English. It runs the simulation itself to find the answer.
-- **Briefings and stakeholder communication:** a single shareable page shows leadership and partners how the port works, by day or night, in a photographic or an illustrated style.
+### Live operations (right panel)
 
-All capacities and process times are placeholders until they are calibrated with real customs data. See the section on connecting real data below.
+- **Now:** trucks in the port, the public-road queue, average time in port, releases today, the current bottleneck and occupancy per stage.
+- **Filters:** every truck carries attributes:
+  - Risk lane: red (physical inspection) or green (no inspection).
+  - Authorized Economic Operator (AEO) or not.
+  - Pre-arrival declaration filed or not.
+  - Country of loading (import) or destination (export).
+  - Cargo type.
+
+  Picking values greys out the trucks that do not match on the map and shows where the matching trucks are.
+- **Bottleneck pattern:** compares the trucks held at the current bottleneck with every truck in the port and lists the attributes that are over-represented there, for example "red lane: 92% here against 35% port-wide". When nothing stands out, it says the stage is a plain capacity limit.
+- **Gate reads** and **Track:** a plate-reader feed and a follow-camera for any truck, with its attributes and journey.
+
+### Scenario planner (left panel)
+
+- **What-if:** sliders for demand, gates and lanes, parking and ramps, time at each stage, and risk programmes (red-lane rate, AEO membership, pre-arrival filing). New capacity appears gold on the map, removed capacity red. "Run forecast" compares a typical day with the baseline.
+- **Text to map:** write the change ("add 2 X-ray lanes and cut clearance time by 30 minutes"). Each phrase that names a resource becomes a planner setting; anything else is listed as ignored. Arabic works too.
+- **Goal seek:** set a target average time in port and a yearly demand growth. WASL tests every lever in the twin, one step at a time, and builds three plans:
+  - **Fast track:** quickest to land, usually the highest spend.
+  - **Cost-smart:** lowest five-year cost, usually slower to land.
+  - **Balanced:** a mix between the two.
+
+  The plan comparison shows each plan's cost (capital plus five years of running cost, QAR millions), the time until every change is in service, the levers and what each saves, a 36-month projection against doing nothing, and a cost-against-hours-saved chart. **Visualize in the twin** applies the plan to the live port.
+
+All capacities, process times, attribute mixes and lever costs are placeholders until they are calibrated with real customs data.
 
 ## How the trucks behave
 
-- **Trucks stay on the roads.** Routes are traced along the real carriageways shown in the GAC trip maps, and trucks keep to the right-hand lane. They pull into bays, back onto inspection docks, and queue single file on the public road without overtaking.
-- **Lots are filled from upstream.** Trucks wait in the external parking until there is room further in, and leave only when the next gate and the next parking area have a free place. When the external parking is full, the queue forms on the road outside it.
-  - **Export defaults:** 150 external, 12 operational parking, 10 inspection ramps.
-  - **Import defaults:** 100 external, 700 main parking, 6 X-ray slots, 130 inspection ramps.
-- **Every stage takes its configured time.** The planner's "Time at each stage" group sets the average time a truck spends at each stage, and the drive between stages takes the real distance at 25 km/h.
-- **Time control.** You can run in real time (1×), 10×, 2 min/s, 10 min/s or 1 h/s. Lighting can follow the clock or be fixed to dawn, day, dusk or night. At night, trucks drive with headlights and tail lights.
+- **Six truck types** after common GCC fleets: European cab-over with box or container semi-trailer, North-American long-nose with tanker or box trailer, and rigid box and curtain-side trucks. Most are white or silver, with a few fleet liveries.
+- **Trucks stay on the roads.** Routes follow the measured carriageway centres, right-hand traffic. Trucks pull into bays, back onto inspection docks and queue single file on the public road.
+- **Lots are filled from upstream.** Trucks wait in the external parking until the next gate and the next parking area have room.
+- **Red-lane trucks go to inspection; green-lane trucks skip it.** AEO operators are sent to inspection far less often, and a pre-arrival declaration cuts clearance time.
+- **Time control.** Real time (1×), 10×, 2 min/s, 10 min/s or 1 h/s. Lighting follows the clock or is fixed to dawn, day, dusk or night.
 
 ## Open it
 
-Open either file in `dist/` in Chrome or Edge. Both files must stay in the same folder for the view switch to work. The pages need internet access only to load three.js and the fonts.
+Open `dist/wasl.html` in Chrome or Edge. The page needs internet access only to load three.js and the fonts.
 
 | Control | Action |
 |---|---|
@@ -48,24 +65,15 @@ Open either file in `dist/` in Chrome or Edge. Both files must stay in the same 
 | Click a stage label or a stage in the bottom strip | Fly to that stage |
 | `[` and `]` | Fold or unfold the planner and live panels |
 | `Space` | Pause or resume |
-| `Esc` | Stop tracking |
+| `Esc` | Close the plan comparison, or stop tracking |
 
-## How the 3D scene is made realistic
+## How the 3D scene is made
 
-- **Real imagery, two levels of detail.**
-  - Three high-level Google Earth captures cover the wider area.
-  - Fourteen close-ups, about 0.6 m per pixel, are registered automatically onto them with SIFT feature matching and RANSAC homographies.
-  - The close-ups become three sharp, alpha-blended ground tiles over the facility.
-  - The desert beyond the imagery is synthesized from real sand texture so there are no visible edges.
-- **Illustrated rendering.** The illustrated version is generated from the same imagery. Edge-preserving smoothing, gradient maps for asphalt, sand and sabkha, greenery and ink outlines give it a rendered-model look. Everything stays aligned.
-- **Traced buildings.** 33 structures are measured from the imagery and extruded with their real roofs:
-  - Inspection sheds with dock doors.
-  - The customs halls and twin-dome buildings.
-  - Lane canopies on pillars.
-  - The X-ray canopies and service buildings.
-  - Facade windows light up at night.
-- **Detected vegetation.** About 2,000 trees and shrubs are placed where they appear in the imagery.
-- **A clean main parking lot.** The trucks baked into the photograph were removed by rebuilding the lot from its repeating bay pattern. Simulated trucks park on the real bay rows.
+- **Imagery.** Three high-level Google Earth captures and fourteen close-ups (about 0.6 m per pixel), registered with SIFT feature matching and RANSAC homographies, give a base texture and three sharp tiles over the facility.
+- **Illustrated rendering.** `pipeline/illustrate.py` turns the imagery into a clean rendered look. `pipeline/declutter.py` then:
+  - Removes the vehicles photographed into the ground, so only the simulated 3D trucks remain.
+  - Paints proper asphalt with white edge lines, a dashed centre line and a yellow kerb line along every truck route outside the yards.
+- **Traced buildings**, inspection sheds with dock doors, lane canopies, drive-through X-ray tunnels, about 2,000 detected trees and street lights that come on at night.
 
 ## Project structure
 
@@ -73,10 +81,10 @@ Open either file in `dist/` in Chrome or Edge. Both files must stay in the same 
 data/map-imagery/   Google Earth captures (high level 1-3, closeup 1-14, overviews)
 data/map-details/   GAC trip diagrams ("import trip.png" shows the export flow, "export trip.png" the import flow)
 pipeline/           imagery and geometry pipeline (Python + OpenCV)
-assets/             build inputs: ground texture, high-res tiles, geo.json; assets/illus/ holds the illustrated textures
-src/                page markup, simulation engine, flows, 3D app
-build.py            assembles both pages in dist/
-tests/              engine test (node) and headless render test (Playwright)
+assets/             build inputs: photo ground and tiles (pipeline inputs), geo.json; assets/illus/ holds the textures the page uses
+src/                page markup, simulation engine, flows, planning layer, 3D app
+build.py            assembles dist/wasl.html
+tests/              engine test (node), render test, view shooter and UI walk-through (Playwright)
 ```
 
 ### Rebuild
@@ -92,15 +100,16 @@ python ../buildings.py      # building footprints + parking bay lattice -> asset
 python ../trees.py          # trees and shrubs -> assets/geo.json
 python ../routes.py         # road-following truck routes, lots and stage anchors -> assets/geo.json
 cd ../..
-python pipeline/illustrate.py   # illustrated textures -> assets/illus/
-python build.py                 # -> dist/abu-samra-twin.html and dist/abu-samra-twin-illustrated.html
-python tests/render_test.py out_dir --night            # add --illustrated for the second view
+python pipeline/illustrate.py   # illustrated textures, vehicle removal, painted roads -> assets/illus/
+python build.py                 # -> dist/wasl.html
+python tests/ui_test.py out_dir [--quick]   # screenshots of every feature
 ```
 
-`pipeline/zoom.py` and `pipeline/zoom2.py` render any area with a labelled mosaic-pixel grid. `zoom2.py` also draws the current routes. Use them to measure footprints and trace roads.
+`pipeline/zoom.py` and `pipeline/zoom2.py` render any area with a labelled mosaic-pixel grid; `zoom2.py` also draws the current routes. `tests/views.py` screenshots named camera positions in the built page.
 
 ## Connecting real data (next steps)
 
 1. **Gate events.** Feed plate-recognizer events into the twin instead of synthetic arrivals. They use the same schema as the CSV export.
-2. **Calibration.** Calibrate the stage capacities and times in `src/flows.js` from GAC gate, declaration and inspection history.
-3. **Imagery licensing.** Replace the Google Earth imagery with GAC-licensed or drone orthophotos before any external use. Google Earth imagery is for internal prototyping only.
+2. **Declarations.** Replace the synthetic truck attributes (lane, AEO, pre-arrival, origin, cargo) with declaration and risk-engine data.
+3. **Calibration.** Calibrate stage capacities and times in `src/flows.js` and lever costs in `src/plan.js` from GAC history and programme budgets.
+4. **Imagery licensing.** Replace the Google Earth imagery with GAC-licensed or drone orthophotos before any external use. Google Earth imagery is for internal prototyping only.

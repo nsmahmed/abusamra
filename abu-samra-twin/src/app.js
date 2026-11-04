@@ -1,5 +1,5 @@
-// ===== Variant + world mapping: mosaic pixels (0.8 m/px) -> world units (1 unit = 10 m) =====
-const ILLUS=typeof VARIANT!=="undefined"&&VARIANT==="illustrated";
+// ===== World mapping: mosaic pixels (0.8 m/px) -> world units (1 unit = 10 m) =====
+const ILLUS=true; // illustrated ground (the satellite variant was retired)
 const K=0.08,CX=TEXINFO.W/2,CY=TEXINFO.H/2,PADX=TEXINFO.PAD;
 const conv=p=>[(p[0]-CX)*K,(p[1]-CY)*K];
 const W2=p=>{const [x,z]=conv(p);return{x,z}};
@@ -14,18 +14,22 @@ const SLIDERS={
     ["Demand",[["daily","Trucks per day",300,2000,50,""],["surge","Demand surge (Eid, season)",-30,80,5,"%"]]],
     ["Gates and lanes",[["radLanes","Radiation portal lanes",1,6,1,""],["apptGates","Appointment check gates",1,8,1,""],["xrayLanes","X-ray scanning slots",1,12,1,""],["relGates","Release gate lanes",1,6,1,""]]],
     ["Parking and ramps",[["holdCap","External parking slots",0,140,10,""],["parking","Main parking slots",200,800,50,""],["ramps","Inspection ramps",20,200,10,""]]],
-    ["Time at each stage",[["radMin","Radiation portal scan",0.5,5,0.5," min"],["apptMin","Appointment check",1,10,0.5," min"],["clearMin","Clearance in main parking",30,300,10," min"],["xrayMin","X-ray scan",2,10,0.5," min"],["inspShare","Sent to physical inspection",5,80,5,"%"],["inspMin","Physical inspection",30,300,10," min"],["relMin","Release check",1,6,0.5," min"]]]
+    ["Time at each stage",[["radMin","Radiation portal scan",0.5,5,0.5," min"],["apptMin","Appointment check",1,10,0.5," min"],["clearMin","Clearance, no pre-arrival filing",30,300,10," min"],["xrayMin","X-ray scan",2,10,0.5," min"],["inspMin","Physical inspection",30,300,10," min"],["relMin","Release check",1,6,0.5," min"]]],
+    ["Risk and programmes",[["inspShare","Red-lane rate, non-AEO trucks",5,80,2,"%"],["aeoShare","Trucks run by AEO operators",0,90,2,"%"],["preShare","Pre-arrival declarations filed",0,100,5,"%"]]]
   ],
   export:[
     ["Demand",[["daily","Trucks per day",200,1200,50,""],["surge","Demand surge (Eid, season)",-30,80,5,"%"]]],
     ["Gates and lanes",[["permitGates","Permit gates",1,4,1,""],["entryGates","Entry check gates",1,6,1,""],["relGates","Release gate lanes",1,4,1,""]]],
     ["Parking and ramps",[["extPark","External parking slots",50,220,10,""],["parking","Operational parking slots",6,24,1,""],["ramps","Inspection ramps",4,24,1,""]]],
-    ["Time at each stage",[["docMin","Document wait, external parking",15,180,5," min"],["permitMin","Permit gate check",1,8,0.5," min"],["entryMin","Entry gate check",1,8,0.5," min"],["parkMin","Operational parking dwell",5,60,5," min"],["inspShare","Sent to physical inspection",5,80,5,"%"],["inspMin","Physical inspection",20,180,10," min"],["relMin","Release check",1,6,0.5," min"]]]
+    ["Time at each stage",[["docMin","Document wait, no pre-arrival filing",15,180,2," min"],["permitMin","Permit gate check",1,8,0.5," min"],["entryMin","Entry gate check",1,8,0.5," min"],["parkMin","Operational parking dwell",5,60,5," min"],["inspMin","Physical inspection",20,180,10," min"],["relMin","Release check",1,6,0.5," min"]]],
+    ["Risk and programmes",[["inspShare","Red-lane rate, non-AEO trucks",5,80,2,"%"],["aeoShare","Trucks run by AEO operators",0,90,2,"%"],["preShare","Pre-arrival declarations filed",0,100,5,"%"]]]
   ]
 };
 // which stage each parameter belongs to (for callouts and fly-to)
 const PARAM_STAGE={radLanes:"rad",apptGates:"appt",xrayLanes:"xray",relGates:"rel",holdCap:"hold",parking:"park",ramps:"ramps",permitGates:"permit",entryGates:"entry",extPark:"ext",
-  radMin:"rad",apptMin:"appt",clearMin:"park",xrayMin:"xray",inspShare:"ramps",inspMin:"ramps",relMin:"rel",docMin:"ext",permitMin:"permit",entryMin:"entry",parkMin:"park"};
+  radMin:"rad",apptMin:"appt",clearMin:"park",xrayMin:"xray",inspShare:"ramps",inspMin:"ramps",relMin:"rel",docMin:"ext",permitMin:"permit",entryMin:"entry",parkMin:"park",
+  aeoShare:"ramps",preShare:"park"};
+const stageOfParam=(f,k)=>k==="preShare"&&f==="export"?"ext":PARAM_STAGE[k];
 const CAPACITY_KEYS={import:["xrayLanes","apptGates","radLanes","holdCap","parking","ramps","relGates"],export:["permitGates","entryGates","extPark","parking","ramps","relGates"]};
 const UNIT_NOUN={radLanes:"portal lanes",apptGates:"check gates",xrayLanes:"X-ray slots",relGates:"release lanes",holdCap:"parking slots",parking:"parking slots",ramps:"inspection ramps",permitGates:"permit gates",entryGates:"entry gates",extPark:"parking slots"};
 const FLOWS={import:IMPORT,export:EXPORT};
@@ -36,7 +40,7 @@ const LANE=0.17;    // trucks keep to the right-hand lane, 1.7 m right of the ro
 // ===== State =====
 const store={get(k,d){try{const v=localStorage.getItem("ast:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("ast:"+k,JSON.stringify(v))}catch(e){}}};
 const state={flow:"import",params:{import:{...IMPORT.defaults},export:{...EXPORT.defaults}},base:{import:{...IMPORT.defaults},export:{...EXPORT.defaults}},speed:2,tracked:null,baseFc:{},
-  light:"auto",show:{labels:true,route:true,bays:true,status:false,fly:true}};
+  light:"auto",show:{labels:true,route:true,bays:true,status:false,lane:false,fly:true}};
 let sim=null,G=null;
 const $=id=>document.getElementById(id);
 const fmtT=m=>{m=Math.floor(m);const h=Math.floor(m/60)%24,mm=m%60;return String(h).padStart(2,"0")+":"+String(mm).padStart(2,"0")};
@@ -278,20 +282,31 @@ function buildWorld(){
 const C_EXIST=new THREE.Color(0xF4F1E8),C_NEW=new THREE.Color(0xFFB938),C_GONE=new THREE.Color(0xFF3B5C);
 const bayTex=(()=>{const c=document.createElement("canvas");c.width=128;c.height=32;const g=c.getContext("2d");g.fillStyle="rgba(255,255,255,0.16)";g.fillRect(0,0,128,32);g.strokeStyle="#fff";g.lineWidth=4;g.strokeRect(2,2,124,28);return new THREE.CanvasTexture(c)})();
 const bayGeo=new THREE.PlaneGeometry(1.8,0.38).rotateX(-Math.PI/2);
+// X-ray scanning tunnel: an arched, drive-through tube along the lane (30 m long, 5.2 m wide, 5.6 m high)
+const XR={L:3.0,W:0.52,H0:0.3};
+function archShape(w,h0,t){const sh=new THREE.Shape(),r=w/2;sh.moveTo(-r,0);sh.lineTo(-r,h0);sh.absarc(0,h0,r,Math.PI,0,true);sh.lineTo(r,0);sh.lineTo(r-t,0);sh.lineTo(r-t,h0);sh.absarc(0,h0,r-t,0,Math.PI,false);sh.lineTo(-r+t,0);sh.closePath();return sh}
+const tubeGeo=new THREE.ExtrudeGeometry(archShape(XR.W,XR.H0,0.035),{depth:XR.L,bevelEnabled:false,curveSegments:16}).translate(0,0,-XR.L/2).rotateY(Math.PI/2);
+const ringGeo=new THREE.ExtrudeGeometry(archShape(XR.W+0.03,XR.H0,0.05),{depth:0.08,bevelEnabled:false,curveSegments:16}).translate(0,0,-0.04).rotateY(Math.PI/2);
+const tubeMat=new THREE.MeshPhongMaterial({color:0xDDE1E3,shininess:40,specular:0x333333,transparent:true,opacity:0.72,side:THREE.DoubleSide,depthWrite:false});
+const ringMat=new THREE.MeshLambertMaterial({color:0x8A1538}),warnMat=new THREE.MeshLambertMaterial({color:0xF2C14E});
 function gateDecor(st,s,c,cb){
   const P=G.P;const a=pointAt(P,P.cum[s.idx]);const n=Math.max(c,cb,1);const nx=-Math.sin(a.ang),nz=Math.cos(a.ang),fx=Math.cos(a.ang),fz=Math.sin(a.ang);const r=-a.ang;
   const span=n*0.58+0.5,cx=a.x-nx*LANE,cz=a.z-nz*LANE;
-  decor.add(Object.assign(box(1.7,0.006,span,0x46484A,cx,0.012,cz,r),{castShadow:false}));
+  decor.add(Object.assign(box(s.building?XR.L+0.6:1.7,0.006,span,0x46484A,cx,0.012,cz,r),{castShadow:false}));
   const status=k=>k<Math.min(c,cb)?0:k<c?1:2;
   const mat=(k,base)=>{const t=status(k);if(t===0)return base;return new THREE.MeshLambertMaterial({color:t===1?0xFFB938:0xFF3B5C,emissive:t===1?0x6A4300:0x5A0010,transparent:t===2,opacity:t===2?0.55:1})};
   const bx=(w,h,d,m,x,y,z)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.rotation.y=r;o.castShadow=true;o.receiveShadow=true;decor.add(o);return o};
   const white=new THREE.MeshLambertMaterial({color:0xEDEBE6}),grey=new THREE.MeshLambertMaterial({color:0xA4ABAD}),booth=new THREE.MeshLambertMaterial({color:0x3F6E9E}),wall=new THREE.MeshLambertMaterial({color:0xC8CCC6}),stripe=new THREE.MeshLambertMaterial({color:0xF2C14E});
   for(let k=0;k<n;k++){const o=(k-(n-1)/2)*0.58;const x=cx+nx*o,z=cz+nz*o;const t=status(k);
-    if(s.building){bx(1.45,0.08,0.58,mat(k,new THREE.MeshLambertMaterial({color:0xAEB4B0})),x,0.66,z);bx(0.06,0.05,0.58,stripe,x+fx*0.7,0.6,z+fz*0.7);bx(0.06,0.05,0.58,stripe,x-fx*0.7,0.6,z-fz*0.7)}
+    if(s.building){// one scanning tunnel per lane; added lanes gold, removed lanes red ghosts
+      const tm=t===0?tubeMat:new THREE.MeshPhongMaterial({color:t===1?0xFFC24D:0xFF3B5C,emissive:t===1?0x5A3A00:0x4A0010,transparent:true,opacity:t===1?0.8:0.4,side:THREE.DoubleSide,depthWrite:false});
+      const tube=new THREE.Mesh(tubeGeo,tm);tube.position.set(x,0,z);tube.rotation.y=r;tube.renderOrder=4;tube.castShadow=t!==2;decor.add(tube);
+      for(const e of [-1,1]){const rg=new THREE.Mesh(ringGeo,t===2?tm:ringMat);rg.position.set(x+fx*e*XR.L/2,0,z+fz*e*XR.L/2);rg.rotation.y=r;rg.castShadow=true;decor.add(rg)}
+      bx(0.05,0.004,XR.W*0.9,warnMat,x-fx*(XR.L/2+0.2),0.016,z-fz*(XR.L/2+0.2))}
     else{bx(0.75,0.05,0.56,mat(k,white),x,0.58,z);bx(0.02,0.02,0.42,new THREE.MeshLambertMaterial({color:t===2?0x777777:0xD94848}),x+fx*0.45,0.16,z+fz*0.45)}
     if(t){const ring=new THREE.Mesh(new THREE.RingGeometry(0.2,0.27,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:t===1?0xFFB938:0xFF3B5C,transparent:true,opacity:0.9,depthWrite:false}));ring.position.set(x,0.03,z);ring.userData.pulse=true;decor.add(ring)}}
   for(let k=0;k<=n;k++){const o=(k-n/2)*0.58;const x=cx+nx*o,z=cz+nz*o;
-    if(s.building)bx(1.3,0.62,0.06,wall,x,0.31,z);else{bx(0.2,0.24,0.12,booth,x,0.12,z);bx(0.035,0.56,0.035,grey,x+fx*0.33,0.28,z+fz*0.33);bx(0.035,0.56,0.035,grey,x-fx*0.33,0.28,z-fz*0.33)}}
+    if(s.building){if(k===0||k===n)bx(0.32,0.22,0.22,booth,x+fx*(XR.L/2-0.3)+nx*(k?0.18:-0.18),0.11,z+fz*(XR.L/2-0.3)+nz*(k?0.18:-0.18))}else{bx(0.2,0.24,0.12,booth,x,0.12,z);bx(0.035,0.56,0.035,grey,x+fx*0.33,0.28,z+fz*0.33);bx(0.035,0.56,0.035,grey,x-fx*0.33,0.28,z-fz*0.33)}}
 }
 function rebuildCapacity(){
   scene.remove(decor);decor=new THREE.Group();scene.add(decor);
@@ -333,33 +348,72 @@ function mergeColored(parts){// parts: [geometry, colorHex]
     for(let i=0;i<P.length;i++){pos.push(P[i]);nor.push(N[i])}for(let i=0;i<P.length/3;i++)col.push(C.r,C.g,C.b)}
   const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));g.setAttribute("normal",new THREE.Float32BufferAttribute(nor,3));g.setAttribute("color",new THREE.Float32BufferAttribute(col,3));return g}
 const BG=(w,h,d,x,y,z)=>new THREE.BoxGeometry(w,h,d).translate(x,y,z);
-const wheel=(x,z)=>new THREE.CylinderGeometry(0.048,0.048,0.032,10).rotateX(Math.PI/2).translate(x,0.048,z);
-// forward is +x. tractor front at x=+0.72, trailer rear at x=-0.95
-const detailGeo=(()=>{const parts=[[BG(1.6,0.05,0.18,-0.15,0.085,0),0x2A2B2D],[BG(0.04,0.08,0.24,0.72,0.12,0),0x3B3D40],[BG(0.012,0.1,0.21,0.705,0.31,0),0x23313B],[BG(0.16,0.012,0.012,0.5,0.4,0.0),0x2A2B2D]];
-  for(const x of [0.62,0.3,0.2,-0.62,-0.72,-0.82])for(const z of [-0.105,0.105])parts.push([wheel(x,z),0x1B1C1E]);
-  parts.push([BG(0.06,0.03,0.25,-0.955,0.13,0),0x7A1E1E]);return mergeColored(parts)})();
-const cabGeo=new THREE.BoxGeometry(0.27,0.27,0.245).translate(0.575,0.245,0);
-const cabTopGeo=mergeColored([[BG(0.2,0.05,0.22,0.55,0.405,0),0xffffff]]);
-const boxTrGeo=new THREE.BoxGeometry(1.36,0.29,0.25).translate(-0.27,0.27,0);
-const tankGeo=mergeColored([[new THREE.CylinderGeometry(0.115,0.115,1.26,14).rotateZ(Math.PI/2).translate(-0.3,0.25,0),0xffffff],[BG(1.3,0.04,0.2,-0.3,0.12,0),0x55585B]]);
-const flatGeo=mergeColored([[BG(1.36,0.035,0.25,-0.27,0.135,0),0x6B6E70],[BG(0.42,0.17,0.23,-0.68,0.24,0),0xB08A5A],[BG(0.38,0.13,0.22,-0.2,0.22,0),0x2F5E8C],[BG(0.3,0.19,0.22,0.17,0.25,0),0xC9B79A]]);
-const MAXT=2600;
-function IM(geo,mat,cast=true,colored=false){const m=new THREE.InstancedMesh(geo,mat,MAXT);if(colored){m.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3).fill(1),3);m.instanceColor.setUsage(THREE.DynamicDrawUsage)}m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);m.castShadow=cast;m.receiveShadow=true;m.count=0;m.frustumCulled=false;scene.add(m);return m}
-const T_detail=IM(detailGeo,new THREE.MeshLambertMaterial({vertexColors:true}));
-const T_cab=IM(cabGeo,new THREE.MeshPhongMaterial({color:0xffffff,shininess:60,specular:0x3a3a3a}),true,true);
-const T_cabTop=IM(cabTopGeo,new THREE.MeshLambertMaterial({vertexColors:true}));
-const T_box=IM(boxTrGeo,new THREE.MeshPhongMaterial({color:0xffffff,shininess:18,specular:0x1e1e1e}),true,true);
-const T_tank=IM(tankGeo,new THREE.MeshPhongMaterial({vertexColors:true,shininess:90,specular:0x6a6a6a}),true,true);
-const T_flat=IM(flatGeo,new THREE.MeshLambertMaterial({vertexColors:true}),true,true);
-const T_lights=IM(mergeColored([[BG(0.012,0.035,0.06,0.726,0.1,0.085),0xFFF6D8],[BG(0.012,0.035,0.06,0.726,0.1,-0.085),0xFFF6D8],[BG(0.01,0.025,0.04,-0.96,0.11,0.1),0xFF2A2A],[BG(0.01,0.025,0.04,-0.96,0.11,-0.1),0xFF2A2A]]),new THREE.MeshBasicMaterial({vertexColors:true}),false);
+const CY_X=(r,len,x,y,z,seg)=>new THREE.CylinderGeometry(r,r,len,seg||14).rotateZ(Math.PI/2).translate(x,y,z);
+// Truck kit (forward = +x, front bumper at x = +0.72, 1 unit = 10 m). Bodies are white in the geometry and take a
+// per-truck tint; details (glass, tyres, chrome, chassis, reflective stripes, lamps) keep their own colours.
+const C_GLASS=0x22303A,C_TYRE=0x17181A,C_RIM=0xB9BEC2,C_CHASSIS=0x2A2B2E,C_CHROME=0xD3D7DB,C_GRILLE=0x2C2D30,C_RED=0xC8202A,C_REFL=0xF2F2EE;
+function wheelSet(xs,parts,r){r=r||0.05;for(const x of xs)for(const z of [-0.105,0.105]){parts.push([new THREE.CylinderGeometry(r,r,0.034,14).rotateX(Math.PI/2).translate(x,r,z),C_TYRE]);parts.push([new THREE.CylinderGeometry(r*0.5,r*0.5,0.037,10).rotateX(Math.PI/2).translate(x,r,z),C_RIM])}}
+function stripes(x0,x1,y,parts){const n=Math.max(2,Math.round((x1-x0)/0.06));const L=(x1-x0)/n;for(let i=0;i<n;i++)for(const z of [-0.127,0.127])parts.push([BG(L,0.014,0.003,x0+L*(i+0.5),y,z),i%2?C_REFL:C_RED])}
+const TRACTOR={
+  eu:{// European cab-over: flat face, roof fairing, short wheelbase, tandem drive axles
+    body:[BG(0.23,0.27,0.25,0.60,0.265,0),BG(0.2,0.05,0.23,0.60,0.425,0),BG(0.07,0.035,0.25,0.495,0.135,0)],
+    detail:()=>{const p=[[BG(0.006,0.09,0.22,0.716,0.33,0),C_GLASS],[BG(0.006,0.075,0.17,0.716,0.205,0),C_GRILLE],[BG(0.03,0.04,0.25,0.71,0.12,0),0x3A3C3F],
+      [BG(0.08,0.07,0.004,0.665,0.33,0.126),C_GLASS],[BG(0.08,0.07,0.004,0.665,0.33,-0.126),C_GLASS],[BG(0.02,0.06,0.02,0.70,0.33,0.142),0x2E3033],[BG(0.02,0.06,0.02,0.70,0.33,-0.142),0x2E3033],
+      [BG(0.62,0.04,0.16,0.19,0.09,0),C_CHASSIS],[BG(0.15,0.06,0.03,0.38,0.11,0.115),C_CHROME],[BG(0.15,0.06,0.03,0.38,0.11,-0.115),C_CHROME],[BG(0.12,0.012,0.14,0.2,0.125,0),0x3B3D40]];
+      wheelSet([0.60,0.27,0.15],p);return p}},
+  us:{// North-American conventional: long hood, cab, tall sleeper, chrome stacks and tanks
+    body:[BG(0.22,0.15,0.22,0.61,0.215,0),BG(0.22,0.27,0.25,0.39,0.265,0),BG(0.18,0.31,0.25,0.19,0.285,0),BG(0.15,0.05,0.27,0.62,0.125,0)],
+    detail:()=>{const p=[[BG(0.006,0.075,0.22,0.501,0.335,0),C_GLASS],[BG(0.006,0.13,0.16,0.721,0.215,0),C_CHROME],[BG(0.03,0.04,0.26,0.72,0.12,0),C_CHROME],
+      [BG(0.08,0.07,0.004,0.43,0.33,0.126),C_GLASS],[BG(0.08,0.07,0.004,0.43,0.33,-0.126),C_GLASS],
+      [new THREE.CylinderGeometry(0.011,0.011,0.4,8).translate(0.29,0.33,0.132),C_CHROME],[new THREE.CylinderGeometry(0.011,0.011,0.4,8).translate(0.29,0.33,-0.132),C_CHROME],
+      [CY_X(0.035,0.15,0.38,0.1,0.118,10),C_CHROME],[CY_X(0.035,0.15,0.38,0.1,-0.118,10),C_CHROME],[BG(0.66,0.04,0.16,0.33,0.09,0),C_CHASSIS]];
+      wheelSet([0.62,0.14,0.02],p);return p}},
+  rigid:{// rigid truck: smaller cab-over, the load body sits on the same chassis
+    body:[BG(0.21,0.23,0.24,0.615,0.245,0),BG(0.17,0.03,0.22,0.615,0.375,0)],
+    detail:()=>{const p=[[BG(0.006,0.085,0.21,0.721,0.30,0),C_GLASS],[BG(0.006,0.06,0.16,0.721,0.185,0),C_GRILLE],[BG(0.03,0.035,0.24,0.715,0.115,0),0x3A3C3F],
+      [BG(0.08,0.065,0.004,0.67,0.30,0.121),C_GLASS],[BG(0.08,0.065,0.004,0.67,0.30,-0.121),C_GLASS],[BG(1.0,0.04,0.15,0.2,0.09,0),C_CHASSIS],[BG(0.12,0.05,0.03,0.42,0.105,0.11),C_CHROME]];
+      wheelSet([0.62,-0.12],p,0.048);return p}}};
+function ribs(x0,x1,y0,y1){const out=[];for(let x=x0+0.03;x<x1-0.02;x+=0.045)for(const z of [-0.127,0.127])out.push(BG(0.012,y1-y0,0.004,x,(y0+y1)/2,z));return out}
+const tailLamps=(x,p)=>{p.push([BG(0.01,0.03,0.05,x,0.11,0.09),C_RED],[BG(0.01,0.03,0.05,x,0.11,-0.09),C_RED])};
+const LOAD={
+  box_eu:{body:[BG(1.39,0.28,0.25,-0.255,0.27,0)],
+    detail:()=>{const p=[[BG(1.39,0.012,0.252,-0.255,0.135,0),0x8E9398],[BG(1.25,0.035,0.16,-0.3,0.11,0),C_CHASSIS],[BG(0.02,0.05,0.02,0.05,0.07,0.08),0x55585B],[BG(0.02,0.05,0.02,0.05,0.07,-0.08),0x55585B]];
+      tailLamps(-0.952,p);stripes(-0.62,-0.02,0.12,p);wheelSet([-0.62,-0.74,-0.86],p);return p}},
+  cont_eu:{body:[BG(1.22,0.26,0.25,-0.3,0.285,0),...ribs(-0.91,0.31,0.16,0.41)],
+    detail:()=>{const p=[[BG(1.3,0.03,0.2,-0.3,0.13,0),C_CHASSIS],[BG(0.006,0.24,0.24,-0.913,0.285,0),0x9AA0A5]];tailLamps(-0.95,p);stripes(-0.6,-0.05,0.12,p);wheelSet([-0.62,-0.74,-0.86],p);return p}},
+  tank_us:{body:[CY_X(0.12,1.18,-0.58,0.28,0,18),new THREE.SphereGeometry(0.12,16,10).scale(0.35,1,1).translate(0.01,0.28,0),new THREE.SphereGeometry(0.12,16,10).scale(0.35,1,1).translate(-1.17,0.28,0)],
+    detail:()=>{const p=[[BG(1.15,0.035,0.16,-0.6,0.13,0),C_CHASSIS],[BG(1.1,0.01,0.05,-0.58,0.405,0),0xA9AEB2],[BG(0.3,0.02,0.24,-0.55,0.13,0),0x7D8287]];
+      for(const x of [-1.0,-0.7,-0.4,-0.1])p.push([CY_X(0.122,0.012,x,0.28,0,18),0xA7ACB1]);tailLamps(-1.215,p);stripes(-0.8,-0.3,0.115,p);wheelSet([-0.97,-1.09],p);return p}},
+  box_us:{body:[BG(1.31,0.29,0.25,-0.595,0.275,0)],
+    detail:()=>{const p=[[BG(1.31,0.012,0.252,-0.595,0.135,0),0x8E9398],[BG(1.2,0.035,0.16,-0.6,0.11,0),C_CHASSIS]];tailLamps(-1.252,p);stripes(-0.9,-0.35,0.12,p);wheelSet([-0.97,-1.09],p);return p}},
+  box_rigid:{body:[BG(0.78,0.27,0.25,0.09,0.265,0)],
+    detail:()=>{const p=[[BG(0.78,0.012,0.252,0.09,0.13,0),0x8E9398]];tailLamps(-0.302,p);stripes(-0.05,0.35,0.115,p);return p}},
+  curtain_rigid:{body:[BG(0.76,0.24,0.245,0.09,0.27,0)],
+    detail:()=>{const p=[[BG(0.8,0.03,0.25,0.09,0.135,0),0x8B8F93],[BG(0.8,0.015,0.25,0.09,0.395,0),0x9A9EA2]];tailLamps(-0.312,p);
+      for(let x=-0.27;x<0.47;x+=0.15)for(const z of [-0.124,0.124])p.push([BG(0.012,0.24,0.004,x,0.27,z),0x6E7378]);
+      for(let x=-0.27;x<0.47;x+=0.05)for(const z of [-0.124,0.124])p.push([BG(0.008,0.012,0.004,x,0.165,z),0x3A3C3F]);return p}}};
+const KINDS=[{t:"eu",l:"box_eu",w:7},{t:"eu",l:"cont_eu",w:4},{t:"us",l:"tank_us",w:2},{t:"us",l:"box_us",w:3},{t:"rigid",l:"box_rigid",w:2},{t:"rigid",l:"curtain_rigid",w:2}];
+const KIND_OF=[];KINDS.forEach((k,i)=>{for(let j=0;j<k.w;j++)KIND_OF.push(i)});
+const MAXT=2600,TMESH=[];
+function IM(geo,mat,cast=true,colored=false,pick=false){const m=new THREE.InstancedMesh(geo,mat,MAXT);if(colored){m.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(MAXT*3).fill(1),3);m.instanceColor.setUsage(THREE.DynamicDrawUsage)}
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);m.castShadow=cast;m.receiveShadow=true;m.count=0;m.frustumCulled=false;m.userData={ids:new Int32Array(MAXT),n:0,pick};scene.add(m);TMESH.push(m);return m}
+const whiteParts=g=>mergeColored(g.map(x=>[x,0xffffff]));
+const bodyMat=()=>new THREE.MeshPhongMaterial({vertexColors:true,shininess:55,specular:0x3a3a3a});
+const TB={},TD={},LB={},LD={};
+for(const k in TRACTOR){TB[k]=IM(whiteParts(TRACTOR[k].body),bodyMat(),true,true,true);TD[k]=IM(mergeColored(TRACTOR[k].detail()),new THREE.MeshPhongMaterial({vertexColors:true,shininess:70,specular:0x444444}),true,false,true)}
+for(const k in LOAD){LB[k]=IM(whiteParts(LOAD[k].body),k==="tank_us"?new THREE.MeshPhongMaterial({vertexColors:true,shininess:110,specular:0x8a8a8a}):bodyMat(),true,true,true);LD[k]=IM(mergeColored(LOAD[k].detail()),new THREE.MeshLambertMaterial({vertexColors:true}),true,false,true)}
+const T_lights=IM(mergeColored([[BG(0.012,0.03,0.055,0.728,0.15,0.09),0xFFF6D8],[BG(0.012,0.03,0.055,0.728,0.15,-0.09),0xFFF6D8]]),new THREE.MeshBasicMaterial({vertexColors:true}),false);
 // headlight beams: a soft additive pool on the road ahead of each cab, plus a glow at the lamps
 const beamTex=(()=>{const c=document.createElement("canvas");c.width=128;c.height=64;const g=c.getContext("2d");const gr=g.createRadialGradient(10,32,2,30,32,110);gr.addColorStop(0,"rgba(255,244,214,0.95)");gr.addColorStop(0.45,"rgba(255,228,170,0.35)");gr.addColorStop(1,"rgba(255,220,150,0)");g.fillStyle=gr;g.beginPath();g.moveTo(0,26);g.lineTo(128,0);g.lineTo(128,64);g.lineTo(0,38);g.closePath();g.fill();const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;return t})();
 const T_beam=IM(new THREE.PlaneGeometry(1.5,0.75).rotateX(-Math.PI/2).translate(1.48,0.03,0),new THREE.MeshBasicMaterial({map:beamTex,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:0.9}),false);
-const T_glow=IM(new THREE.PlaneGeometry(0.34,0.2).translate(0,0,0).rotateY(Math.PI/2).translate(0.74,0.1,0),new THREE.MeshBasicMaterial({map:radialTex([[0,"rgba(255,250,235,1)"],[0.3,"rgba(255,230,180,0.5)"],[1,"rgba(255,220,150,0)"]]),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
+const T_glow=IM(new THREE.PlaneGeometry(0.34,0.2).rotateY(Math.PI/2).translate(0.74,0.15,0),new THREE.MeshBasicMaterial({map:radialTex([[0,"rgba(255,250,235,1)"],[0.3,"rgba(255,230,180,0.5)"],[1,"rgba(255,220,150,0)"]]),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
 T_beam.receiveShadow=T_glow.receiveShadow=false;T_beam.renderOrder=T_glow.renderOrder=3;
-const CAB_COLORS=[0xF4F4F2,0xF4F4F2,0xD8262B,0x1E4E9A,0xF4F4F2,0x2E7D4F,0xE8B21A,0x5B5F63,0xB7BCC0].map(c=>new THREE.Color(c));
-const BOX_COLORS=[0xEDEDEA,0x1F4E8C,0xB23A2E,0x2D6A4F,0x8D9295,0xD9822B,0xEDEDEA,0x264653,0xA3A6A8].map(c=>new THREE.Color(c));
-const TANK_COLORS=[0xD9DCDF,0xC2C6CA,0xE6E2D6].map(c=>new THREE.Color(c));
+// liveries: mostly white and silver (as on the reference sheet), a few fleet colours
+const cols=a=>a.map(c=>new THREE.Color(c));
+const CAB_TINTS=cols([0xF4F4F2,0xF4F4F2,0xF4F4F2,0xF4F4F2,0xF0F1F2,0xE6E8EA,0xC9CDD1,0xF4F4F2,0x8A1538,0x1F3B63,0xA92A23,0xF4F4F2,0xDADDE0]);
+const LOAD_TINTS={box_eu:cols([0xF2F2F0,0xF2F2F0,0xF2F2F0,0xE4E6E8,0xD3D6D9,0xF2F2F0,0x2A5C8A]),box_us:cols([0xF2F2F0,0xF2F2F0,0xE4E6E8,0xCDD1D5]),box_rigid:cols([0xF2F2F0,0xF2F2F0,0xE9EAEB,0xD8DBDE]),
+  cont_eu:cols([0xE8E9EA,0xD4D7DA,0x8A1538,0x2A5C8A,0x3E6B48,0xB5652B,0xE8E9EA,0x6B7075]),tank_us:cols([0xDCE0E4,0xC7CCD1,0xE8EAEC]),curtain_rigid:cols([0xEDEDE8,0xE2E2DC,0x2A5C8A,0xC8C8C2])};
+const GHOST=new THREE.Color(0x6B6E73),C_RL=new THREE.Color(0xD5304C),C_GL=new THREE.Color(0x1FA36B);
 const beam=new THREE.Group();beam.add(new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,3,10),new THREE.MeshBasicMaterial({color:0x2F8CFF,transparent:true,opacity:0.55})));beam.children[0].position.y=1.9;
 const ring=new THREE.Mesh(new THREE.RingGeometry(0.62,0.74,48),new THREE.MeshBasicMaterial({color:0x2F8CFF,side:THREE.DoubleSide,transparent:true,opacity:0.9,depthWrite:false}));ring.rotation.x=-Math.PI/2;ring.position.y=0.05;beam.add(ring);beam.visible=false;scene.add(beam);
 const C_OK=new THREE.Color(0x2EAE7E),C_MID=new THREE.Color(0xF0A81C),C_BAD=new THREE.Color(0xD21F55),C_TRACK=new THREE.Color(0x2F8CFF);
@@ -370,7 +424,7 @@ const C_OK=new THREE.Color(0x2EAE7E),C_MID=new THREE.Color(0xF0A81C),C_BAD=new T
 // stage, then its entry manoeuvre into the slot. The drive takes the simulated drive time (moveT -> arrT), with
 // smooth acceleration and braking, so trucks move at a believable pace at every speed and never leave the roads.
 // Trucks on the public road form a single-file queue that creeps forward without overtaking.
-const disp=new Map(),leaving=[];let instIds=[];let simT=0;
+const disp=new Map(),leaving=[];let simT=0;
 function hashId(id){return id*2654435761>>>0}
 function chaikin(w){if(w.length<3)return w;const o=[w[0]];for(let i=0;i<w.length-1;i++){const a=w[i],b=w[i+1],rv=!!b.rev;o.push({x:a.x*0.75+b.x*0.25,z:a.z*0.75+b.z*0.25,rev:rv},{x:a.x*0.25+b.x*0.75,z:a.z*0.25+b.z*0.75,rev:rv})}o.push(w[w.length-1]);return o}
 function mkPoly(w){const xs=[],zs=[],rv=[],cum=[];for(const p of w){if(xs.length){const dd=Math.hypot(p.x-xs[xs.length-1],p.z-zs[zs.length-1]);if(dd<1e-4)continue;cum.push(cum[cum.length-1]+dd)}else cum.push(0);xs.push(p.x);zs.push(p.z);rv.push(!!p.rev)}return{xs,zs,rv,cum,L:cum[cum.length-1]}}
@@ -395,9 +449,9 @@ function settle(d){// a parked truck whose slot geometry changed (capacity edite
   const ns=slotOf(d.stage,d.slot);d.ver=G.ver;if(!ns||Math.hypot(ns.x-d.x,ns.z-d.z)<0.02){d.slotRef=ns;return}
   d.slotRef=ns;d.goal=ns;d.goalRot=ns.rot;d.pl=mkPoly([{x:d.x,z:d.z},{x:ns.x,z:ns.z}]);d.t0=simT;d.t1=simT+Math.max(0.2,d.pl.L/V_DRIVE);d.mode="move"}
 function turn(d,target,k){let da=target-d.rot;while(da>Math.PI)da-=2*Math.PI;while(da<-Math.PI)da+=2*Math.PI;d.rot+=da*k}
-const cnt={b:0,t:0,f:0};const WHITE=new THREE.Color(1,1,1);let nightOn=false;
+let nightOn=false;
 function updateTrucks(dt,dT){
-  let n=0;instIds.length=0;cnt.b=cnt.t=cnt.f=0;const k=Math.min(1,dt*9);
+  const k=Math.min(1,dt*9);
   // 1) public-road queue
   const order=sim.stages[0].order;let prev=Infinity;
   for(let i=0;i<order.length;i++){const tr=order[i];let d=disp.get(tr.id);
@@ -413,21 +467,21 @@ function updateTrucks(dt,dT){
   // 3) released trucks drive off the end of the route
   for(const [id,d] of disp){if(d.seen){d.seen=false;continue}disp.delete(id);plan(d,null);leaving.push(d)}
   for(let i=leaving.length-1;i>=0;i--){const d=leaving[i];const f=(simT-d.t0)/(d.t1-d.t0);if(f>=1){leaving.splice(i,1);continue}const q=polyAt(d.pl,d.pl.L*ease(f));d.x=q.x;d.z=q.z;turn(d,q.ang,k)}
-  // 4) instances
-  const status=state.show.status,t=sim.t;
-  for(const [id,d] of disp){if(n>=MAXT)break;const tr=sim.active.get(id);const age=tr?(t-tr.arr)/60:0;
-    setInst(n,d,tr&&tr===state.tracked?C_TRACK:status?(age<2?C_OK:age<6?C_MID:C_BAD):CAB_COLORS[d.h%CAB_COLORS.length]);instIds[n]=id;n++}
-  for(const d of leaving){if(n>=MAXT)break;setInst(n,d,status?C_OK:CAB_COLORS[d.h%CAB_COLORS.length]);instIds[n]=-1;n++}
-  for(const m of [T_detail,T_cab,T_cabTop,T_lights,T_beam,T_glow])m.count=n;
-  T_box.count=cnt.b;T_tank.count=cnt.t;T_flat.count=cnt.f;
-  for(const m of [T_detail,T_cab,T_cabTop,T_box,T_tank,T_flat,T_lights,T_beam,T_glow]){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true}
+  // 4) instances: tracked truck blue; filtered-out trucks grey; optional colour by wait or by risk lane
+  for(const m of TMESH)m.userData.n=0;
+  const status=state.show.status,lane=state.show.lane,t=sim.t,fa=filterActive();
+  for(const [id,d] of disp){const tr=sim.active.get(id);let cc=null,lc=null;
+    if(tr&&tr===state.tracked)cc=C_TRACK;else if(fa&&tr&&!matchF(tr))cc=lc=GHOST;else if(lane&&tr)cc=tr.a&&tr.a.red?C_RL:C_GL;
+    else if(status&&tr){const age=(t-tr.arr)/60;cc=age<2?C_OK:age<6?C_MID:C_BAD}
+    if(!putTruck(d,id,cc,lc))break}
+  for(const d of leaving){if(!putTruck(d,-1,fa?GHOST:null,fa?GHOST:null))break}
+  for(const m of TMESH){m.count=m.userData.n;m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true}
   if(state.tracked){const d=disp.get(state.tracked.id);if(d)beam.position.set(d.x,0,d.z)}
 }
-function setInst(n,d,col){Q.setFromAxisAngle(YA,-d.rot);PV.set(d.x,0,d.z);M4.compose(PV,Q,S1);
-  T_detail.setMatrixAt(n,M4);T_cab.setMatrixAt(n,M4);T_cab.setColorAt(n,col);T_cabTop.setMatrixAt(n,M4);T_lights.setMatrixAt(n,M4);T_beam.setMatrixAt(n,M4);T_glow.setMatrixAt(n,M4);
-  const kind=d.h%10;if(kind<6){T_box.setMatrixAt(cnt.b,M4);T_box.setColorAt(cnt.b,BOX_COLORS[(d.h>>>4)%BOX_COLORS.length]);cnt.b++}
-  else if(kind<8){T_tank.setMatrixAt(cnt.t,M4);T_tank.setColorAt(cnt.t,TANK_COLORS[(d.h>>>4)%TANK_COLORS.length]);cnt.t++}
-  else{T_flat.setMatrixAt(cnt.f,M4);T_flat.setColorAt(cnt.f,WHITE);cnt.f++}}
+function put(m,id,col){const n=m.userData.n;if(n>=MAXT)return false;m.setMatrixAt(n,M4);if(col)m.setColorAt(n,col);m.userData.ids[n]=id;m.userData.n=n+1;return true}
+function putTruck(d,id,cc,lc){Q.setFromAxisAngle(YA,-d.rot);PV.set(d.x,0,d.z);M4.compose(PV,Q,S1);const K=KINDS[KIND_OF[d.h%KIND_OF.length]];const lt=LOAD_TINTS[K.l];
+  const ok=put(TB[K.t],id,cc||CAB_TINTS[(d.h>>>7)%CAB_TINTS.length]);put(TD[K.t],id);put(LB[K.l],id,lc||lt[(d.h>>>3)%lt.length]);put(LD[K.l],id);
+  put(T_lights,id);put(T_beam,id);put(T_glow,id);return ok}
 
 // ===== Heat, sky, sun =====
 const HC=[new THREE.Color(0x2E9E78),new THREE.Color(0xE0A21B),new THREE.Color(0xC2185B)],HT=new THREE.Color();
@@ -465,7 +519,7 @@ function startSim(){const flow=FLOWS[state.flow];
 let acc=0,last=performance.now(),uiT=0,frames=0;
 function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;let dT=0;
   if(sim&&state.speed>0){dT=dt*state.speed;acc+=dT;let guard=0;while(acc>=1&&guard<200){sim.step();acc-=1;guard++;if(sim.t%1440===0)sim.dayStart=sim.t}simT=sim.t+acc}
-  if(sim){updateTrucks(dt,dT);uiT+=dt;if(uiT>0.25){uiT=0;updateLabelValues();updateHeat();updateKpis();updateStrip();flushFeed();if(state.tracked)renderJourney()}updateLight()}
+  if(sim){updateTrucks(dt,dT);uiT+=dt;if(uiT>0.25){uiT=0;updateLabelValues();updateHeat();updateKpis();updateStrip();flushFeed();updateFilterPanel();if(state.tracked)renderJourney()}updateLight()}
   pulse(now);stepCam(now,dt);controls.update();updateLabels();renderer.render(scene,camera);
   if(++frames===3)setTimeout(()=>$("loading").classList.add("done"),250);requestAnimationFrame(frame)}
 function pulse(now){const s=1+0.25*Math.sin(now/260);decor.children.forEach(o=>{if(o.userData.pulse){o.scale.set(s,1,s);o.material.opacity=0.55+0.35*Math.sin(now/260)}})}
@@ -533,7 +587,7 @@ function renderJourney(){const tr=state.tracked;if(!tr)return;const st=G.flow.st
   const when={};for(const [j,t] of tr.log)if(j>=0)when[j]=t;const d=disp.get(tr.id);const moving=d&&d.mode==="move";
   const lis=st.map((s,j)=>{if(!tr.route[j])return s.optional&&!s.optional(sim.p)?"":`<li class="skip"><span>${esc(s.en)}</span><time>not selected</time></li>`;const cls=j<tr.stage?"done":j===tr.stage?"now":"";return `<li class="${cls}"><span>${esc(s.en)}${j===tr.stage&&tr.waiting?" · waiting":""}</span><time>${when[j]!=null?fmtT(when[j]):""}</time></li>`}).join("");
   const now=st[tr.stage].en,h=(sim.t-tr.arr)/60;
-  $("journey").innerHTML=`<div class="tcard"><div class="top">${plateHTML(tr.plate)}<span class="el num">${fmtH(h)}</span></div><p class="hint" style="margin:8px 0 0">${moving?"Driving to":"At"} <b>${esc(now)}</b>${tr.waiting?", waiting for the next stage":""}.</p>
+  $("journey").innerHTML=`<div class="tcard"><div class="top">${plateHTML(tr.plate)}<span class="el num">${fmtH(h)}</span></div>${tr.a?attrsHTML(tr.a):""}<p class="hint" style="margin:8px 0 0">${moving?"Driving to":"At"} <b>${esc(now)}</b>${tr.waiting?", waiting for the next stage":""}.</p>
    <div class="row"><button class="btn" id="fwBtn">${follow?"Stop following":"Follow"}</button><button class="btn" id="chBtn" aria-pressed="${chase}">${chase?"Free camera":"Chase cam"}</button><button class="btn ghost" id="untBtn">Clear</button></div><ul class="journey">${lis}</ul></div>`;
   $("fwBtn").onclick=()=>{follow=!follow;if(follow){const dd=disp.get(tr.id);if(dd)flyTo(dd.x,dd.z,9,0.5,null,1)}renderJourney()};$("chBtn").onclick=()=>{chase=!chase;follow=follow||chase;renderJourney()};$("untBtn").onclick=untrack;
   const tg=$("trackTag");if(tg)tg.innerHTML=`<div class="card">${plateHTML(tr.plate)} <b>${fmtH(h)}</b> · ${esc(now)}</div><div class="stem"></div>`}
@@ -542,8 +596,8 @@ $("randBtn").onclick=()=>{const arr=[...sim.active.values()].filter(t=>t.stage>0
 const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let downAt=null;
 renderer.domElement.addEventListener("pointerdown",e=>{downAt=[e.clientX,e.clientY]});
 renderer.domElement.addEventListener("pointerup",e=>{if(!downAt||Math.hypot(e.clientX-downAt[0],e.clientY-downAt[1])>5)return;const r=renderer.domElement.getBoundingClientRect();
-  mouse.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects([T_cab,T_detail])[0];
-  if(hit&&hit.instanceId!=null){const id=instIds[hit.instanceId];const tr=sim.active.get(id);if(tr)track(tr.plate)}});
+  mouse.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects(TMESH.filter(m=>m.userData.pick&&m.count>0))[0];
+  if(hit&&hit.instanceId!=null){const id=hit.object.userData.ids[hit.instanceId];const tr=sim.active.get(id);if(tr)track(tr.plate)}});
 
 // ===== Panels, tabs, map controls, keyboard =====
 function setFold(side,folded){const el=$(side==="left"?"left":"right");el.classList.toggle("folded",folded);document.body.classList.toggle(side==="left"?"foldL":"foldR",folded);if(G&&!userMoved)setTimeout(fitCamera,360);$(side==="left"?"railL":"railR").classList.toggle("on",folded);store.set("fold:"+side,folded)}
@@ -553,10 +607,13 @@ function openTab(k){for(const b of document.querySelectorAll(".tabs button"))b.s
 for(const b of document.querySelectorAll(".tabs button"))b.onclick=()=>openTab(b.dataset.tab);
 function toggleBtn(id,key,fn){const b=$(id);b.setAttribute("aria-pressed",state.show[key]);b.onclick=()=>{state.show[key]=!state.show[key];b.setAttribute("aria-pressed",state.show[key]);if(fn)fn();renderLegend()}}
 toggleBtn("tLabels","labels");toggleBtn("tRoute","route",()=>{const r=world.getObjectByName("route");if(r)r.visible=state.show.route});
-toggleBtn("tBays","bays",()=>{const b=decor.getObjectByName("bays");if(b)b.visible=state.show.bays});toggleBtn("tStatus","status");toggleBtn("tFly","fly");
+toggleBtn("tBays","bays",()=>{const b=decor.getObjectByName("bays");if(b)b.visible=state.show.bays});toggleBtn("tStatus","status",()=>{if(state.show.status&&state.show.lane){state.show.lane=false;$("tLane").setAttribute("aria-pressed",false)}});
+toggleBtn("tLane","lane",()=>{if(state.show.lane&&state.show.status){state.show.status=false;$("tStatus").setAttribute("aria-pressed",false)}});toggleBtn("tFly","fly");
 $("recenter").onclick=()=>{userMoved=false;follow=false;camAnim=null;fitCamera()};
 function renderLegend(){const it=[["#F2BE2E","Route outside the port"],["#2FD39A","Route inside the port"],["#FFB938","Added capacity"],["#FF3B5C","Removed capacity"]];
   if(state.show.status)it.push(["#2EAE7E","Cab: under 2 h"],["#F0A81C","Cab: 2 to 6 h"],["#D21F55","Cab: over 6 h"]);
+  if(state.show.lane)it.push(["#D5304C","Cab: red lane (inspection)"],["#1FA36B","Cab: green lane"]);
+  if(filterActive())it.push(["#6B6E73","Outside the filter"]);
   $("legend").innerHTML=it.map(([c,t])=>`<span><i style="background:${c}"></i>${t}</span>`).join("")}
 renderLegend();
 $("speeds").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;setSpeed(+b.dataset.s)});
@@ -568,9 +625,8 @@ $("themeBtn").onclick=()=>{const dark=document.documentElement.dataset.theme?doc
 $("helpBtn").onclick=()=>{$("help").hidden=false};$("helpClose").onclick=()=>{$("help").hidden=true;store.set("helped",true)};
 addEventListener("keydown",e=>{if(e.target.closest("input,textarea,select"))return;
   if(e.key==="["){setFold("left",!$("left").classList.contains("folded"))}else if(e.key==="]"){setFold("right",!$("right").classList.contains("folded"))}
-  else if(e.key===" "){e.preventDefault();if(state.speed>0){lastSpeed=state.speed;setSpeed(0)}else setSpeed(lastSpeed||2)}else if(e.key==="Escape"){$("help").hidden=true;if(state.tracked)untrack()}});
-{const a=$("variantLink");if(typeof ALT_HREF!=="undefined"&&ALT_HREF){a.textContent=ILLUS?"Satellite view":"Illustrated view";a.href=ALT_HREF;a.title=ILLUS?"Open the version on real satellite imagery":"Open the illustrated, rendered version"}else a.hidden=true}
-$("aboutTxt").textContent=(ILLUS?"Ground is an illustrated rendering generated from the satellite imagery, at true scale. ":"Ground is real satellite imagery at true scale. ")+"Truck routes follow the roads of the GAC trip maps. Volumes, service times and capacities are illustrative until real gate and declaration data is connected. Idle emissions assume 8 kg CO₂ per truck-hour of queuing.";
+  else if(e.key===" "){e.preventDefault();if(state.speed>0){lastSpeed=state.speed;setSpeed(0)}else setSpeed(lastSpeed||2)}else if(e.key==="Escape"){if(!$("studio").hidden){closeStudio();return}$("help").hidden=true;if(state.tracked)untrack()}});
+$("aboutTxt").textContent="Ground is an illustrated rendering generated from satellite imagery, at true scale. "+"Truck routes follow the roads of the GAC trip maps. Volumes, service times and capacities are illustrative until real gate and declaration data is connected. Idle emissions assume 8 kg CO₂ per truck-hour of queuing.";
 
 // ===== Planner =====
 function renderControls(){const f=state.flow,p=state.params[f];let html="";
@@ -585,7 +641,7 @@ function refreshOutputs(){const f=state.flow,p=state.params[f],b=state.base[f];
     const c=document.querySelector(`.cnt[data-g="${gi}"]`);if(c){c.hidden=!n;c.textContent=n+" changed"}})}
 let decorT=null,flyT=null;
 function setParam(k,v,user){const f=state.flow,p=state.params[f];const prev=p[k];p[k]=v;if(sim)sim.p[k]=v;refreshOutputs();clearTimeout(decorT);decorT=setTimeout(rebuildCapacity,90);
-  if(!user||prev===v)return;const key=PARAM_STAGE[k];if(!key||!G.geo.st[key])return;const b=state.base[f][k];const def=sliderDef(f,k);
+  if(!user||prev===v)return;const key=stageOfParam(f,k);if(!key||!G.geo.st[key])return;const b=state.base[f][k];const def=sliderDef(f,k);
   if(UNIT_NOUN[k]){const dlt=v-b;showCallout(key,dlt===0?"Back to baseline":(dlt>0?"+":"−")+Math.abs(dlt)+" "+UNIT_NOUN[k],dlt<0)}
   else showCallout(key,`${def[1]}: ${b} → ${v}${def[5]}`,false);
   if(state.show.fly){clearTimeout(flyT);flyT=setTimeout(()=>{if(!follow)flyToStage(key)},450)}}
@@ -621,7 +677,8 @@ $("runOpt").onclick=()=>{const key=$("optRes").value,target=+$("optTarget").valu
     else if(res.ok)html=`<div class="verdict">${lab}: <b>${res.start} → ${res.v}</b> brings the average to ${fmtH(res.r.avgH)} (${res.tried.length} values tested).</div><div class="row"><button class="btn primary" id="optApply">Apply ${res.v} and show me</button></div>`;
     else html=`<div class="verdict">Even at ${res.v}, the average stays at ${fmtH(res.r.avgH)}. ${lab} is not what limits the port. The limiting stage is <b>${res.r.bottleneck>=0?esc(st[res.r.bottleneck].en):"elsewhere"}</b>.</div>`;
     $("optOut").innerHTML=html;const a=$("optApply");if(a)a.onclick=()=>{setParam(key,res.v,true);toast(lab+" set to "+res.v)}},30)};
-function setFlow(f){state.flow=f;$("fImport").setAttribute("aria-pressed",f==="import");$("fExport").setAttribute("aria-pressed",f==="export");buildWorld();startSim();renderControls();$("fcBlock").hidden=true;$("optOut").innerHTML="";renderChips()}
+function setFlow(f){state.flow=f;$("fImport").setAttribute("aria-pressed",f==="import");$("fExport").setAttribute("aria-pressed",f==="export");buildWorld();startSim();renderControls();$("fcBlock").hidden=true;$("optOut").innerHTML="";renderChips();
+  clearFilters();renderTTMChips();runTTM();$("planChip").hidden=true;document.body.classList.remove("hasPlan");closeStudio();GS.key=null;GS.touched=false;if($("left").querySelector('[data-ppane="goal"]').classList.contains("on"))refreshGoalNow()}
 $("fImport").onclick=()=>setFlow("import");$("fExport").onclick=()=>setFlow("export");
 
 // ===== Ask the twin =====
@@ -660,6 +717,195 @@ async function initCaps(){if(!window.claude||!window.claude.use)return;
     for(const e of sim.events){const ts=new Date(base.getTime()+(e.t-1440)*60000);const iso=ts.getFullYear()+"-"+String(ts.getMonth()+1).padStart(2,"0")+"-"+String(ts.getDate()).padStart(2,"0")+"T"+fmtT(e.t);const s=e.stage>=0?st[e.stage]:{en:"Left the port",ar:"غادر المنفذ"};lines.push([iso,e.plate,e.plate.split(" ")[0],s.en,s.ar,state.flow].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(","))}
     if(lines.length<2){toast("No gate reads yet. Let the twin run a little.");return}try{await d.save({filename:`abu-samra-${state.flow}-gate-events.csv`,data:"﻿"+lines.join("\n")})}catch(err){if(err&&err.code==="unavailable")$("csvBtn").hidden=true}}}).catch(()=>{})}
 const _rel=Sim.prototype.release;Sim.prototype.release=function(tr){_rel.call(this,tr);if(this.events)this.events.push({t:this.t,plate:tr.plate,stage:-1})};
+// ===== Live filters and bottleneck pattern =====
+const ORIG_LABEL={KSA:"Saudi Arabia",UAE:"UAE",TUR:"Türkiye",IND:"India",OMN:"Oman",CHN:"China",KWT:"Kuwait",JOR:"Jordan",EGY:"Egypt",BHR:"Bahrain",IRQ:"Iraq"};
+state.filter={o:new Set(),k:new Set(),lane:null,aeo:null,pre:null};
+function filterActive(){const F=state.filter;return !!(F&&(F.o.size||F.k.size||F.lane||F.aeo!=null||F.pre!=null))}
+function matchF(tr){const F=state.filter,a=tr.a;if(!a)return false;if(F.o.size&&!F.o.has(a.o))return false;if(F.k.size&&!F.k.has(a.k))return false;
+  if(F.lane&&(F.lane==="red")!==a.red)return false;if(F.aeo!=null&&F.aeo!==a.aeo)return false;if(F.pre!=null&&F.pre!==a.pre)return false;return true}
+const originsOf=f=>ORIGINS[f]||ORIGINS.import;
+const originName=(f,i)=>{const o=originsOf(f)[i];return o?ORIG_LABEL[o[0]]||o[0]:"?"};
+function facets(){const f=state.flow;return[
+  {id:"lane",label:"Risk lane",single:true,vals:[{v:"red",label:"Red: physical inspection",sw:"var(--red-lane)",t:a=>a.red},{v:"green",label:"Green: no inspection",sw:"var(--green-lane)",t:a=>!a.red}]},
+  {id:"aeo",label:"Authorized Economic Operator (AEO)",single:true,vals:[{v:true,label:"AEO",t:a=>a.aeo},{v:false,label:"Not AEO",t:a=>!a.aeo}]},
+  {id:"pre",label:"Pre-arrival declaration",single:true,vals:[{v:true,label:"Filed",t:a=>a.pre},{v:false,label:"Not filed",t:a=>!a.pre}]},
+  {id:"o",label:f==="import"?"Country of loading":"Destination",vals:originsOf(f).map((o,i)=>({v:i,label:ORIG_LABEL[o[0]]||o[0],t:a=>a.o===i}))},
+  {id:"k",label:"Cargo",vals:CARGO.map((c,i)=>({v:i,label:c[0],t:a=>a.k===i}))}]}
+const isOn=(fc,v)=>fc.single?state.filter[fc.id]===v:state.filter[fc.id].has(v);
+function toggleF(fc,v){const F=state.filter;if(fc.single)F[fc.id]=F[fc.id]===v?null:v;else{if(F[fc.id].has(v))F[fc.id].delete(v);else F[fc.id].add(v)}renderFilters();updateFilterPanel(true)}
+function clearFilters(){state.filter={o:new Set(),k:new Set(),lane:null,aeo:null,pre:null};renderFilters();updateFilterPanel(true)}
+function renderFilters(){const fcs=facets();
+  $("fGroups").innerHTML=fcs.map((fc,gi)=>`<div class="fgroup"><span>${esc(fc.label)}</span><div class="chips">${fc.vals.map((v,vi)=>`<button class="chip" data-g="${gi}" data-v="${vi}" aria-pressed="${isOn(fc,v.v)}">${v.sw?`<i class="sw" style="background:${v.sw}"></i>`:""}${esc(v.label)}</button>`).join("")}</div></div>`).join("");
+  for(const b of $("fGroups").querySelectorAll(".chip"))b.onclick=()=>{const fc=fcs[+b.dataset.g];toggleF(fc,fc.vals[+b.dataset.v].v)};
+  const F=state.filter;const n=F.o.size+F.k.size+(F.lane?1:0)+(F.aeo!=null?1:0)+(F.pre!=null?1:0);
+  $("filtersTab").innerHTML="Filters"+(n?`<span class="badge">${n}</span>`:"");renderLegend()}
+let patT=0;
+function updateFilterPanel(force){if(!sim)return;const vis=$("right").querySelector('[data-pane="filters"]').classList.contains("on")&&!$("right").classList.contains("folded");if(!vis&&!force)return;
+  const st=G.flow.stages,fa=filterActive();let n=0,m=0,hs=0;const per=st.map(()=>0);
+  for(const tr of sim.active.values()){if(tr.stage<=0)continue;n++;if(!fa||matchF(tr)){m++;hs+=(sim.t-tr.arr)/60;per[tr.stage]++}}
+  $("fSum").innerHTML=fa?`<b>${m}</b><span>of ${n} trucks in the port match</span>${m?`<span class="num" style="color:var(--muted)">· ${(hs/m).toFixed(1)} h so far</span>`:""}<button class="btn ghost clr" id="fClear" style="padding:5px 9px">Clear</button>`
+    :`<b>${n}</b><span>trucks in the port. No filter set.</span>`;
+  const fc=$("fClear");if(fc)fc.onclick=clearFilters;
+  const mx=Math.max(1,...per);$("fOcc").innerHTML=st.map((s,i)=>i===0?"":`<div class="r" data-k="${s.key}"><span class="nm"><i class="z-${s.zone}">${s.num}</i>${esc(s.en)}</span><span class="vv">${per[i]}</span><span class="bar"><b style="width:${per[i]/mx*100}%;background:var(--maroon)"></b></span></div>`).join("");
+  for(const el of $("fOcc").children)el.onclick=()=>flyToStage(el.dataset.k);
+  const now=performance.now();if(force||now-patT>1200){patT=now;renderPattern()}}
+const PATTERN_WHY={lane:{red:"Red-lane trucks wait for physical inspection. AI risk targeting or more AEO members move trucks to the green lane."},
+  aeo:{false:"Operators outside the AEO programme are inspected more often. Growing AEO membership shrinks this group."},
+  pre:{false:"Without a pre-arrival declaration, clearance takes longer. Requiring pre-arrival filing shortens their stay."}};
+function renderPattern(){const st=G.flow.stages;let bn=bottleneck(),busiest=false;
+  if(bn<0){let bu=0.7;st.forEach((s,i)=>{if(i===0)return;const c=sim.cap(i);if(!(c>0)||!isFinite(c))return;const u=sim.stages[i].occ/c;if(u>bu){bu=u;bn=i;busiest=true}})}
+  if(bn<0){$("pattern").innerHTML=`<p class="hint" style="margin:0">No stage is holding trucks right now. A pattern appears when a stage fills up and trucks queue for it.</p>`;return}
+  const held=[...sim.stages[bn].queue];for(const tr of sim.active.values())if(tr.stage===bn)held.push(tr);
+  const all=[...sim.active.values()].filter(t=>t.a);const H=held.filter(t=>t.a);
+  const head=`<div class="bnhead">${busiest?"Busiest stage":"Bottleneck now"}: <b>${esc(st[bn].en)}</b><span class="num" style="margin-left:auto">${H.length} held</span></div>`;
+  if(H.length<5){$("pattern").innerHTML=head+`<p class="hint" style="margin:8px 0 0">Too few trucks held there to read a pattern yet.</p>`;return}
+  const cand=[];for(const fc of facets())for(const v of fc.vals){const sH=H.filter(t=>v.t(t.a)).length/H.length,sA=all.filter(t=>v.t(t.a)).length/Math.max(1,all.length);
+    if(sH>=0.25&&sA>0&&sH/sA>=1.2)cand.push({fc,v,sH,sA,lift:sH/sA})}
+  cand.sort((a,b)=>(b.sH-b.sA)-(a.sH-a.sA));const top=[];const seen=new Set();for(const c of cand){if(seen.has(c.fc.id))continue;seen.add(c.fc.id);top.push(c);if(top.length===3)break}
+  if(!top.length){$("pattern").innerHTML=head+`<p class="hint" style="margin:8px 0 0">Trucks held at ${esc(st[bn].en.toLowerCase())} look like the rest of the port: no lane, operator, origin or cargo stands out. This is a capacity limit, so more lanes or faster processing there will help more than risk or paperwork programmes.</p>`;return}
+  const why=c=>{const w=PATTERN_WHY[c.fc.id];if(w&&w[String(c.v.v)])return w[String(c.v.v)];if(c.fc.id==="o")return state.flow==="import"?`Loads from ${c.v.label} carry a higher risk score and are sent to inspection more often.`:`Trucks bound for ${c.v.label} carry a higher risk score.`;if(c.fc.id==="k")return `${c.v.label} carry a higher risk score and are inspected more often.`;return ""};
+  $("pattern").innerHTML=head+`<div class="pattern">${top.map(c=>`<div class="p"><span><b>${esc(c.fc.label)}: ${esc(c.v.label)}</b></span><span class="lift">${c.lift.toFixed(1)}×</span>
+    <span class="cmpbar" title="${Math.round(c.sH*100)}% at the bottleneck, ${Math.round(c.sA*100)}% port-wide"><b style="width:${c.sH*100}%"></b><s style="left:calc(${c.sA*100}% - 1px)"></s></span>
+    <small>${Math.round(c.sH*100)}% of trucks held here, against ${Math.round(c.sA*100)}% port-wide (black tick). ${esc(why(c))}</small></div>`).join("")}</div>
+    <div class="row"><button class="btn" id="patApply">Show these trucks on the map</button></div>`;
+  $("patApply").onclick=()=>{clearFilters();const c=top[0];toggleF(c.fc,c.v.v);toast("Showing "+c.fc.label.toLowerCase()+": "+c.v.label.toLowerCase()+". Other trucks are grey.")}}
+const attrsHTML=a=>`<div class="attrs"><span class="${a.red?"red":"green"}">${a.red?"Red lane":"Green lane"}</span><span>${a.aeo?"AEO operator":"Not AEO"}</span><span>${a.pre?"Pre-arrival filed":"No pre-arrival filing"}</span><span>${esc((state.flow==="import"?"Loaded in ":"To ")+originName(state.flow,a.o))}</span><span>${esc(CARGO[a.k][0])}</span></div>`;
+
+// ===== Planner tabs =====
+function setPtab(k){for(const b of document.querySelectorAll(".ptabs button"))b.setAttribute("aria-selected",b.dataset.ptab===k);for(const p of document.querySelectorAll("#left .pane"))p.classList.toggle("on",p.dataset.ppane===k);
+  if(k==="goal")refreshGoalNow();store.set("ptab",k)}
+for(const b of document.querySelectorAll(".ptabs button"))b.onclick=()=>setPtab(b.dataset.ptab);
+
+// ===== Text to map =====
+const TTM_EX={import:["Add 2 X-ray lanes and cut clearance time by 30 minutes","Open one more appointment gate, expand main parking by 100 slots","Raise AEO membership to 40% and get pre-arrival declarations to 70%","Traffic grows 20% during Eid, add 20 inspection ramps","أضف ٢ مسارات أشعة وخفض وقت التخليص ٣٠ دقيقة"],
+  export:["Add a second permit gate and 4 operational parking slots","Cut document time by 20 minutes and open another release lane","Raise AEO membership to 40%","زيادة رمبات التفتيش إلى ١٤"]};
+let ttmRes=null;
+const fmtV=(v,u)=>(Math.round(v*100)/100)+(u||"");
+function runTTM(){const txt=$("ttmIn").value;ttmRes=txt.trim()?parseText(txt,state.flow,state.params[state.flow],sliderDef):null;renderTTM()}
+function renderTTM(){const ul=$("ttmOut");if(!ttmRes){ul.innerHTML="";$("ttmApply").disabled=true;$("ttmApply").textContent="Apply to what-if";return}
+  ul.innerHTML=ttmRes.items.map(it=>`<li><span class="ic">✓</span><span>${esc(it.label)}: <b class="v">${fmtV(it.from,it.unit)} → ${fmtV(it.to,it.unit)}</b>${it.clamped?" (held to the planner's range)":""}</span><span class="q" dir="auto">“${esc(it.text)}”</span></li>`).join("")
+    +ttmRes.ignored.map(g=>`<li class="skip"><span class="ic">–</span><span>Ignored. ${esc(g.why)}.</span><span class="q" dir="auto">“${esc(g.text)}”</span></li>`).join("");
+  const n=Object.keys(ttmRes.changes).length;$("ttmApply").disabled=!n;$("ttmApply").textContent=n?`Apply ${n} change${n>1?"s":""} to what-if`:"Apply to what-if"}
+$("ttmIn").addEventListener("input",()=>{clearTimeout(runTTM._t);runTTM._t=setTimeout(runTTM,200)});
+$("ttmApply").onclick=()=>{if(!ttmRes)return;const ch=ttmRes.changes,n=Object.keys(ch).length;applyChanges(ch,true);setPtab("whatif");toast(`Applied ${n} change${n>1?"s":""}. Running the forecast.`);setTimeout(runForecastUI,700)};
+$("ttmClear").onclick=()=>{$("ttmIn").value="";ttmRes=null;renderTTM()};
+function renderTTMChips(){$("ttmChips").innerHTML=TTM_EX[state.flow].map(c=>`<button class="chip" dir="auto">${esc(c)}</button>`).join("");for(const b of $("ttmChips").children)b.onclick=()=>{$("ttmIn").value=b.textContent;runTTM()}}
+
+// ===== Forecast workers: goal seeking runs many forecasts, so they go to a small Web Worker pool =====
+const POOL={ws:[],idle:[],q:[],jobs:new Map(),id:0,mode:null,init:null};
+function poolInit(){if(POOL.init)return POOL.init;
+  POOL.init=new Promise(res=>{try{
+    const src=SIM_SRC+"\nself.onmessage=function(e){var m=e.data;if(m.ping){postMessage({id:m.id,pong:1});return}var F=m.flow==='import'?IMPORT:EXPORT;F.drive=m.drive;var r=forecast(F,m.params,m.seed);"
+      +"postMessage({id:m.id,r:{avgH:r.avgH,p90H:r.p90H,cleared:r.cleared,peakRoad:r.peakRoad,idleH:r.idleH,co2t:r.co2t,util:r.util,bottleneck:r.bottleneck}})};";
+    const url=URL.createObjectURL(new Blob([src],{type:"text/javascript"}));const n=Math.max(2,Math.min(6,(navigator.hardwareConcurrency||4)-2));let ok=0;
+    const to=setTimeout(()=>{if(!ok){POOL.ws.forEach(w=>w.terminate());POOL.ws=[];POOL.mode="main";res("main")}},3000);
+    for(let i=0;i<n;i++){const w=new Worker(url);w.onmessage=e=>{const m=e.data;if(m.pong){if(!ok++){clearTimeout(to);POOL.mode="workers";res("workers")}POOL.idle.push(w);pump();return}
+        const j=POOL.jobs.get(m.id);POOL.jobs.delete(m.id);POOL.idle.push(w);if(j)j.resolve(m.r);pump()};POOL.ws.push(w);w.postMessage({ping:1,id:-1})}
+  }catch(e){POOL.mode="main";res("main")}});return POOL.init}
+function pump(){while(POOL.idle.length&&POOL.q.length){const w=POOL.idle.pop(),j=POOL.q.shift();POOL.jobs.set(j.id,j);w.postMessage({id:j.id,flow:j.flow,params:j.params,seed:j.seed,drive:FLOWS[j.flow].drive||null})}}
+async function evalMany(flow,list,seed){seed=seed||11;await poolInit();
+  if(POOL.mode==="workers")return Promise.all(list.map(p=>new Promise(resolve=>{POOL.q.push({id:++POOL.id,flow,params:p,seed,resolve});pump()})));
+  const out=[];for(const p of list){out.push(forecast(FLOWS[flow],p,seed));await new Promise(r=>setTimeout(r,0))}return out}
+
+// ===== Goal seek =====
+const GS={now:null,key:null,res:null,running:false,touched:false};
+const fg=t=>(+t).toFixed(Math.round(t*4)%2?2:1);
+const qar=v=>v>=100?Math.round(v)+"":v>=10?v.toFixed(0):v.toFixed(1);
+function setGoal(t){const s=$("gsTarget");s.value=t;const v=+s.value;$("gsTargetO").textContent=fg(v)+" h";$("gsTargetV").innerHTML=`${fg(v)}<small>h</small>`;s.style.setProperty("--p",((v-s.min)/(s.max-s.min)*100)+"%")}
+$("gsTarget").oninput=e=>{GS.touched=true;setGoal(+e.target.value)};
+$("gsGrowth").oninput=e=>{$("gsGrowthO").textContent=e.target.value+"%";e.target.style.setProperty("--p",(e.target.value/15*100)+"%")};$("gsGrowth").style.setProperty("--p",(5/15*100)+"%");
+async function refreshGoalNow(){const f=state.flow;const key=pkey(f,state.base[f]);if(GS.key===key&&GS.now!=null)return GS.now;GS.key=key;GS.now=null;$("gsNow").innerHTML=`…<small>h</small>`;
+  const [r]=await evalMany(f,[{...state.base[f]}]);if(GS.key!==key)return null;GS.now=r.avgH;$("gsNow").innerHTML=`${r.avgH.toFixed(1)}<small>h</small>`;
+  const s=$("gsTarget");s.max=Math.max(12,Math.ceil(r.avgH));if(!GS.touched)setGoal(Math.max(1,Math.round(r.avgH*0.65*4)/4));else setGoal(+s.value);return r.avgH}
+function gsProgress(f,msg){$("gsProg").hidden=f==null;if(f!=null)$("gsProg").firstElementChild.style.width=(f*100)+"%";if(msg!=null)$("gsStatus").textContent=msg}
+$("gsRun").onclick=async()=>{if(GS.running)return;const f=state.flow,target=+$("gsTarget").value,growth=+$("gsGrowth").value;const btn=$("gsRun");
+  GS.running=true;btn.disabled=true;gsProgress(0.03,"Forecasting today's port…");
+  try{const now=await refreshGoalNow();
+    if(now!=null&&now<=target){gsProgress(null,`Today's forecast (${now.toFixed(1)} h) already meets ${fg(target)} h. Set a lower goal.`);return}
+    const t0=performance.now();let nEval=0;const ev=async(list,seed)=>{nEval+=list.length;return evalMany(f,list,seed)};const base={...state.base[f]};
+    const res=await goalSeek({flow:f,base,target,evalMany:ev,sliderDef,maxSteps:8,onProgress:(r,m)=>gsProgress(0.05+0.75*r/m,`Round ${r}: testing every lever for each of the three plans…`)});
+    gsProgress(0.85,"Projecting the next three years…");
+    const proj=await projectPlans({flow:f,base,plans:res.plans,growth,evalMany:ev,sliderDef});
+    GS.res={...res,target,growth,flow:f,nEval,secs:(performance.now()-t0)/1000,proj};
+    gsProgress(null,`${nEval} scenarios simulated in ${GS.res.secs.toFixed(0)} s${POOL.mode==="workers"?` on ${POOL.ws.length} parallel workers`:""}.`);
+    renderMini();openStudio()}
+  catch(e){gsProgress(null,"The search stopped: "+(e&&e.message||e))}
+  finally{GS.running=false;btn.disabled=false}};
+function renderMini(){const R=GS.res;if(!R){$("gsMini").innerHTML="";return}
+  $("gsMini").innerHTML=R.plans.map(p=>`<li data-id="${p.id}"><i style="background:var(${p.color})"></i>${esc(p.name)}<span class="n">${p.result.avgH.toFixed(1)} h · QAR ${qar(p.cost5)}M</span></li>`).join("")+`<li data-open="1"><span>Open the plan comparison</span></li>`;
+  for(const li of $("gsMini").children)li.onclick=()=>openStudio()}
+function monthsToGoal(R,p){const s=R.proj[p.id];const hit=s.find(q=>q.avgH<=R.target);return hit?hit.m:null}
+function groupSteps(p){const g=new Map();for(const s of p.steps){const k=s.lever.key;if(!g.has(k))g.set(k,{l:s.lever,n:0,gain:0});const x=g.get(k);x.n++;x.gain+=s.gain}return[...g.values()]}
+function openStudio(){const R=GS.res;if(!R)return;$("studio").hidden=false;const f=R.flow;
+  $("stNow").textContent=R.start.avgH.toFixed(1)+" h";$("stGoal").textContent=fg(R.target)+" h";
+  $("stTitle").textContent=(f==="import"?"Import":"Export")+": three ways to reach the goal";
+  $("stSub").textContent=`Each plan was built one lever at a time, testing every option in the twin and keeping the best by its own rule. The projection lets demand grow ${R.growth}% a year and switches each change on once its lead time has passed.`;
+  const cards=R.plans.map(p=>{const m=monthsToGoal(R,p);const gs=groupSteps(p);
+    const met=m!=null?`<p class="met">✓ Meets the goal ${m===0?"right away":`from month ${m}`}, with demand growing ${R.growth}% a year</p>`:p.met?`<p class="met no">Meets the goal at today's demand, but growth of ${R.growth}% a year erodes it within three years</p>`:`<p class="met no">Gets to ${p.result.avgH.toFixed(1)} h. The goal needs more than these levers can give</p>`;
+    const items=gs.length?gs.map(x=>`<li><span>${esc(x.l.label)}${x.n>1?` ×${x.n}`:""}</span><span class="c">QAR ${qar(x.l.capex*x.n)}M${x.l.opex?` + ${qar(x.l.opex*x.n)}M/yr`:""}</span><span class="g">saves ${x.gain.toFixed(1)} h · in service after ${x.l.lead} mo</span></li>`).join("")
+      :`<li><span>No lever moved the average by more than a few minutes. The limit is outside the planner (demand, or a stage without a lever).</span></li>`;
+    return `<article class="plan" style="--pc:var(${p.color})"><h3><i></i>${esc(p.name)}</h3><p class="blurb">${esc(p.blurb)}</p>
+      <div class="stats"><div><span>5-year cost</span><b>${qar(p.cost5)}<small>QAR M</small></b></div><div><span>All in service</span><b>${p.lead}<small>months</small></b></div><div><span>Average then</span><b>${p.result.avgH.toFixed(1)}<small>h</small></b></div></div>
+      ${met}<ol>${items}</ol><button class="btn primary" data-viz="${p.id}" ${p.steps.length?"":"disabled"}>Visualize in the twin</button></article>`}).join("");
+  $("stBody").innerHTML=cards+`<section class="vizcard span2"><h4>Average time in port over the next three years</h4><p>Doing nothing versus each plan, as demand grows ${R.growth}% a year. Hover to read the months.</p><div id="chProj"></div></section>
+    <section class="vizcard"><h4>Cost against hours saved</h4><p>Five-year cost in QAR millions, hours saved at today's demand.</p><div id="chCost"></div></section>`;
+  $("stFoot").textContent=`Costs are indicative QAR millions: capital plus five years of running cost. ${R.nEval} scenarios simulated with the twin's placeholder volumes and service times; replace them with GAC data for decisions.`;
+  for(const b of $("stBody").querySelectorAll("[data-viz]"))b.onclick=()=>visualizePlan(b.dataset.viz);
+  drawProjection($("chProj"),R);drawCost($("chCost"),R)}
+function closeStudio(){$("studio").hidden=true;$("vtip").hidden=true}
+$("stClose").onclick=closeStudio;
+function niceMax(v){const e=Math.pow(10,Math.floor(Math.log10(v)));for(const m of [1,1.5,2,2.5,3,4,5,6,8,10])if(m*e>=v)return m*e;return 10*e}
+function tipAt(ev,html){const t=$("vtip");t.innerHTML=html;t.hidden=false;const w=t.offsetWidth,h=t.offsetHeight;let x=ev.clientX+14,y=ev.clientY+14;if(x+w>innerWidth-8)x=ev.clientX-w-14;if(y+h>innerHeight-8)y=ev.clientY-h-14;t.style.left=x+"px";t.style.top=y+"px"}
+function drawProjection(el,R){const W=760,H=290,L=46,Rp=128,T=14,B=30,pw=W-L-Rp,ph=H-T-B;const M=PROJ_MONTHS,mx=M[M.length-1];
+  const series=[{id:"base",name:"Do nothing",col:"var(--s0)",dash:"6 4",pts:R.proj.base},...R.plans.map(p=>({id:p.id,name:p.name,col:`var(${p.color})`,pts:R.proj[p.id]}))];
+  const all=series.flatMap(s=>s.pts.map(q=>q.avgH));const planMax=Math.max(R.start.avgH,...R.plans.flatMap(p=>R.proj[p.id].map(q=>q.avgH)));
+  const ymax=niceMax(Math.min(Math.max(...all),Math.max(planMax*1.15,R.start.avgH*1.6,R.target*1.5))*1.05);
+  const X=m=>L+m/mx*pw,Y=v=>T+ph-Math.min(v,ymax*1.04)/ymax*ph;
+  const ystep=[1,2,2.5,5,10].map(m=>m*Math.pow(10,Math.floor(Math.log10(ymax/4)))).find(v=>ymax/v<=5);const yt=[];for(let v=0;v<=ymax+1e-9;v+=ystep)yt.push(v);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average time in port by month for doing nothing and each plan"><defs><clipPath id="pclip"><rect x="${L}" y="${T-4}" width="${pw+6}" height="${ph+4}"/></clipPath></defs>`;
+  s+=yt.map(v=>`<line x1="${L}" x2="${L+pw}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)" stroke-width="1"/><text x="${L-8}" y="${Y(v)+3.5}" text-anchor="end" font-size="10.5" fill="var(--muted)" font-family="JetBrains Mono,monospace">${v%1?v.toFixed(1):v} h</text>`).join("");
+  s+=[0,6,12,18,24,30,36].map(m=>`<text x="${X(m)}" y="${H-10}" text-anchor="middle" font-size="10.5" fill="var(--muted)" font-family="JetBrains Mono,monospace">${m?m+" mo":"Now"}</text>`).join("");
+  s+=`<line x1="${L}" x2="${L+pw}" y1="${Y(R.target)}" y2="${Y(R.target)}" stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="2 3"/><text x="${L+pw-4}" y="${Y(R.target)+15}" text-anchor="end" font-size="11" fill="var(--ink-2)" font-weight="600">Goal ${fg(R.target)} h</text>`;
+  s+=`<g clip-path="url(#pclip)">`+series.map(se=>`<polyline fill="none" stroke="${se.col}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" ${se.dash?`stroke-dasharray="${se.dash}"`:""} points="${se.pts.map(q=>X(q.m)+","+Y(q.avgH)).join(" ")}"/>`).join("")+`</g>`;
+  // direct labels at the right end, nudged apart so they never overlap
+  const ends=series.map(se=>{const v=se.pts[se.pts.length-1].avgH;return{se,v,y:Y(v),off:v>ymax}}).sort((a,b)=>a.y-b.y);for(let i=1;i<ends.length;i++)if(ends[i].y-ends[i-1].y<15)ends[i].y=ends[i-1].y+15;
+  s+=ends.map(e=>`<circle cx="${X(mx)}" cy="${Y(e.v)}" r="3.5" fill="${e.se.col}" stroke="var(--solid)" stroke-width="2"/><text x="${X(mx)+10}" y="${e.y+4}" font-size="11.5" fill="var(--ink)"><tspan font-weight="600">${esc(e.se.name)}</tspan><tspan fill="var(--muted)" font-family="JetBrains Mono,monospace"> ${e.off?"↑":""}${e.v.toFixed(1)} h</tspan></text>`).join("");
+  s+=`<line id="pcross" x1="0" x2="0" y1="${T}" y2="${T+ph}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/><g id="pdots"></g><rect x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent" id="phit"/></svg>`;
+  s+=`<div class="lg">${series.map(se=>`<span><i style="border-color:${se.col};${se.dash?"border-top-style:dashed":""}"></i>${esc(se.name)}</span>`).join("")}<span><i style="border-color:var(--ink-2);border-top-style:dotted"></i>Goal</span></div>`;
+  el.innerHTML=s;const svg=el.querySelector("svg"),hit=el.querySelector("#phit"),cross=el.querySelector("#pcross"),dots=el.querySelector("#pdots");
+  hit.addEventListener("mousemove",ev=>{const r=svg.getBoundingClientRect();const x=(ev.clientX-r.left)/r.width*W;let bi=0;M.forEach((m,i)=>{if(Math.abs(X(m)-x)<Math.abs(X(M[bi])-x))bi=i});const m=M[bi];
+    cross.setAttribute("x1",X(m));cross.setAttribute("x2",X(m));cross.setAttribute("visibility","visible");
+    dots.innerHTML=series.map(se=>`<circle cx="${X(m)}" cy="${Y(se.pts[bi].avgH)}" r="4.5" fill="${se.col}" stroke="var(--solid)" stroke-width="2"/>`).join("");
+    tipAt(ev,`<div class="h">${m?"Month "+m:"Now"}</div>`+series.map(se=>`<div class="r"><i style="background:${se.col}"></i><span>${esc(se.name)}</span><b>${se.pts[bi].avgH.toFixed(1)} h</b></div>`).join(""))});
+  hit.addEventListener("mouseleave",()=>{cross.setAttribute("visibility","hidden");dots.innerHTML="";$("vtip").hidden=true})}
+function drawCost(el,R){const W=380,H=290,L=46,Rp=16,T=14,B=40,pw=W-L-Rp,ph=H-T-B;const need=R.start.avgH-R.target;
+  const pts=R.plans.map(p=>({p,x:p.cost5,y:R.start.avgH-p.result.avgH}));const xm=niceMax(Math.max(5,...pts.map(q=>q.x))*1.18),ym=niceMax(Math.max(need,...pts.map(q=>q.y),0.5)*1.25);
+  const X=v=>L+v/xm*pw,Y=v=>T+ph-v/ym*ph;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Five-year cost against hours saved for each plan">`;
+  s+=[0,0.5,1].map(f=>f*ym).map(v=>`<line x1="${L}" x2="${L+pw}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)"/><text x="${L-8}" y="${Y(v)+3.5}" text-anchor="end" font-size="10.5" fill="var(--muted)" font-family="JetBrains Mono,monospace">${v.toFixed(1)} h</text>`).join("");
+  s+=[0,0.5,1].map(f=>f*xm).map(v=>`<text x="${X(v)}" y="${T+ph+16}" text-anchor="middle" font-size="10.5" fill="var(--muted)" font-family="JetBrains Mono,monospace">${qar(v)}</text>`).join("")+`<text x="${L+pw/2}" y="${H-4}" text-anchor="middle" font-size="11" fill="var(--muted)">QAR million, 5 years</text>`;
+  const nl=`Needed ${need.toFixed(1)} h`;s+=`<line x1="${L}" x2="${L+pw}" y1="${Y(need)}" y2="${Y(need)}" stroke="var(--ink-2)" stroke-width="1.2" stroke-dasharray="2 3"/><text x="${L+4}" y="${Y(need)-6}" font-size="11" fill="var(--ink-2)" font-weight="600">${nl}</text>`;
+  // label placement: try right, left, above, below each dot; keep the first spot that hits no other label, dot or the goal note
+  const boxes=[[L+2,Y(need)-17,L+8+nl.length*6.2,Y(need)-3],...pts.map(q=>[X(q.x)-9,Y(q.y)-9,X(q.x)+9,Y(q.y)+9])];
+  const hitB=b=>boxes.some(o=>b[0]<o[2]&&b[2]>o[0]&&b[1]<o[3]&&b[3]>o[1]);const labs=[];
+  for(const q of [...pts].sort((a,b)=>b.y-a.y)){const w=q.p.name.length*6.8+4,cx=X(q.x),cy=Y(q.y);
+    const opts=[[cx+12,cy-7],[cx-12-w,cy-7],[cx-w/2,cy-26],[cx-w/2,cy+12],[cx+12,cy-24],[cx-12-w,cy-24],[cx+12,cy+10],[cx-12-w,cy+10]];
+    let pick=opts.find(([x,y])=>x>=L&&x+w<=W-2&&y>=2&&y+14<=T+ph+2&&!hitB([x,y,x+w,y+14]))||opts[0];boxes.push([pick[0],pick[1],pick[0]+w,pick[1]+14]);labs.push({q,x:pick[0],y:pick[1]})}
+  s+=pts.map((q,i)=>`<circle data-i="${i}" cx="${X(q.x)}" cy="${Y(q.y)}" r="7" fill="var(${q.p.color})" stroke="var(--solid)" stroke-width="2" style="cursor:pointer"/>`).join("");
+  s+=labs.map(l=>`<text x="${l.x}" y="${l.y+11}" font-size="11.5" fill="var(--ink)" font-weight="600">${esc(l.q.p.name)}</text>`).join("")+`</svg>`;
+  s+=`<div class="lg">${pts.map(q=>`<span><i style="border:0;width:9px;height:9px;border-radius:50%;background:var(${q.p.color})"></i>${esc(q.p.name)}: QAR ${qar(q.x)}M, ${q.y.toFixed(1)} h</span>`).join("")}</div>`;
+  el.innerHTML=s;for(const c of el.querySelectorAll("circle[data-i]")){const q=pts[+c.dataset.i];
+    c.addEventListener("mousemove",ev=>tipAt(ev,`<div class="h">${esc(q.p.name)}</div><div class="r"><span>5-year cost</span><b>QAR ${qar(q.x)}M</b></div><div class="r"><span>Hours saved</span><b>${q.y.toFixed(1)} h</b></div><div class="r"><span>All in service</span><b>${q.p.lead} mo</b></div>`));
+    c.addEventListener("mouseleave",()=>{$("vtip").hidden=true});c.addEventListener("click",()=>visualizePlan(q.p.id))}}
+function visualizePlan(id){const R=GS.res;if(!R)return;const pl=R.plans.find(p=>p.id===id);if(!pl)return;if(R.flow!==state.flow)setFlow(R.flow);
+  closeStudio();setPtab("whatif");setFold("left",false);const f=R.flow,base=state.base[f];const fly=state.show.fly;state.show.fly=false;
+  applyChanges({...base},false);const ch={};for(const k in pl.params)if(pl.params[k]!==base[k])ch[k]=pl.params[k];applyChanges(ch,true);state.show.fly=fly;
+  const top=[...pl.steps].sort((a,b)=>leverCost(b.lever)-leverCost(a.lever))[0];
+  if(top){const key=stageOfParam(f,top.lever.key);setTimeout(()=>{if(G.geo.st[key])flyToStage(key)},500)}
+  const c=$("planChip");c.hidden=false;document.body.classList.add("hasPlan");c.querySelector("i").style.background=`var(${pl.color})`;c.querySelector("b").textContent=pl.name+" plan";
+  const n=Object.keys(ch).length;toast(`${pl.name} plan in the twin: ${n} change${n>1?"s":""}. Gold marks new capacity.`);setTimeout(runForecastUI,900)}
+$("planChipReset").onclick=()=>{applyChanges({...state.base[state.flow]},false);$("planChip").hidden=true;document.body.classList.remove("hasPlan");toast("Back to baseline")};
+
 // ===== Boot =====
-buildStatics();setFlow("import");resize();requestAnimationFrame(frame);initCaps();
+buildStatics();setFlow("import");setPtab(store.get("ptab","whatif")=="goal"?"whatif":store.get("ptab","whatif"));resize();requestAnimationFrame(frame);initCaps();
 if(!store.get("helped",false))setTimeout(()=>{$("help").hidden=false},1400);

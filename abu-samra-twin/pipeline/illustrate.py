@@ -4,8 +4,13 @@ Run from anywhere:  python pipeline/illustrate.py
 Turns the satellite ground texture and the high-res tiles into a clean, map-like rendering:
 edge-preserving smoothing, a curated palette (sand, sabkha, asphalt, roofs, greenery), crisp road markings,
 soft ink outlines and a gentle paper grain. Geometry is unchanged, so every overlay stays aligned.
+Then declutter.py removes the vehicles photographed into the ground (the twin draws its own 3D trucks) and paints
+proper asphalt with lane markings along the truck routes wherever the ground under them is not already road
+(stretches outside the close-up coverage, and roads the sabkha rule warmed to sand).
 """
-import cv2, numpy as np, json, os
+import cv2, numpy as np, json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from declutter import remove_vehicles, paint_roads
 A = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets"); O = os.path.join(A, "illus"); os.makedirs(O, exist_ok=True)
 rng = np.random.default_rng(3)
 SAND_L, SAND_D = np.float32([196, 220, 236]), np.float32([128, 160, 196])   # BGR: light dune / darker sand
@@ -30,6 +35,11 @@ WARM = [(0.0, (52, 64, 82)), (0.30, (98, 118, 146)), (0.45, (136, 166, 200)), (0
 PAVED = [[[1190, 2803], [1637, 2410], [1880, 2650], [1450, 3080]], [[700, 3500], [1330, 3110], [1010, 2760], [440, 3216]],
          [[2040, 330], [2270, 300], [2420, 640], [2215, 725]], [[1440, 1540], [1720, 1470], [2170, 1830], [2230, 2150], [1900, 2470], [1520, 2380], [1280, 2110]],
          [[2040, 2030], [2440, 2300], [2150, 2620], [1860, 2380]], [[2140, 1190], [2370, 1350], [2260, 1520], [2030, 1350]], [[2280, 640], [2560, 640], [2560, 1000], [2280, 1000]]]
+# yards where route paint must not go (the route crosses them, but they are concrete aprons, not roads)
+NO_ROAD = PAVED + [[[1500, 1445], [1597, 1545], [1495, 1665], [1378, 1555]],   # export inspection compound
+                   [[1597, 1530], [1680, 1494], [1712, 1575], [1630, 1615]]]   # export operational parking apron
+GEO = json.load(open(os.path.join(A, "geo.json"), encoding="utf-8"))
+ROADS = [(GEO[f]["path"], 5.0) for f in ("import", "export")]
 
 
 def illustrate(img, px_m, M=None):
@@ -65,7 +75,13 @@ def illustrate(img, px_m, M=None):
     e = cv2.Canny(cv2.GaussianBlur(sm.astype(np.uint8), (0, 0), 1.0), 30, 90).astype(np.float32) / 255
     out *= 1 - 0.28 * cv2.GaussianBlur(e, (0, 0), 0.6)[..., None]
     out += rng.normal(0, 1.4, img.shape[:2])[..., None].astype(np.float32)
-    return np.clip(out, 0, 255).astype(np.uint8)
+    out = np.clip(out, 0, 255).astype(np.uint8)
+    out, _ = remove_vehicles(out, px_m)
+    if M is not None:
+        keep = np.zeros(out.shape[:2], np.uint8)
+        for poly in NO_ROAD: cv2.fillPoly(keep, [cv2.perspectiveTransform(np.float32(poly).reshape(-1, 1, 2), M).reshape(-1, 2).astype(np.int32)], 1)
+        out = paint_roads(out, px_m, M, ROADS, protect=cv2.GaussianBlur(keep.astype(np.float32), (0, 0), 2))
+    return out
 
 
 T = json.load(open(os.path.join(A, "tex.json")))

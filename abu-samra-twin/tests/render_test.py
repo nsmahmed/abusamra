@@ -1,6 +1,6 @@
-"""Headless render of dist/abu-samra-twin.html with screenshots.
+"""Headless render of dist/wasl.html with screenshots.
 
-Usage: python tests/render_test.py [out_dir] [--night] [--illustrated]
+Usage: python tests/render_test.py [out_dir] [--night]
 Uses installed Edge/Chrome (channel) when available, else Playwright's Chromium.
 three.js is served from node_modules/three when present (sandboxed CI), otherwise from the CDN.
 """
@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright
 R = pathlib.Path(__file__).resolve().parent.parent
 OUT = pathlib.Path(next((a for a in sys.argv[1:] if not a.startswith("--")), R / "tests" / "shots"))
 NIGHT = "--night" in sys.argv
-PAGE = "abu-samra-twin-illustrated.html" if "--illustrated" in sys.argv else "abu-samra-twin.html"
+PAGE = "wasl.html"  # single illustrated build (the satellite variant was retired)
 NM = R / "node_modules" / "three"
 ARGS = ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
 

@@ -1,45 +1,44 @@
-# Abu Samra Twin — technical context
+# WASL (Abu Samra Twin) — technical context
 
-3D digital twin of the Abu Samra land border customs port (Qatar–KSA) for a company AI hackathon. It combines four things:
+WASL ("وصل") is a 3D digital twin of the Abu Samra land border customs port (Qatar–KSA) for a company AI hackathon. It combines:
 
-- **3D scene:** a browser scene on real satellite imagery.
-- **Simulation:** a discrete-event model of import and export truck flows.
-- **Planning tools:** a what-if planner, a forecast, and an optimizer.
+- **3D scene:** a browser scene on an illustrated rendering of the real imagery.
+- **Simulation:** a discrete-event model of import and export truck flows, with per-truck attributes.
+- **Live operations:** KPIs, filters by truck attribute, bottleneck pattern, plate feed, tracking.
+- **Planning tools:** what-if sliders, text-to-map, forecast, single-resource optimizer, and goal seeking (three costed plans).
 - **AI copilot:** Claude with simulation tools.
 
-Delivered as **two self-contained HTML files** with identical features, each published as a claude.ai artifact:
-
-- `dist/abu-samra-twin.html` (satellite imagery, about 4.7 MB).
-- `dist/abu-samra-twin-illustrated.html` (rendered illustration of the same ground, about 4.3 MB).
-
-The title-bar badge links to the other file through the relative `ALT_HREF`, so keep both in the same folder.
+Delivered as **one self-contained HTML file**, `dist/wasl.html` (about 4.4 MB). The satellite variant, the `share/` bundle and the root redirect `index.html` were retired on 2026-11-04; the photo assets in `assets/` stay because they are the pipeline's input.
 
 ## Repository layout
 
 ```
 CLAUDE.md                this file
-build.py                 assembles dist/abu-samra-twin.html from src/ + assets/
+build.py                 assembles dist/wasl.html from src/ + assets/illus/
 src/head.html            <head>, CSS, page markup (panels, stage, overlays)
 src/sim.js               simulation engine (Sim class, forecast())
 src/flows.js             IMPORT / EXPORT stage definitions + default parameters
-src/app.js               3D scene, layouts, trucks, UI wiring, forecast UI, optimizer, copilot
+src/plan.js              lever cost model, goal seek, 3-year projection, text-to-map parser (pure logic)
+src/app.js               3D scene, layouts, trucks, UI wiring, filters, forecast UI, goal seek UI, copilot
 src/tail.html            closing tags
 assets/geo.json          georeferenced routes, stage anchors, polygons, building footprints, trees (mosaic px)
 assets/tex.json          texture extents (W, H, PAD), mean sand colour, high-res tile frames
 assets/ground_4096.jpg   ground texture (mosaic + close-ups + synthesized desert), embedded as base64
 assets/hr_*.jpg, hm_*.png  three oriented high-res tiles (~0.58 m/texel) + alpha masks, embedded as base64
-assets/illus/            illustrated ground + tiles (same names; alpha masks are shared from assets/)
+assets/illus/            illustrated ground + tiles used by the page (alpha masks are shared from assets/)
 data/map-imagery/        source Google Earth captures (high level 1-3, closeup 1-14, overviews)
 data/map-details/        GAC import / export trip diagrams
 README.md                plain-language overview (objective, uses, rebuild steps)
 assets/H_*.npy, T.npy    homographies used by the pipeline
 pipeline/*.py            imagery stitching, georeferencing, texture synthesis (OpenCV)
 tests/sim_test.js        node test of the engine (prints KPIs for scenarios)
-tests/render_test.py     Playwright headless render + screenshots
+tests/render_test.py     Playwright headless render + screenshots 
+tests/views.py           screenshots of named camera positions in dist/wasl.html
+tests/ui_test.py         walk through every feature with screenshots (--quick skips goal seek)
 dist/                    build output
 ```
 
-Build: `python build.py`. It writes both variants (the illustrated one only when `assets/illus/ground_4096.jpg` exists); the inline data defines `VARIANT` (`photo` | `illustrated`) and `ALT_HREF`. Each page concatenates `head.html`, two three.js `<script>` tags, and one inline `<script>`. The inline script holds the data constants, `sim.js`, `flows.js` and `app.js`, in that order. Lines starting with `if(typeof module` are stripped so the same files work in node.
+Build: `python build.py`. The page concatenates `head.html`, two three.js `<script>` tags, and one inline `<script>`. The inline script holds the data constants (`SIM_SRC`, `GEOJ`, `TEXINFO`, `GROUND_URI`, `HR_URIS`), then `sim.js`, `flows.js`, `plan.js` and `app.js`, in that order. Lines starting with `if(typeof module` are stripped so the same files work in node. `SIM_SRC` is `sim.js` + `flows.js` again as a string: goal seeking starts Web Workers from a blob URL with it. If workers cannot start (a 3 s ping times out), forecasts fall back to the main thread.
 
 ## Runtime constraints (published artifact)
 
@@ -86,14 +85,19 @@ Build: `python build.py`. It writes both variants (the illustrated one only when
   - The UI averages seeds 11 and 23 (`fcAvg`). The optimizer uses seed 11 only.
   - One run takes about 100–300 ms.
 - **Plates.** Synthetic, weighted by country (KSA, QAT, KWT, UAE, OMN, BHR, JOR, IRQ, EGY).
+- **Truck attributes** (`tr.a`, drawn at spawn from the sim RNG, so common random numbers still hold):
+  - `o` origin index into `ORIGINS[flow]` (import: country of loading; export: destination), `k` cargo index into `CARGO`.
+  - `aeo` with probability `p.aeoShare`, `pre` (pre-arrival declaration) with `p.preShare`.
+  - `red` risk lane: probability `p.inspShare × originRisk × cargoRisk / RISK_NORM × (AEO ? 0.3 : 1)`, capped at 0.97. So `inspShare` is the red-lane rate of a non-AEO truck of average risk.
+  - Stage hooks: `pick(p,a)` routes by attribute (ramps take red-lane trucks only); `mul(p,a)` scales service time (import main-parking clearance and export document wait drop to `PRE_CLEAR` = 0.55 with a pre-arrival declaration).
 - **Event log.** `Sim.prototype.release` is patched in `app.js` to also log `stage:-1` exit events.
 
 ### Flows (`src/flows.js`); all numbers are placeholders pending GAC data
 
 Every stage time is a parameter (planner group "Time at each stage"). Defaults:
 
-- **Import** (from KSA): road → radiation portals (2 lanes, 1.5 min) → external parking (`hold`, 100, pulls to main parking; 0 bypasses it) → appointment gates (3, 3 min) → main parking (`parkIdx` 4, 700, 120 min clearance) → X-ray (6 slots, 4 min) → inspection ramps (130, 40% share, 150 min) → release (2 lanes, 2 min).
-- **Export** (to KSA): road → external parking (`parkIdx` 1, 150, 45 min documents, pulls to operational parking) → permit gate (1, 1.2 min) → entry gates (2, 1.5 min) → operational parking (12, 15 min) → ramps (10, 30% share, 60 min) → release (1 lane, 2.2 min).
+- **Import** (from KSA): road → radiation portals (2 lanes, 1.5 min) → external parking (`hold`, 100, pulls to main parking; 0 bypasses it) → appointment gates (3, 3 min) → main parking (`parkIdx` 4, 700, 140 min clearance without pre-arrival filing) → X-ray (6 tunnels, 4 min) → inspection ramps (130, red-lane trucks, 150 min) → release (2 lanes, 2 min). Programmes: `inspShare` 46, `aeoShare` 18, `preShare` 35 (about 40% of trucks end up red-lane).
+- **Export** (to KSA): road → external parking (`parkIdx` 1, 150, 54 min documents without pre-arrival filing, pulls to operational parking) → permit gate (1, 1.2 min) → entry gates (2, 1.5 min) → operational parking (12, 15 min) → ramps (10, red-lane trucks, 60 min) → release (1 lane, 2.2 min). Programmes: `inspShare` 34, `aeoShare` 22, `preShare` 40.
 - **Baseline behaviour.**
   - **Import.** The appointment gates run near capacity at the morning peak. The external parking fills, then the queue backs onto the public road.
   - **Export.** The single release lane is the bottleneck (96%). The 12 operational bays and 10 ramps stay busy, the external lot fills to 150, and the overflow queues on the Doha road beside it.
@@ -161,10 +165,18 @@ Order: `mosaic.py` → `register.py` → `ground.py` → `composite.py` → `bui
     - **Lot frames.** Writes `layout:"lot"` frames for the import external parking (the unused south-west lot) and the export external parking. Each frame holds origin, row/bay axes, pitches and entry/exit points.
     - **Re-runs.** The script overwrites `path`, `opStart`, `label` and the anchors. Re-run it after `buildings.py`, because `buildings.py` rewrites the import `park` stage.
     - `roads.py` is an abandoned least-cost-path road snapper. Its road mask can't tell asphalt from dark sabkha.
-13. **`illustrate.py`** builds `assets/illus/` from the base texture and the tiles.
+    - **Export re-trace (2026-11-04).** Carriageway centres were measured from dark-run profiles of `best_mosaic.png` (rows across the access road, a perpendicular profile along the dual road):
+      - The access road west of the external lot is two-way; both passes now share its centreline, so the permit gate (at the external-parking exit) sits on the road, not the island.
+      - After the junction trucks take the west carriageway of the dual road (right-hand traffic); the entry gates sit on it just past the junction.
+      - Along the E-W strip the route follows the kerb-side road, enters the inspection compound at its east corner, loops the shed (NE docks, NW end, SW docks) and leaves by the SW gate.
+      - Operational parking is a `lot` (2 rows × 12, kerb-aligned) on the apron south-east of the compound, where the imagery shows trucks waiting. It replaced the old `along` kerbside bays on the dual road.
+13. **`illustrate.py`** builds `assets/illus/` from the base texture and the tiles (about 1.5 min).
     - **Gradient maps.** Edge-preserving smoothing, then two gradient maps blended by LAB warmth: `COOL` for asphalt, concrete and roofs, `WARM` for sand and sabkha. Luminance is softly posterised.
     - **Details.** Greenery comes from compact dark blobs, followed by Canny ink outlines and grain.
     - **Sabkha.** Sabkha has the same colour and texture as asphalt. Wide dark areas (wider than 85 m by morphological opening) outside the `PAVED` polygons are treated as sabkha and warmed.
+14. **`declutter.py`** runs inside `illustrate()` on every output:
+    - **`remove_vehicles`** inpaints photographed vehicles. Candidates are near-neutral bright pixels (saturation < 26, 38 above a 25 m median) or strongly coloured ones on paved ground. They are clustered with a 1.6 m dilation, and a cluster is kept when it is truck-wide (≥ 4.2 m after dilation, ≤ 48 m long, density ≥ 0.2, aspect ≤ 7) or car-sized and fully surrounded by asphalt, and its ring is mostly asphalt. Clusters containing a continuous stripe ≥ 28 m long and ≤ 2.4 m wide are marking fields (stop bars) and are left alone.
+    - **`paint_roads`** paints 10 m asphalt (white right edge, yellow left kerb line, 6/9 m dashed white centre) along both route paths, outside the `NO_ROAD` polygons (`PAVED` plus the export compound and apron). `always=True` paints every stretch; with `False` only stretches whose ground is not already asphalt.
 
 ## 3D scene (`src/app.js`)
 
@@ -196,7 +208,7 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
 - **Route ribbons and markers.** Thin gold/green ribbons with chevrons. Stage heat fills (lot polygons tinted by occupancy) sit in group `route`.
 - **Capacity markings** (`rebuildCapacity`, debounced on slider change). They compare the current parameters with the **baseline**:
   - Painted bay/dock outlines are one instanced mesh named `bays`, coloured white for existing places, gold for added and red for removed.
-  - Gate stages (`gateDecor`) draw one canopy, booth and barrier per lane. Added lanes get gold canopies and removed ones red ghosts, with pulsing rings. X-ray (`building:true`) draws gantry bays instead.
+  - Gate stages (`gateDecor`) draw one canopy, booth and barrier per lane. Added lanes get gold canopies and removed ones red ghosts, with pulsing rings. X-ray (`building:true`) draws one translucent drive-through tunnel per lane (`tubeGeo`: extruded arch, 30 m long, maroon portal rings), laid along the driving direction.
   - `setParam(k, v, user)` also shows an HTML callout over the stage ("+2 X-ray slots") and, with the "Fly to changes" toggle, flies the camera there.
 - **Slot layouts** (`stageSlots`). Each slot is `{x, z, rot, in:[…], out:[…], jin, jout}`:
   - `in` / `out` are the manoeuvre waypoints. `rev:true` marks reversing; `revLast` reverses into the slot.
@@ -211,13 +223,9 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
 
 ### Trucks
 
-- **Meshes.** Nine `InstancedMesh`es (`MAXT` = 2600):
-  - `T_detail`, `T_cab` (instance colour), `T_cabTop`.
-  - `T_box`, `T_tank`, `T_flat`: trailer variants chosen by `hash(id) % 10`.
-  - `T_lights`: lamp boxes.
-  - `T_beam`: additive headlight pool on the road ahead.
-  - `T_glow`: additive lamp flare.
-  - The last three show at night.
+- **Kit.** Three tractors (`TRACTOR.eu` cab-over, `.us` long-nose conventional, `.rigid` small cab) and six loads (`LOAD.box_eu`, `cont_eu` ribbed container, `tank_us`, `box_us`, `box_rigid`, `curtain_rigid`), combined into six `KINDS` weighted by `KIND_OF[hash % 20]`. Front bumper is always at x = +0.72 so the shared headlight meshes fit every kind.
+- **Meshes.** Each tractor and load has a white body mesh (instance-tinted from `CAB_TINTS` / `LOAD_TINTS`, mostly white and silver) and a fixed-colour detail mesh (glass, tyres, rims, chrome, chassis, red-white reflective stripes, tail lamps). Plus `T_lights`, `T_beam`, `T_glow` (night only). All are registered in `TMESH`; each keeps `userData.ids[]` (instance → truck id) and a per-frame counter.
+- **Colouring.** Tracked truck: blue cab. Filter active: non-matching trucks fully grey (`GHOST`). Otherwise "colour by wait" or "colour by risk lane" (red/green cab) or natural liveries.
 - **Instance colour buffers are pre-allocated.** In r128, `setColorAt` sizes the buffer from `count` on first call, and `count` starts at 0. Without pre-allocation the trucks render black.
 - **Movement.** The display is a function of **simulated time** (`simT = sim.t + fractional acc`).
   - **Planning.** When the sim moves a truck to a new stage, `plan()` builds a polyline: the old slot's `out` manoeuvre, then `G.LP` from `jout` to the new `jin`, then the new slot's `in` manoeuvre. The polyline is Chaikin-smoothed twice.
@@ -226,7 +234,7 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
   - **Slot changes.** When capacity changes rebuild the slots (`G.ver`), parked trucks re-settle with a short drive (`settle`).
   - **Departure.** Released trucks follow the lane past the route end, then are culled.
 - **Colouring.** Natural cab colours by default. "Colour trucks by wait" uses green under 2 h, amber 2–6 h, red over 6 h. The tracked truck is blue, with a beam, a ring and an HTML tag.
-- **Picking.** A raycast on `T_cab` / `T_detail` gets the `instanceId`, then `instIds[]`, then the sim truck.
+- **Picking.** A raycast on the pickable truck meshes gets the `instanceId`, then `hit.object.userData.ids[]`, then the sim truck.
 
 ### Lighting and camera
 
@@ -239,6 +247,8 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
 
 ## UI and features
 
+- **Brand.** WASL wordmark with Arabic, tagline "Plan the future at your fingertips". Glass panels are deliberately see-through (`--glass` alpha .58 light / .54 dark, 22 px blur).
+
 - **Layout.** A full-bleed map with floating "smoked-glass" panels.
   - **Fonts.** Archivo (display), IBM Plex Sans Arabic (text) and JetBrains Mono (numbers), all from Google Fonts.
   - **Theme.** Light or dark panel theme, persisted in `localStorage` (`ast:*` keys; per-viewer conveniences only).
@@ -250,18 +260,28 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
   - Lighting mode: Auto, Dawn, Day, Dusk, Night.
   - Theme and help buttons.
 - **Panels.** The left planner and the right live panel fold to edge rails with the buttons or with `[` and `]`. `Space` pauses. A first-run help dialog shows once.
-- **Planner.**
-  - `SLIDERS[flow]` drives collapsible groups (Demand, Gates and lanes, Parking and ramps, Time at each stage), each showing a count of changed sliders.
+- **Planner tabs** (`setPtab`): What-if, Text to map, Goal seek.
+- **Text to map** (`parseText` in `plan.js`). Splits the text into clauses, matches each to an entity (`ENTITIES`: X-ray, radiation, appointment, permit, entry, release, red-lane rate, ramps, clearance, external/main parking, demand, surge, AEO, pre-arrival), decides capacity or time from time words, then reads the operation (add/raise, cut/reduce, set to, double, halve, percent). Values are clamped to slider ranges. Clauses without an entity or amount are listed as ignored. Arabic digits and common Arabic words are recognised.
+- **Goal seek** (`goalSeek` / `projectPlans` in `plan.js`, UI in `app.js`):
+  - `LEVERS[flow]`: one step of an intervention with `d`, `max` steps, `capex`, `opex`/yr, `lead` months and `kind` (build, staff, digital, program). Plans are compared on capex + 5 × opex (QAR M). All placeholders.
+  - Three greedy searches run in lock-step (each round's candidates are one parallel batch, forecasts cached by params): `fast` (build/staff levers only, gain ÷ lead), `balanced` (gain ÷ √(cost × lead)), `cheap` (gain ÷ cost). A finishing rule takes the cheapest/quickest step that reaches the goal; a pruning pass drops steps the plan can do without; a balanced plan identical to another is searched again without that plan's biggest lever.
+  - `nameByOutcome` names the results by what came out: quickest to land = Fast track, cheapest of the rest = Cost-smart, the third = Balanced. Blurbs are written from the numbers.
+  - `projectPlans` runs months 0–36 with demand growing g % a year; a plan's steps switch on once their lead time has passed; each point averages seeds 11 and 23.
+  - The studio overlay shows three plan cards, a projection line chart (do nothing dashed grey, plans in categorical slots 1–3, goal dotted, hover crosshair) and a cost-against-hours-saved scatter. "Visualize in the twin" resets to baseline, applies the plan with callouts, flies to the costliest change, shows a plan chip in the top bar and runs the forecast.
+  - Speed: about 200 forecasts per run. Six workers under SwiftShader take several minutes; on a normal machine it is seconds to tens of seconds.
+- **What-if planner.**
+  - `SLIDERS[flow]` drives collapsible groups (Demand, Gates and lanes, Parking and ramps, Time at each stage, Risk and programmes), each showing a count of changed sliders.
   - `setParam` mutates `state.params` and `sim.p` live and marks changes against the baseline. The sticky footer holds Run forecast, Reset and Set baseline.
 - **Forecast panel.** Baseline vs scenario table, hourly road-queue SVG chart, and a verdict naming the bottleneck.
 - **Optimizer.** Steps one capacity parameter upward until `avgH ≤ target`, or reports that the resource is not the constraint. "Apply and show me" applies the value and flies to it.
 - **Live panel tabs.**
   - **Now.** KPI cards plus occupancy bars per stage; click a stage to fly there.
+  - **Filters.** Chips per attribute (risk lane, AEO, pre-arrival, origin, cargo); `matchF` greys out the rest on the map. Shows matching count, average hours so far and where they are. **Bottleneck pattern** (`renderPattern`): trucks queued for or occupying the bottleneck (or the busiest stage over 70%) against all trucks in the port; values with share ≥ 25% and lift ≥ 1.2 are listed with a one-line reason, and one click filters the map to the top pattern.
   - **Gate reads.** ALPR feed with styled plates; CSV export of `sim.events` with columns timestamp, plate, country, checkpoint, checkpoint_ar, flow.
   - **Track.** Plate tracker with journey card, Follow, Chase cam and Clear.
   - **Ask.** Copilot; the tab is hidden unless `sample` is granted.
 - **Bottom stage strip.** One tile per stage showing occupancy, waiting count and a utilization bar. The current bottleneck gets a red dot. Click a tile to fly to that stage.
-- **Map toolbar.** Toggles for stage labels, routes and zones, capacity markings, colour by wait and fly-to-changes, plus Recenter.
+- **Map toolbar.** Toggles for stage labels, routes and zones, capacity markings, colour by wait, colour by risk lane and fly-to-changes, plus Recenter.
 - **Copilot ("Ask").**
   - `sample([rules, ...turns], {tools, signal, onText})`, keeping the last 8 turns.
   - Tools:
@@ -277,7 +297,8 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
 ## Testing
 
 - **Engine.** `node tests/sim_test.js` prints baseline KPIs and several scenario deltas for both flows. Node is not installed on the current Windows workstation.
-- **Render.** `python tests/render_test.py out_dir [--night] [--illustrated]`:
+- **UI walk-through.** `python tests/ui_test.py out_dir [--quick]` screenshots trucks, X-ray tunnels, export operational parking, filters, text to map (light and dark) and, without `--quick`, a goal-seek run, the studio and a visualized plan.
+- **Render.** `python tests/render_test.py out_dir [--night]`:
   - **Browser.** Launches installed Edge or Chrome with SwiftShader, falling back to Playwright Chromium.
   - **three.js.** Served from `node_modules/three` when present (sandbox); otherwise loaded from the CDN.
   - **Screenshots.** Overview, zoom, three scripted low-angle views (central plaza, inspection yard, main lot), tracked truck, export.
@@ -296,7 +317,9 @@ Rebuilt on flow switch (`buildWorld`). `G.P` is the route centreline. `G.LP` is 
 - **Tree detection.** Has some false positives (dark vehicles, shadows) and misses trees in deep shadow. Dense landscaped rows are under-counted.
 - **Northern close-ups.** The export external parking and Doha roundabout area has fewer modelled buildings than the central area.
 - **Routes** (both flows) were traced by hand on the imagery following the GAC trip maps; they need confirmation from someone who knows the site, especially the import exit after the release gate.
-- **Import X-ray position** comes from the flow-map homography; the building may be offset.
+- **Import X-ray position** comes from the flow-map homography; the tunnels may partly overlap the real X-ray halls.
+- **Vehicle removal** misses some trucks on light concrete (inspection docks) and can soften small bright fixtures next to asphalt.
+- **Dual carriageways** are painted as one 10 m road on the west carriageway; the east carriageway keeps the illustrated look.
 - **Coverage.**
   - The first ~700 m of the import road and the Doha approach are outside imagery coverage; queued trucks there stand on synthesized road.
   - The import exit extension direction is a guess.

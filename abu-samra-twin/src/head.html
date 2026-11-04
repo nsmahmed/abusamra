@@ -3,20 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Abu Samra Twin</title>
+<title>WASL · Abu Samra Digital Twin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-/* ===== Tokens: smoked-glass console over the map (dark), frosted ivory (light) ===== */
+/* ===== Tokens: light, see-through glass over the map (ivory by day, smoked by night) ===== */
 :root{
-  --glass:rgba(250,248,243,.86);--glass-2:rgba(255,255,255,.62);--solid:#F7F5EF;
-  --ink:#16171A;--ink-2:#3C3F45;--muted:#6E7076;--hair:rgba(22,23,26,.12);--hair-2:rgba(22,23,26,.07);
-  --maroon:#8A1538;--maroon-2:#B0204D;--maroon-soft:rgba(138,21,56,.10);
-  --sand:#B0812C;--sand-soft:rgba(176,129,44,.14);
-  --ok:#1C7C5A;--warn:#C27C0E;--bad:#B3123F;--info:#2F6FD0;
-  --shadow:0 18px 50px -18px rgba(20,16,10,.45),0 2px 6px rgba(20,16,10,.10);
-  --blur:saturate(150%) blur(18px);
+  --glass:rgba(250,248,243,.58);--glass-2:rgba(255,255,255,.42);--glass-3:rgba(255,255,255,.66);--solid:#F7F5EF;
+  --ink:#16171A;--ink-2:#34373D;--muted:#62656B;--hair:rgba(22,23,26,.13);--hair-2:rgba(22,23,26,.07);
+  --maroon:#8A1538;--maroon-2:#B0204D;--maroon-soft:rgba(138,21,56,.11);
+  --sand:#9C6F1E;--sand-soft:rgba(176,129,44,.16);
+  --ok:#1C7C5A;--warn:#B06E06;--bad:#B3123F;--info:#2F6FD0;
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s0:#8b8d92;
+  --red-lane:#C8243F;--green-lane:#1C8C5E;
+  --shadow:0 18px 50px -22px rgba(20,16,10,.42),0 1px 3px rgba(20,16,10,.08);
+  --blur:saturate(165%) blur(22px);
   --f-ui:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,sans-serif;
   --f-disp:"Archivo","IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
   --f-num:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -24,19 +26,23 @@
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --glass:rgba(17,19,23,.80);--glass-2:rgba(32,35,41,.66);--solid:#14161A;
-  --ink:#EDEBE6;--ink-2:#C9C6BF;--muted:#8E8C87;--hair:rgba(255,255,255,.11);--hair-2:rgba(255,255,255,.06);
-  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.16);
-  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.14);
+  --glass:rgba(16,18,22,.54);--glass-2:rgba(36,39,46,.46);--glass-3:rgba(40,43,50,.72);--solid:#14161A;
+  --ink:#EFEDE8;--ink-2:#CDCAC3;--muted:#9A978F;--hair:rgba(255,255,255,.13);--hair-2:rgba(255,255,255,.07);
+  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.18);
+  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.16);
   --ok:#41C597;--warn:#F0B03A;--bad:#FF5C86;--info:#7FB0FF;
-  --shadow:0 22px 60px -20px rgba(0,0,0,.75),0 2px 8px rgba(0,0,0,.35);color-scheme:dark}}
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s0:#8f8d88;
+  --red-lane:#FF5C74;--green-lane:#41C597;
+  --shadow:0 22px 60px -24px rgba(0,0,0,.7),0 1px 4px rgba(0,0,0,.3);color-scheme:dark}}
 :root[data-theme="dark"]{
-  --glass:rgba(17,19,23,.80);--glass-2:rgba(32,35,41,.66);--solid:#14161A;
-  --ink:#EDEBE6;--ink-2:#C9C6BF;--muted:#8E8C87;--hair:rgba(255,255,255,.11);--hair-2:rgba(255,255,255,.06);
-  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.16);
-  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.14);
+  --glass:rgba(16,18,22,.54);--glass-2:rgba(36,39,46,.46);--glass-3:rgba(40,43,50,.72);--solid:#14161A;
+  --ink:#EFEDE8;--ink-2:#CDCAC3;--muted:#9A978F;--hair:rgba(255,255,255,.13);--hair-2:rgba(255,255,255,.07);
+  --maroon:#D2456F;--maroon-2:#E86A90;--maroon-soft:rgba(210,69,111,.18);
+  --sand:#E2B45A;--sand-soft:rgba(226,180,90,.16);
   --ok:#41C597;--warn:#F0B03A;--bad:#FF5C86;--info:#7FB0FF;
-  --shadow:0 22px 60px -20px rgba(0,0,0,.75),0 2px 8px rgba(0,0,0,.35);color-scheme:dark}
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s0:#8f8d88;
+  --red-lane:#FF5C74;--green-lane:#41C597;
+  --shadow:0 22px 60px -24px rgba(0,0,0,.7),0 1px 4px rgba(0,0,0,.3);color-scheme:dark}
 *,*::before,*::after{box-sizing:border-box}
 body{--sl:364px;--sr:428px;--cr:384px}body.foldL{--sl:64px}body.foldR{--sr:116px;--cr:64px}
 html,body{height:100%;margin:0}
@@ -56,45 +62,53 @@ button{cursor:pointer}
 /* ===== Top bar ===== */
 .topbar{position:fixed;top:12px;left:12px;right:12px;z-index:20;display:flex;align-items:center;gap:10px;pointer-events:none}
 .topbar>*{pointer-events:auto}
-.brand{display:flex;align-items:center;gap:12px;padding:8px 14px 8px 10px;margin-right:auto;min-width:0}
-.mark{width:34px;height:34px;flex:none;border-radius:10px;background:var(--maroon);display:grid;place-items:center;color:#fff;box-shadow:inset 0 -6px 12px rgba(0,0,0,.18)}
-.brand h1{margin:0;font:700 15px/1.05 var(--f-disp);font-stretch:118%;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-.brand small{display:block;font:500 12px/1.2 var(--f-ui);color:var(--muted);letter-spacing:0;text-transform:none;font-stretch:100%;white-space:nowrap}
-.brand .variant{font:600 10px/1 var(--f-disp);font-stretch:110%;letter-spacing:.12em;text-transform:uppercase;color:var(--sand);border:1px solid currentColor;border-radius:999px;padding:4px 8px;margin-left:4px;text-decoration:none;white-space:nowrap}
-.brand .variant:hover{background:var(--sand-soft)}
+.brand{display:flex;align-items:center;gap:12px;padding:7px 16px 7px 8px;margin-right:auto;min-width:0}
+.mark{width:36px;height:36px;flex:none;border-radius:11px;background:var(--maroon);display:grid;place-items:center;color:#fff;box-shadow:inset 0 -6px 12px rgba(0,0,0,.18)}
+.brand h1{margin:0;display:flex;align-items:baseline;gap:9px;font:800 19px/1 var(--f-disp);font-stretch:125%;letter-spacing:.02em;white-space:nowrap}
+.brand h1 span{font:700 17px/1 var(--f-ui);color:var(--maroon);letter-spacing:0}
+.brand small{display:block;margin-top:3px;font:500 11.5px/1.2 var(--f-ui);color:var(--muted);white-space:nowrap}
 .seg{display:inline-flex;padding:3px;gap:2px;border-radius:11px;background:var(--hair-2);border:1px solid var(--hair)}
 .seg button{border:0;background:transparent;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
 .seg button:hover{background:var(--hair-2);color:var(--ink)}
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--solid);font-weight:600}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--ink);color:var(--solid);font-weight:600}
 .seg.maroon button[aria-pressed="true"]{background:var(--maroon);color:#fff}
 .pod{display:flex;align-items:center;gap:10px;padding:6px}
 .clock{display:flex;align-items:center;gap:10px;padding:0 8px 0 6px}
 .clock .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--sand-soft);color:var(--sand)}
 .clock b{font:700 22px/1 var(--f-num);letter-spacing:-.02em}
-.clock span{display:block;font:500 10.5px/1.2 var(--f-disp);font-stretch:112%;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.clock span{display:block;font:500 11px/1.2 var(--f-ui);color:var(--muted)}
 .iconbtn{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--hair);background:var(--glass-2);color:var(--ink-2)}
 .iconbtn:hover{color:var(--ink);border-color:var(--muted)}
 .sep{width:1px;align-self:stretch;background:var(--hair);margin:4px 2px}
+.planchip{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;font-size:12.5px;white-space:nowrap}
+body.hasPlan .brand small{display:none}
+.planchip i{width:10px;height:10px;border-radius:50%;flex:none}
+.planchip b{font-weight:600}
 
 /* ===== Drawers (foldable) ===== */
 .drawer{position:fixed;top:76px;bottom:12px;z-index:15;width:340px;display:flex;flex-direction:column;transition:transform .35s cubic-bezier(.3,.7,.2,1),opacity .25s}
 #left{left:12px}#right{right:12px;width:360px}
-.drawer>.dh{display:flex;align-items:center;gap:10px;padding:14px 12px 10px 16px;border-bottom:1px solid var(--hair)}
-.drawer>.dh h2{margin:0;font:700 12px/1 var(--f-disp);font-stretch:120%;letter-spacing:.14em;text-transform:uppercase;flex:1}
+.drawer>.dh{display:flex;align-items:center;gap:10px;padding:13px 12px 9px 16px}
+.drawer>.dh h2{margin:0;font:700 15px/1 var(--f-disp);font-stretch:112%;flex:1}
 .drawer>.dh .k{font:500 11px/1 var(--f-num);color:var(--muted);border:1px solid var(--hair);border-radius:5px;padding:3px 5px}
-.drawer>.db{overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
+.drawer .db{overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
 .drawer.folded{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
 #right.folded{transform:translateX(calc(100% + 24px))}
 .rail{position:fixed;z-index:14;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 6px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .25s}
 .rail.on{opacity:1;pointer-events:auto}
 .rail button{border:0;background:transparent;color:var(--ink-2);display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 4px}
-.rail .vt{writing-mode:vertical-rl;transform:rotate(180deg);font:700 11px/1 var(--f-disp);font-stretch:120%;letter-spacing:.16em;text-transform:uppercase}
+.rail .vt{writing-mode:vertical-rl;transform:rotate(180deg);font:700 12px/1 var(--f-disp);font-stretch:115%;letter-spacing:.06em}
 #railL{left:12px}#railR{right:12px}#railR .vt{transform:none}
+.ptabs{display:flex;margin:0 12px;border-bottom:1px solid var(--hair)}
+.ptabs button{flex:1;border:0;background:transparent;padding:9px 4px 10px;font:600 12.5px/1 var(--f-ui);color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.ptabs button:hover{color:var(--ink)}
+.ptabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--maroon)}
+.pane{display:none;flex-direction:column;flex:1;min-height:0}.pane.on{display:flex}
 
 /* sections inside drawers */
 .sec{padding:14px 16px;border-bottom:1px solid var(--hair-2)}
 .sec:last-child{border-bottom:0}
-.sec h3{margin:0 0 4px;font:700 11px/1.2 var(--f-disp);font-stretch:115%;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.sec h3{margin:0 0 4px;font:700 13px/1.25 var(--f-disp);font-stretch:108%;color:var(--ink);display:flex;align-items:center;gap:8px}
 .sec h3 .dot{width:6px;height:6px;border-radius:50%;background:var(--maroon)}
 .hint{color:var(--muted);font-size:12.5px;margin:2px 0 10px}
 details.grp{border-top:1px solid var(--hair-2)}
@@ -123,26 +137,59 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;bac
 .btn.primary{background:var(--maroon);border-color:var(--maroon);color:#fff}
 .btn.primary:hover{background:var(--maroon-2)}
 .btn.ghost{background:transparent}
-.btn:disabled{opacity:.55;cursor:wait}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.wide{width:100%;justify-content:center;padding:10px 13px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.sticky{position:sticky;bottom:0;padding:12px 16px;background:linear-gradient(transparent,var(--glass) 30%);border-top:1px solid var(--hair-2)}
+.sticky{position:sticky;bottom:0;padding:12px 16px;border-top:1px solid var(--hair-2);background:var(--glass-3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:0 0 var(--r) var(--r)}
 select.sel{width:100%;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:8px 10px;margin-top:4px}
+textarea.ta{width:100%;min-height:92px;resize:vertical;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:10px 11px;line-height:1.5}
 
 /* forecast */
 table.cmp{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
 table.cmp th,table.cmp td{padding:7px 2px;border-bottom:1px solid var(--hair-2);text-align:right;font-family:var(--f-num);font-size:12px}
 table.cmp th:first-child,table.cmp td:first-child{text-align:left;font-family:var(--f-ui);font-size:12.5px;color:var(--ink-2)}
-table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch:112%;letter-spacing:.1em;text-transform:uppercase}
+table.cmp thead th{color:var(--muted);font:600 11px/1 var(--f-ui)}
 .up{color:var(--bad)}.down{color:var(--ok)}
 .chart svg{width:100%;height:auto;display:block;margin-top:10px}
 .chartkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--muted);margin-top:4px}
 .chartkey i{display:inline-block;width:14px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .verdict{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--maroon-soft);font-size:12.5px;color:var(--ink)}
 
+/* text to map */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{border:1px solid var(--hair);background:var(--glass-2);border-radius:999px;padding:5px 10px;font-size:12px;text-align:start;color:var(--ink-2)}
+.chip:hover{border-color:var(--maroon);color:var(--maroon)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--solid)}
+.maplist{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.maplist li{display:grid;grid-template-columns:18px 1fr;gap:4px 8px;padding:8px 10px;border-radius:10px;background:var(--glass-2);border:1px solid var(--hair-2);font-size:12.5px}
+.maplist li .q{grid-column:2;color:var(--muted);font-size:11.5px;font-style:italic}
+.maplist li .ic{grid-row:1/3;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:700 11px/1 var(--f-num);color:#fff;background:var(--ok);margin-top:1px}
+.maplist li.skip .ic{background:var(--s0)}
+.maplist b.v{font-family:var(--f-num);font-weight:600;color:var(--maroon)}
+
+/* goal seek (drawer) */
+.goalbox{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:8px;margin-top:6px}
+.goalbox .g{padding:10px 12px;border-radius:12px;background:var(--glass-2);border:1px solid var(--hair-2)}
+.goalbox .g span{display:block;font-size:11.5px;color:var(--muted)}
+.goalbox .g b{display:block;font:700 26px/1.1 var(--f-num);letter-spacing:-.02em;margin-top:4px}
+.goalbox .g b small{font:500 12px var(--f-num);color:var(--muted);margin-left:2px}
+.goalbox .arrow{padding-bottom:16px;color:var(--muted)}
+.goalbox .g.tg{border-color:color-mix(in srgb,var(--maroon) 40%,transparent);background:var(--maroon-soft)}
+.goalbox .g.tg b{color:var(--maroon)}
+.progress{height:4px;border-radius:4px;background:var(--hair);overflow:hidden;margin-top:10px}
+.progress b{display:block;height:100%;width:0;background:var(--maroon);transition:width .3s}
+.mini{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.mini li{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:7px 9px;border-radius:9px;background:var(--glass-2);cursor:pointer;border:1px solid var(--hair-2)}
+.mini li:hover{border-color:var(--muted)}
+.mini li i{width:9px;height:9px;border-radius:50%;flex:none}
+.mini li .n{margin-left:auto;font:600 12px var(--f-num)}
+
 /* ===== Right drawer: tabs ===== */
-.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--hair)}
-.tabs button{flex:1;border:0;background:transparent;padding:9px 4px 10px;font:600 11px/1 var(--f-disp);font-stretch:112%;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--hair)}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 2px 10px;font:600 12px/1 var(--f-ui);color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button:hover{color:var(--ink)}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--maroon)}
+.tabs button .badge{display:inline-block;min-width:16px;margin-left:4px;padding:2px 4px;border-radius:999px;background:var(--maroon);color:#fff;font:700 9.5px/1 var(--f-num)}
 .tabpane{display:none}.tabpane.on{display:block}
 .kgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .kpi{padding:11px 12px;border-radius:11px;background:var(--glass-2);border:1px solid var(--hair-2)}
@@ -163,6 +210,25 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 .occ .bar b{display:block;height:100%;border-radius:5px;background:var(--ok);transition:width .4s}
 .z-out{background:var(--sand)}.z-prop{background:var(--maroon)}.z-op{background:var(--ok)}
 
+/* filters */
+.fgroup{margin:0 0 12px}
+.fgroup>span{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.fgroup .chips{margin:0}
+.fgroup .chip{font-size:11.5px;padding:4px 9px}
+.chip .sw{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+.fsum{display:flex;align-items:baseline;gap:8px;padding:10px 12px;border-radius:11px;background:var(--glass-2);border:1px solid var(--hair-2);font-size:12.5px;flex-wrap:wrap}
+.fsum b{font:700 20px/1 var(--f-num)}
+.fsum .clr{margin-left:auto}
+.pattern{margin-top:6px;display:flex;flex-direction:column;gap:7px}
+.pattern .p{display:grid;grid-template-columns:1fr auto;gap:5px 10px;padding:9px 11px;border-radius:10px;background:var(--glass-2);border:1px solid var(--hair-2);font-size:12.5px}
+.pattern .p .lift{font:700 12px var(--f-num);color:var(--bad)}
+.pattern .p .cmpbar{grid-column:1/-1;position:relative;height:6px;border-radius:6px;background:var(--hair-2)}
+.pattern .p .cmpbar b{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--maroon)}
+.pattern .p .cmpbar s{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink-2);text-decoration:none}
+.pattern .p small{grid-column:1/-1;color:var(--muted);font-size:11.5px}
+.bnhead{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--bad) 9%,var(--glass-2));border:1px solid color-mix(in srgb,var(--bad) 35%,transparent);font-size:12.5px}
+.bnhead b{color:var(--bad)}
+
 /* plate feed */
 .feed{list-style:none;margin:0;padding:0;max-height:calc(100vh - 330px);overflow:auto}
 .feed li{display:grid;grid-template-columns:42px auto 1fr;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--hair-2);cursor:pointer}
@@ -182,6 +248,9 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 .tcard{margin-top:12px;padding:12px;border-radius:12px;background:var(--glass-2);border:1px solid var(--hair-2)}
 .tcard .top{display:flex;align-items:center;gap:10px}
 .tcard .top .el{margin-left:auto;font:700 18px/1 var(--f-num)}
+.attrs{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.attrs span{font-size:11px;padding:3px 7px;border-radius:999px;border:1px solid var(--hair);color:var(--ink-2)}
+.attrs span.red{border-color:var(--red-lane);color:var(--red-lane)}.attrs span.green{border-color:var(--green-lane);color:var(--green-lane)}
 .journey{list-style:none;margin:12px 0 0;padding:0 0 0 16px;border-left:2px solid var(--hair);font-size:12.5px}
 .journey li{position:relative;padding:4px 0;display:flex;justify-content:space-between;gap:8px}
 .journey li time{font:500 11.5px var(--f-num);color:var(--muted)}
@@ -193,15 +262,12 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 
 /* ask */
 .ask textarea{width:100%;min-height:64px;resize:vertical;border:1px solid var(--hair);background:var(--glass-2);border-radius:10px;padding:9px 11px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.chip{border:1px solid var(--hair);background:transparent;border-radius:999px;padding:5px 10px;font-size:12px;text-align:start}
-.chip:hover{border-color:var(--maroon);color:var(--maroon)}
 .answer{white-space:pre-wrap;font-size:13.5px;margin-top:10px}
 .steps{font-size:12px;color:var(--muted);margin-top:8px}
 .steps div::before{content:"↻ ";color:var(--maroon)}
 
 /* ===== Stage labels in 3D ===== */
-.lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:999px;background:rgba(20,21,24,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#F2F0EA;font-size:11.5px;line-height:1.15;white-space:nowrap;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12)}
+.lbl{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:999px;background:rgba(20,21,24,.66);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#F2F0EA;font-size:11.5px;line-height:1.15;white-space:nowrap;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12)}
 .lbl::after{content:"";position:absolute;left:50%;bottom:-7px;width:1px;height:7px;background:rgba(255,255,255,.55)}
 .lbl .n{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#fff;font:700 11px/1 var(--f-num);flex:none}
 .lbl .n.out{background:#B0812C}.lbl .n.prop{background:#8A1538}.lbl .n.op{background:#1C7C5A}
@@ -216,8 +282,8 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 .tag .card b{font:700 13px var(--f-num)}
 .tag .stem{width:2px;height:22px;background:linear-gradient(#2F8CFF,transparent)}
 .callout{position:absolute;transform:translate(-50%,-100%);pointer-events:none;animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
-.callout div{padding:7px 12px;border-radius:999px;background:var(--sand);color:#1A1406;font:700 12px/1 var(--f-disp);font-stretch:110%;letter-spacing:.03em;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);white-space:nowrap}
-.callout.minus div{background:var(--bad);color:#fff}
+.callout div{padding:7px 12px;border-radius:999px;background:#E2B45A;color:#1A1406;font:700 12px/1 var(--f-disp);font-stretch:110%;letter-spacing:.02em;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);white-space:nowrap}
+.callout.minus div{background:#D63A5E;color:#fff}
 .callout.fade{transition:opacity .8s;opacity:0}
 @keyframes pop{from{transform:translate(-50%,-80%) scale(.6);opacity:0}}
 
@@ -230,7 +296,7 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 #flowstrip .h{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #flowstrip .h span{overflow:hidden;text-overflow:ellipsis}
 #flowstrip .h i{font:700 9.5px/15px var(--f-num);width:15px;height:15px;border-radius:4px;color:#fff;text-align:center;font-style:normal;flex:none}
-#flowstrip .m{font:600 11px var(--f-num);color:var(--muted);white-space:nowrap}
+#flowstrip .m{font:600 11px var(--f-num);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #flowstrip .m.hot{color:var(--bad)}
 #flowstrip .bar{height:3px;border-radius:3px;background:var(--hair);overflow:hidden}
 #flowstrip .bar b{display:block;height:100%;background:var(--ok);transition:width .4s}
@@ -244,32 +310,82 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 .legend{position:fixed;left:var(--sl);top:76px;transition:left .35s;z-index:16;padding:9px 12px;font-size:11.5px;display:grid;grid-template-columns:auto auto;gap:5px 14px;color:var(--ink-2)}
 .legend span{display:flex;align-items:center;gap:7px;white-space:nowrap}
 .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
-.toast{position:fixed;left:50%;top:78px;transform:translateX(-50%) translateY(-6px);z-index:30;background:var(--ink);color:var(--solid);padding:9px 15px;border-radius:10px;font-size:12.5px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;box-shadow:var(--shadow)}
+.toast{position:fixed;left:50%;top:78px;transform:translateX(-50%) translateY(-6px);z-index:60;background:var(--ink);color:var(--solid);padding:9px 15px;border-radius:10px;font-size:12.5px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;box-shadow:var(--shadow)}
 .toast.on{opacity:1;transform:translateX(-50%)}
-.help{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(10,10,12,.45);backdrop-filter:blur(3px)}
-.help .box{width:min(560px,calc(100vw - 32px));padding:22px 24px}
-.help h2{margin:0 0 4px;font:800 20px/1.1 var(--f-disp);font-stretch:115%}
+.help{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(10,10,12,.38);backdrop-filter:blur(3px)}
+.help .box{width:min(580px,calc(100vw - 32px));padding:22px 24px}
+.help h2{margin:0 0 4px;font:800 22px/1.1 var(--f-disp);font-stretch:118%}
 .help ol{margin:14px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:9px;font-size:13px;color:var(--ink-2)}
 .help kbd{font:600 11px var(--f-num);border:1px solid var(--hair);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--glass-2)}
-.loading{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:#16171A;color:#EDEBE6;transition:opacity .6s}
+.loading{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:#16171A;color:#EDEBE6;transition:opacity .6s}
 .loading.done{opacity:0;pointer-events:none}
-.loading .in{display:flex;flex-direction:column;align-items:center;gap:14px;font:600 11px/1 var(--f-disp);font-stretch:120%;letter-spacing:.2em;text-transform:uppercase}
+.loading .in{display:flex;flex-direction:column;align-items:center;gap:14px;font:600 12px/1 var(--f-ui)}
+.loading .in b{font:800 30px/1 var(--f-disp);font-stretch:125%;letter-spacing:.04em}
 .loading .spin{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:#D2456F;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-@media (max-width:1180px){.legend{display:none}.brand small{display:none}#lighting button:not([aria-pressed="true"]):not(:first-child){display:none}}
+/* ===== Goal seek studio (overlay over the map) ===== */
+.studio{position:fixed;inset:76px 12px 12px 12px;z-index:30;display:flex;flex-direction:column;overflow:hidden;animation:rise .4s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.studio>header{display:flex;align-items:flex-start;gap:16px;padding:18px 20px 14px;border-bottom:1px solid var(--hair)}
+.studio>header h2{margin:0;font:800 22px/1.15 var(--f-disp);font-stretch:112%}
+.studio>header p{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:78ch}
+.studio>header .x{margin-left:auto;flex:none}
+.studio .goalline{display:flex;align-items:baseline;gap:10px;margin-top:8px;font:500 13px var(--f-ui);color:var(--ink-2);flex-wrap:wrap}
+.studio .goalline b{font:700 30px/1 var(--f-num);letter-spacing:-.03em;color:var(--ink)}
+.studio .goalline b.t{color:var(--maroon)}
+.studio .goalline svg{align-self:center;color:var(--muted)}
+.studio .body{flex:1;min-height:0;overflow:auto;padding:16px 20px 20px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-content:start;gap:14px}
+.plan{position:relative;display:flex;flex-direction:column;padding:16px;border-radius:14px;background:var(--glass-2);border:1px solid var(--hair);min-width:0}
+.plan::before{content:"";position:absolute;left:16px;right:16px;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--pc)}
+.plan h3{margin:2px 0 2px;font:800 18px/1.15 var(--f-disp);font-stretch:110%;display:flex;align-items:center;gap:8px}
+.plan h3 i{width:11px;height:11px;border-radius:50%;background:var(--pc)}
+.plan .blurb{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.plan .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.plan .stats div{padding:8px 9px;border-radius:10px;background:var(--glass-3);border:1px solid var(--hair-2);min-width:0}
+.plan .stats span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan .stats b{display:block;font:700 18px/1.15 var(--f-num);letter-spacing:-.02em;margin-top:3px;white-space:nowrap}
+.plan .stats b small{font:500 10.5px var(--f-num);color:var(--muted);margin-left:2px}
+.plan .met{margin:10px 0 0;font-size:12.5px;display:flex;gap:6px;align-items:center;color:var(--ok)}
+.plan .met.no{color:var(--warn)}
+.plan ol{margin:12px 0 12px;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;flex:1}
+.plan ol li{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:baseline;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--hair-2)}
+.plan ol li .c{font:500 11.5px var(--f-num);color:var(--muted);white-space:nowrap}
+.plan ol li .g{grid-column:1/-1;font:500 11px var(--f-num);color:var(--muted)}
+.plan .btn.primary{background:var(--pc);border-color:var(--pc);justify-content:center}
+.plan .btn.primary:hover{filter:brightness(1.08)}
+.vizcard{padding:16px;border-radius:14px;background:var(--glass-2);border:1px solid var(--hair);min-width:0}
+.vizcard.span2{grid-column:span 2}
+.vizcard h4{margin:0;font:700 14px/1.2 var(--f-disp);font-stretch:108%}
+.vizcard p{margin:3px 0 0;color:var(--muted);font-size:12px}
+.vizcard svg{display:block;width:100%;height:auto;margin-top:8px;overflow:visible}
+.vizcard .lg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--ink-2);margin-top:6px}
+.vizcard .lg span{display:inline-flex;align-items:center;gap:6px}
+.vizcard .lg i{width:16px;height:0;border-top:2px solid}
+.vtip{position:fixed;z-index:65;pointer-events:none;padding:8px 10px;border-radius:9px;background:var(--solid);border:1px solid var(--hair);box-shadow:var(--shadow);font-size:12px;min-width:160px;color:var(--ink)}
+.vtip .h{font-weight:600;margin-bottom:4px}
+.vtip .r{display:flex;align-items:center;gap:6px;justify-content:space-between}
+.vtip .r i{width:8px;height:8px;border-radius:50%;flex:none}
+.vtip .r span{flex:1;color:var(--ink-2)}
+.vtip .r b{font:600 12px var(--f-num)}
+.studio .foot{padding:10px 20px;border-top:1px solid var(--hair);font-size:11.5px;color:var(--muted)}
+.studio .wait{grid-column:1/-1;display:grid;place-items:center;padding:60px 0;color:var(--muted)}
+.studio .wait b{display:block;font:700 15px var(--f-disp);color:var(--ink);margin-bottom:6px;text-align:center}
+
+@media (max-width:1180px){.legend{display:none}.brand small{display:none}#lighting button:not([aria-pressed="true"]):not(:first-child){display:none}
+  .studio .body{grid-template-columns:1fr}.vizcard.span2{grid-column:auto}}
 @media (max-width:900px){
   .topbar{flex-wrap:wrap;right:12px}.brand{order:0;flex:1 1 100%}
   .drawer{top:auto;bottom:12px;left:12px!important;right:12px!important;width:auto!important;height:58vh;z-index:25}
   .drawer.folded{transform:translateY(calc(100% + 24px))}
   #flowstrip{bottom:auto;top:150px}.rail{top:auto;bottom:16px;transform:none}#railL{left:16px}#railR{right:60px}
-  .mapctl{bottom:auto;top:150px}
+  .mapctl{bottom:auto;top:150px}.studio{inset:150px 8px 8px 8px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<div class="loading" id="loading"><div class="in"><div class="spin"></div>Loading the twin</div></div>
+<div class="loading" id="loading"><div class="in"><b>WASL</b><div class="spin"></div>Loading the Abu Samra twin</div></div>
 <main id="stage" aria-label="3D view of the port">
   <div id="labels"></div>
   <div id="tags"></div>
@@ -277,10 +393,10 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 
 <header class="topbar">
   <div class="brand glass">
-    <div class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 20h18M5 20V10l7-5 7 5v10M9 20v-5h6v5"/></svg></div>
-    <div><h1>Abu Samra Twin</h1><small lang="ar" dir="rtl">التوأم الرقمي لمنفذ أبو سمرة</small></div>
-    <a class="variant" id="variantLink" href="#"></a>
+    <div class="mark" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c3 0 3-6 6-6s3 6 6 6 3-6 6-6"/><circle cx="3" cy="17" r="1.4" fill="currentColor"/><circle cx="21" cy="11" r="1.4" fill="currentColor"/></svg></div>
+    <div><h1>WASL <span lang="ar">وصل</span></h1><small>Abu Samra digital twin. Plan the future at your fingertips.</small></div>
   </div>
+  <div class="pod glass planchip" id="planChip" hidden><i></i><span>Showing <b></b></span><button class="btn ghost" id="planChipReset" style="padding:5px 9px">Back to baseline</button></div>
   <div class="pod glass">
     <div class="seg maroon" role="group" aria-label="Flow">
       <button id="fImport" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14M12 6l6 6-6 6"/></svg>Import from KSA</button>
@@ -291,7 +407,7 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
     <div class="clock"><div class="ic" id="skyIc" aria-hidden="true"></div><div><b id="clock" class="num">08:00</b><span id="day">Day 1</span></div></div>
     <div class="sep"></div>
     <div class="seg" role="group" aria-label="Simulation speed" id="speeds">
-      <button data-s="0" aria-pressed="false" title="Pause (space)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+      <button data-s="0" aria-pressed="false" title="Pause (space)" aria-label="Pause"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
       <button data-s="0.0166667" aria-pressed="false" title="Real time">1×</button>
       <button data-s="0.1666667" aria-pressed="false" title="10 simulated seconds per second">10×</button>
       <button data-s="2" aria-pressed="true">2 min/s</button>
@@ -309,38 +425,83 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
   </div>
   <div class="pod glass">
     <button class="iconbtn" id="themeBtn" title="Light or dark panels" aria-label="Toggle panel theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
-    <button class="iconbtn" id="helpBtn" title="How to use the twin" aria-label="Help"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></button>
+    <button class="iconbtn" id="helpBtn" title="How to use WASL" aria-label="Help"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></button>
   </div>
 </header>
 
 <aside id="left" class="drawer glass" aria-label="Scenario planner">
   <div class="dh"><h2>Scenario planner</h2><span class="k">[</span><button class="iconbtn" id="foldL" aria-label="Fold planner"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button></div>
-  <div class="db">
-    <div class="sec">
-      <p class="hint" style="margin-bottom:4px">Change a resource and the live port reacts. New capacity shows up gold on the map, removed capacity red.</p>
-      <div id="controls"></div>
+  <div class="ptabs" role="tablist" aria-label="Planner sections">
+    <button role="tab" data-ptab="whatif" aria-selected="true">What-if</button>
+    <button role="tab" data-ptab="text" aria-selected="false">Text to map</button>
+    <button role="tab" data-ptab="goal" aria-selected="false">Goal seek</button>
+  </div>
+  <div class="pane on" data-ppane="whatif">
+    <div class="db">
+      <div class="sec">
+        <p class="hint" style="margin-bottom:4px">Change a resource and the live port reacts. New capacity shows up gold on the map, removed capacity red.</p>
+        <div id="controls"></div>
+      </div>
+      <div class="sec" id="fcBlock" hidden>
+        <h3><span class="dot"></span>Forecast: a typical day</h3>
+        <div id="fcOut"></div>
+      </div>
+      <div class="sec">
+        <h3><span class="dot"></span>Find the smallest change</h3>
+        <p class="hint">Pick one resource and a target. The twin tests values until the target is met.</p>
+        <select id="optRes" class="sel" aria-label="Resource"></select>
+        <div class="ctl" style="margin-top:12px"><label for="optTarget">Average time in port, at most</label><output id="optTargetV" class="num">4 h</output><input type="range" id="optTarget" min="1" max="12" step="0.5" value="4"></div>
+        <div class="row"><button class="btn" id="runOpt">Find it</button></div>
+        <div id="optOut"></div>
+      </div>
+      <div class="sec">
+        <h3><span class="dot"></span>About this prototype</h3>
+        <p class="hint" id="aboutTxt"></p>
+      </div>
     </div>
-    <div class="sec" id="fcBlock" hidden>
-      <h3><span class="dot"></span>Forecast: a typical day</h3>
-      <div id="fcOut"></div>
-    </div>
-    <div class="sec">
-      <h3><span class="dot"></span>Find the smallest change</h3>
-      <p class="hint">Pick a resource and a target. The twin tests values until the target is met.</p>
-      <select id="optRes" class="sel" aria-label="Resource"></select>
-      <div class="ctl" style="margin-top:12px"><label for="optTarget">Average time in port, at most</label><output id="optTargetV" class="num">4 h</output><input type="range" id="optTarget" min="1" max="12" step="0.5" value="4"></div>
-      <div class="row"><button class="btn" id="runOpt">Find it</button></div>
-      <div id="optOut"></div>
-    </div>
-    <div class="sec">
-      <h3><span class="dot"></span>About this prototype</h3>
-      <p class="hint" id="aboutTxt"></p>
+    <div class="sticky row" style="margin:0;flex-wrap:nowrap">
+      <button class="btn primary" id="runFc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19h16M7 15l4-5 3 3 5-7"/></svg>Run forecast</button>
+      <button class="btn ghost" id="resetBase" title="Undo all changes">Reset</button>
+      <button class="btn ghost" id="setBase" title="Use the current settings as the new baseline">Set baseline</button>
     </div>
   </div>
-  <div class="sticky row" style="margin:0;flex-wrap:nowrap">
-    <button class="btn primary" id="runFc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19h16M7 15l4-5 3 3 5-7"/></svg>Run forecast</button>
-    <button class="btn ghost" id="resetBase" title="Undo all changes">Reset</button>
-    <button class="btn ghost" id="setBase" title="Use the current settings as the new baseline">Set baseline</button>
+  <div class="pane" data-ppane="text">
+    <div class="db">
+      <div class="sec">
+        <h3><span class="dot"></span>Describe the change</h3>
+        <p class="hint">Write what you want to try, in English or Arabic. Each phrase that names a resource (X-ray, gates, parking, ramps, clearance time, demand, AEO, pre-arrival) becomes a planner setting. Anything else is ignored and listed below.</p>
+        <textarea class="ta" id="ttmIn" dir="auto" placeholder="Add 2 X-ray lanes, cut clearance time by 30 minutes and expand main parking by 100 slots"></textarea>
+        <div class="chips" id="ttmChips"></div>
+        <ul class="maplist" id="ttmOut"></ul>
+      </div>
+    </div>
+    <div class="sticky row" style="margin:0;flex-wrap:nowrap">
+      <button class="btn primary" id="ttmApply" disabled>Apply to what-if</button>
+      <button class="btn ghost" id="ttmClear">Clear</button>
+    </div>
+  </div>
+  <div class="pane" data-ppane="goal">
+    <div class="db">
+      <div class="sec">
+        <h3><span class="dot"></span>Set a goal</h3>
+        <p class="hint">Say where average time in port should be. WASL searches the levers (gates, X-ray, ramps, parking, digital clearance, AEO, pre-arrival filing) and returns three costed plans: fast, balanced and cost-smart.</p>
+        <div class="goalbox">
+          <div class="g"><span>Today, forecast</span><b id="gsNow" class="num">…<small>h</small></b></div>
+          <div class="arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+          <div class="g tg"><span>Goal</span><b id="gsTargetV" class="num">6.0<small>h</small></b></div>
+        </div>
+        <div class="ctl" style="margin-top:14px"><label for="gsTarget">Goal: average time in port</label><output id="gsTargetO" class="num">6.0 h</output><input type="range" id="gsTarget" min="1" max="12" step="0.25" value="6"></div>
+        <div class="ctl"><label for="gsGrowth">Demand growth per year</label><output id="gsGrowthO" class="num">5%</output><input type="range" id="gsGrowth" min="0" max="15" step="1" value="5"></div>
+        <button class="btn primary wide" id="gsRun"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Find three plans</button>
+        <div class="progress" id="gsProg" hidden><b></b></div>
+        <p class="hint" id="gsStatus" style="margin:8px 0 0"></p>
+        <ul class="mini" id="gsMini"></ul>
+      </div>
+      <div class="sec">
+        <h3><span class="dot"></span>How plans are costed</h3>
+        <p class="hint">Each lever has an indicative capital cost, a yearly running cost and a lead time before it is in service. Plans are compared on capital plus five years of running cost, in QAR millions. Figures are placeholders until GAC programme costs are connected.</p>
+      </div>
+    </div>
   </div>
 </aside>
 <div class="rail glass" id="railL"><button id="unfoldL" aria-label="Open planner"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg><span class="vt">Planner</span></button></div>
@@ -349,6 +510,7 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
   <div class="dh"><h2>Live operations</h2><span class="k">]</span><button class="iconbtn" id="foldR" aria-label="Fold live panel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button></div>
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="now" aria-selected="true">Now</button>
+    <button role="tab" data-tab="filters" aria-selected="false" id="filtersTab">Filters</button>
     <button role="tab" data-tab="reads" aria-selected="false">Gate reads</button>
     <button role="tab" data-tab="track" aria-selected="false">Track</button>
     <button role="tab" data-tab="ask" aria-selected="false" id="askTab" hidden>Ask</button>
@@ -357,6 +519,22 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
     <div class="tabpane on" data-pane="now">
       <div class="sec"><div class="kgrid" id="kpis"></div></div>
       <div class="sec"><h3><span class="dot"></span>Occupancy by stage</h3><p class="hint">Click a stage to fly there.</p><div class="occ" id="occ"></div></div>
+    </div>
+    <div class="tabpane" data-pane="filters">
+      <div class="sec">
+        <p class="hint">Pick values to focus the view. Matching trucks keep their colours on the map; the rest turn grey.</p>
+        <div class="fsum" id="fSum"></div>
+        <div id="fGroups" style="margin-top:12px"></div>
+      </div>
+      <div class="sec">
+        <h3><span class="dot"></span>Bottleneck pattern</h3>
+        <p class="hint">What the trucks held at the current bottleneck have in common, compared with every truck in the port.</p>
+        <div id="pattern"></div>
+      </div>
+      <div class="sec">
+        <h3><span class="dot"></span>Where the filtered trucks are</h3>
+        <div class="occ" id="fOcc"></div>
+      </div>
     </div>
     <div class="tabpane" data-pane="reads">
       <div class="sec">
@@ -388,24 +566,40 @@ table.cmp thead th{color:var(--muted);font:600 10px/1 var(--f-disp);font-stretch
 
 <nav id="flowstrip" class="glass" aria-label="Stages"></nav>
 <div class="mapctl glass" role="toolbar" aria-label="Map layers">
-  <button id="tLabels" aria-pressed="true" data-tip="Stage labels"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16v10H9l-5 4z"/></svg></button>
-  <button id="tRoute" aria-pressed="true" data-tip="Routes and zones"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 19c4-1 2-6 7-7s3-6 7-7"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/></svg></button>
-  <button id="tBays" aria-pressed="true" data-tip="Capacity markings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5v14M9 5v14M14 5v14M19 5v14M4 12h15"/></svg></button>
-  <button id="tStatus" aria-pressed="false" data-tip="Colour trucks by wait"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></button>
-  <button id="tFly" aria-pressed="true" data-tip="Fly to changes"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l18-7-7 18-2-8z"/></svg></button>
-  <button id="recenter" data-tip="Recenter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+  <button id="tLabels" aria-pressed="true" data-tip="Stage labels" aria-label="Stage labels"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16v10H9l-5 4z"/></svg></button>
+  <button id="tRoute" aria-pressed="true" data-tip="Routes and zones" aria-label="Routes and zones"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 19c4-1 2-6 7-7s3-6 7-7"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/></svg></button>
+  <button id="tBays" aria-pressed="true" data-tip="Capacity markings" aria-label="Capacity markings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5v14M9 5v14M14 5v14M19 5v14M4 12h15"/></svg></button>
+  <button id="tStatus" aria-pressed="false" data-tip="Colour trucks by wait" aria-label="Colour trucks by wait"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></button>
+  <button id="tLane" aria-pressed="false" data-tip="Colour trucks by risk lane" aria-label="Colour trucks by risk lane"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 3v18M17 3v18"/><circle cx="12" cy="8" r="2"/><circle cx="12" cy="16" r="2"/></svg></button>
+  <button id="tFly" aria-pressed="true" data-tip="Fly to changes" aria-label="Fly to changes"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l18-7-7 18-2-8z"/></svg></button>
+  <button id="recenter" data-tip="Recenter" aria-label="Recenter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
 </div>
 <div class="legend glass" id="legend" aria-hidden="true"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<section class="studio glass" id="studio" hidden aria-label="Goal seek plans">
+  <header>
+    <div>
+      <h2 id="stTitle">Three ways to reach the goal</h2>
+      <div class="goalline"><span>Average time in port</span><b id="stNow" class="num"></b><span>today</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg><b id="stGoal" class="num t"></b><span>goal</span></div>
+      <p id="stSub"></p>
+    </div>
+    <button class="iconbtn x" id="stClose" aria-label="Close plans"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </header>
+  <div class="body" id="stBody"></div>
+  <div class="foot" id="stFoot"></div>
+</section>
+<div class="vtip" id="vtip" hidden></div>
+
 <div class="help" id="help" hidden><div class="box glass" role="dialog" aria-labelledby="helpT">
-  <h2 id="helpT">Using the twin</h2>
-  <p class="hint">A live discrete-event simulation of every truck through Abu Samra, on a true-scale 3D model of the port.</p>
+  <h2 id="helpT">WASL, the Abu Samra twin</h2>
+  <p class="hint">A live simulation of every truck through Abu Samra on a true-scale 3D model of the port. Watch today, test tomorrow, and pick the plan that gets you there.</p>
   <ol>
-    <li><b>Look around.</b> Left-drag orbits, right-drag pans, the wheel zooms. Click any truck to follow it.</li>
-    <li><b>Change the port.</b> Open the planner <kbd>[</kbd> and move a slider. New lanes, bays and ramps appear gold on the map; removed ones turn red.</li>
-    <li><b>Compare a full day.</b> Run the 24-hour forecast to see time in port, queues and CO₂ against the baseline.</li>
-    <li><b>Watch it live.</b> The live panel <kbd>]</kbd> shows occupancy, plate reads, and the journey of any truck.</li>
-    <li><b>Control time.</b> Pick a speed (<kbd>space</kbd> pauses) and choose day or night lighting independently of the clock.</li>
+    <li><b>Watch it live.</b> The live panel <kbd>]</kbd> shows occupancy, plate reads and any truck's journey. <b>Filters</b> focus the map on a country, lane, cargo or AEO status, and show what the trucks held at the bottleneck have in common.</li>
+    <li><b>Ask what-if.</b> In the planner <kbd>[</kbd> move a slider, or type the change in <b>Text to map</b>. New lanes, bays and ramps appear gold on the map; removed ones turn red. Run the forecast to compare a full day with the baseline.</li>
+    <li><b>Seek a goal.</b> Set the average time in port you want. <b>Goal seek</b> returns three costed plans (fast, balanced, cost-smart) with their effect over the next three years.</li>
+    <li><b>See the plan.</b> Press <b>Visualize in the twin</b> and the port rebuilds itself with that plan's changes.</li>
+    <li><b>Look around.</b> Left-drag orbits, right-drag pans, the wheel zooms, <kbd>space</kbd> pauses. Click any truck to follow it.</li>
   </ol>
   <div class="row" style="justify-content:flex-end"><button class="btn primary" id="helpClose">Got it</button></div>
 </div></div>
