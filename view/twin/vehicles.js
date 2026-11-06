@@ -146,9 +146,10 @@ function trailerLights() {
   ]);
 }
 
-const CONTAINER_COLORS = ["#1f5f99", "#b03a2e", "#2e7d4f", "#d35400", "#7f8c8d", "#f4f6f7", "#8e44ad", "#16a085", "#c0392b", "#2c3e50", "#a04000", "#1a5276"];
-const CAB_COLORS = ["#f4f6f7", "#f4f6f7", "#d0d3d4", "#c0392b", "#1f618d", "#f39c12", "#1e8449", "#7b241c"];
-const CAR_COLORS = ["#f4f6f7", "#f4f6f7", "#f4f6f7", "#d0d3d4", "#17202a", "#5d6d7e", "#a6acaf", "#7b241c", "#1a5276", "#b9770e"];
+/* A restrained fleet palette: mostly whites, greys and navy, with brand maroon and sand accents. */
+const CONTAINER_COLORS = ["#ecebe7", "#dcd9d2", "#c3c0b8", "#9a9da3", "#6b7079", "#3d4652", "#26364a", "#1f3a5c", "#6e2236", "#8a1538", "#46606f", "#b29d77", "#cdb88f"];
+const CAB_COLORS = ["#f2f1ee", "#f2f1ee", "#e4e3df", "#c9cbcf", "#8f949b", "#2b2f36", "#6e2236", "#1f3a5c"];
+const CAR_COLORS = ["#f2f1ee", "#f2f1ee", "#f2f1ee", "#d5d6d8", "#b3b6ba", "#1c1f24", "#5a6069", "#6e2236", "#2a3a52"];
 
 export const pick = (list) => list[Math.floor(Math.random() * list.length)];
 

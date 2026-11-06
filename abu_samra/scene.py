@@ -64,6 +64,22 @@ EXPORT_ROAD = 145634746
 EXPORT_RAMP_SHEDS = (1485001858,)
 OUTBOUND_GATE_XY = (725.0, 926.0)
 OUTBOUND_RELEASE_XY = (52.0, 470.0)
+# Brief on-screen names: (English, Arabic, capacity or lane note).
+STATION_SHORT = {
+    ("inbound", 1): ("Saudi road", "طريق السعودية", ""),
+    ("inbound", 2): ("Radiation portals", "كشف الإشعاع", ""),
+    ("inbound", 3): ("Appointment gates", "بوابات الموعد", "3 lanes"),
+    ("inbound", "+"): ("Proposed parking", "مواقف مقترحة", "unused"),
+    ("inbound", 4): ("Main parking", "المواقف الرئيسية", "~700"),
+    ("inbound", 5): ("X-ray", "المسح بالأشعة", "2 lanes"),
+    ("inbound", 6): ("Inspection ramps", "رمبات التفتيش", "~130"),
+    ("inbound", 7): ("Release", "الإفراج", ""),
+    ("outbound", 1): ("Doha road", "طريق الدوحة", ""),
+    ("outbound", 4): ("Entrance gates", "بوابات الدخول", "2 lanes"),
+    ("outbound", 5): ("Export parking", "مواقف الصادر", "~12"),
+    ("outbound", 6): ("Inspection ramps", "رمبات التفتيش", ""),
+    ("outbound", 7): ("Release", "الإفراج", ""),
+}
 RAMP_PITCH = 4.6  # bay width along a dock face
 TRUCK_REACH = 10.2  # bay centre from the dock face: dock apron plus half a 17 m truck
 
@@ -674,13 +690,18 @@ def build_scene() -> dict:
             {"n": 6, "flow": "outbound", "tone": "green", "en": "Export inspection ramps", "ar": "رمبات التفتيش", "x": _r(export_shed[0]), "y": _r(export_shed[1])},
             {"n": 7, "flow": "outbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("outbound-release")[0], "y": anchor("outbound-release")[1]},
         ]
+    for st in stations:
+        short = STATION_SHORT.get((st["flow"], st["n"]))
+        if short:
+            st["short"], st["ar_short"], st["meta"] = short
+
     arrival_canopy = _centroid(by_id[ARRIVAL_CANOPY])
     departure_canopy = _centroid(by_id[DEPARTURE_CANOPY])
     customs_canopy = _centroid(by_id[CUSTOMS_CANOPY])
     stations += [
-        {"n": "P", "flow": "passenger", "tone": "teal", "en": "Passenger arrival booths", "ar": "أكشاك القدوم", "x": _r(arrival_canopy[0]), "y": _r(arrival_canopy[1])},
-        {"n": "P", "flow": "passenger", "tone": "teal", "en": "Passenger departure booths", "ar": "أكشاك المغادرة", "x": _r(departure_canopy[0]), "y": _r(departure_canopy[1])},
-        {"n": "C", "flow": "passenger", "tone": "teal", "en": "Customs hall canopy", "ar": "مظلة الجمارك", "x": _r(customs_canopy[0]), "y": _r(customs_canopy[1])},
+        {"n": "P", "flow": "passenger", "tone": "teal", "en": "Passenger arrival booths", "ar": "أكشاك القدوم", "short": "Arrivals", "ar_short": "القدوم", "meta": "4 lanes", "x": _r(arrival_canopy[0]), "y": _r(arrival_canopy[1])},
+        {"n": "P", "flow": "passenger", "tone": "teal", "en": "Passenger departure booths", "ar": "أكشاك المغادرة", "short": "Departures", "ar_short": "المغادرة", "meta": "4 lanes", "x": _r(departure_canopy[0]), "y": _r(departure_canopy[1])},
+        {"n": "C", "flow": "passenger", "tone": "teal", "en": "Customs hall canopy", "ar": "مظلة الجمارك", "short": "Customs hall", "ar_short": "مظلة الجمارك", "meta": "", "x": _r(customs_canopy[0]), "y": _r(customs_canopy[1])},
     ]
 
     # --- ground ---

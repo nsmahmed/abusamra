@@ -19,12 +19,12 @@ function status(text) {
 }
 
 const LIGHTING = {
-  day: { elevation: 38, azimuth: 225, exposure: 0.42, sun: 3.0, hemi: 0.45, bloom: 0.15, threshold: 0.95, fog: "#d9e2e8", night: 0, env: 0.55, turbidity: 4, rayleigh: 1.0 },
+  day: { elevation: 38, azimuth: 225, exposure: 0.42, sun: 3.0, hemi: 0.5, bloom: 0.1, threshold: 0.97, fog: "#e7dccb", night: 0, env: 0.55, turbidity: 4, rayleigh: 1.0 },
   sunset: { elevation: 9, azimuth: 258, exposure: 0.5, sun: 3.2, hemi: 0.35, bloom: 0.35, threshold: 0.85, fog: "#e6b48a", night: 0.2, env: 0.5, turbidity: 8, rayleigh: 2.4 },
   night: { elevation: -10, azimuth: 280, exposure: 1.05, sun: 0.0, hemi: 0.32, bloom: 0.9, threshold: 0.5, fog: "#0d1726", night: 1, env: 0.18, turbidity: 2, rayleigh: 0.5 },
 };
 
-const TONES = { gold: "#e3a72f", maroon: "#9b1d3f", green: "#1f8a5b", teal: "#1b9aa0", proposal: "#e9b7b5" };
+const TONES = { gold: "#d6b47a", maroon: "#d8577b", green: "#3fbf8a", teal: "#4cc3c0", proposal: "#f0c9c4" };
 
 async function main() {
   status("Loading port geometry");
@@ -122,8 +122,12 @@ async function main() {
 
   status("Warming up traffic");
   const prewarm = Number(params.get("prewarm") || 2700);
+  /* Seed the dashboard trend with the warm-up so it opens with a line, not an empty chart. */
+  const staticCount = statics.length;
+  const seedHistory = [];
   for (let t = 0; t < prewarm; t += 300) {
     sim.advance(300);
+    seedHistory.push(sim.kpis(0, 0, 0).trucksIn + staticCount);
     $("loader-bar").style.width = `${Math.round((t / prewarm) * 100)}%`;
     await wait();
   }
@@ -231,117 +235,186 @@ async function main() {
     },
   };
 
-  /* ---------- station labels ---------- */
+  /* ---------- language ---------- */
+  const I18N = {
+    en: {
+      subtitle: "Digital twin · Customs operations", import: "Import", export: "Export", passengers: "Passengers",
+      layers: "Layers", labels: "Labels", paths: "Flow paths", zones: "Zones", process: "Process steps",
+      operations: "Operations", simulated: "Simulated", trucksOnSite: "Trucks on site", parking: "Main parking", bays: "bays",
+      scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
+      cleared: "cleared", booths: "booths active", queue: "on approach", min: "min",
+      vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour",
+    },
+    ar: {
+      subtitle: "التوأم الرقمي · العمليات الجمركية", import: "الوارد", export: "الصادر", passengers: "المسافرون",
+      layers: "الطبقات", labels: "التسميات", paths: "مسارات الحركة", zones: "المناطق", process: "خطوات الإجراء",
+      operations: "العمليات", simulated: "محاكاة", trucksOnSite: "الشاحنات في المنفذ", parking: "المواقف الرئيسية", bays: "موقف",
+      scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
+      cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة",
+      vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة",
+    },
+  };
+  const FLOWS = {
+    inbound: { en: ["Import", "Saudi Arabia → Qatar"], ar: ["الوارد", "من السعودية إلى قطر"] },
+    outbound: { en: ["Export", "Qatar → Saudi Arabia"], ar: ["الصادر", "من قطر إلى السعودية"] },
+    passenger: { en: ["Passengers", "Cars and buses"], ar: ["المسافرون", "السيارات والحافلات"] },
+  };
+  let lang = params.get("lang") === "ar" ? "ar" : "en";
+  const stationName = (st) => (lang === "ar" ? st.ar_short || st.ar : st.short || st.en);
+  const META_AR = { "2 lanes": "مساران", "3 lanes": "3 مسارات", "4 lanes": "4 مسارات", unused: "غير مستغلة" };
+  const stationMeta = (st) => (lang === "ar" ? META_AR[st.meta] || st.meta : st.meta);
+
+  /* ---------- station pins ---------- */
   const stationObjects = [];
-  const lineMat = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.75, depthWrite: false });
+  const lineMat = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.45, depthWrite: false });
   data.stations.forEach((st, index) => {
     const el = document.createElement("button");
     el.className = `station tone-${st.tone}`;
-    el.innerHTML = `<span class="num">${st.n}</span><span class="txt"><b>${st.en}</b><i>${st.ar}</i></span>`;
+    el.title = `${st.en} · ${st.ar}`;
     el.addEventListener("click", (event) => {
       event.stopPropagation();
       focusStation(index);
     });
     const obj = new CSS2DObject(el);
-    const height = st.flow === "passenger" ? 30 : 24;
+    const height = st.flow === "passenger" ? 26 : 20;
     obj.position.copy(v3(st.x, st.y, height));
     obj.center.set(0.5, 1);
     scene.add(obj);
     const geo = new THREE.BufferGeometry().setFromPoints([v3(st.x, st.y, 0.6), v3(st.x, st.y, height)]);
     const line = new THREE.Line(geo, lineMat);
     scene.add(line);
-    const dot = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), new THREE.MeshBasicMaterial({ color: TONES[st.tone], toneMapped: false, transparent: true, opacity: 0.9, depthWrite: false }));
+    const dot = new THREE.Mesh(new THREE.RingGeometry(1.4, 2.4, 32), new THREE.MeshBasicMaterial({ color: TONES[st.tone], toneMapped: false, transparent: true, opacity: 0.95, depthWrite: false }));
     dot.rotation.x = -Math.PI / 2;
     dot.position.copy(v3(st.x, st.y, 0.6));
     scene.add(dot);
     stationObjects.push({ st, obj, line, dot, el });
   });
+  function paintPins() {
+    for (const { st, el } of stationObjects) {
+      el.innerHTML = `<span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span>${st.meta ? `<span class="mt">${stationMeta(st)}</span>` : ""}`;
+    }
+  }
 
+  const focusDistance = (st) => (/parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 220);
   function focusStation(index) {
     const { st } = stationObjects[index];
     stopTour();
-    const dist = /parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 210;
-    flyTo(camPose(st.x, st.y, dist, 56, 145));
+    if (st.flow !== activeFlow) setFlow(st.flow);
+    flyTo(camPose(st.x, st.y, focusDistance(st), 56, 145));
     highlightStep(index);
   }
   function highlightStep(index) {
-    expanded = stationObjects[index].st.flow;
-    document.querySelectorAll(".flow").forEach((el) => el.classList.toggle("collapsed", !el.classList.contains(`flow-${expanded}`)));
     document.querySelectorAll(".step").forEach((el) => el.classList.toggle("on", Number(el.dataset.index) === index));
+    stationObjects.forEach((s, i) => s.el.classList.toggle("on", i === index));
   }
 
-  /* ---------- process panel ---------- */
-  const visible = { inbound: true, outbound: true, passenger: true };
-  let expanded = "inbound";
-  function renderSteps() {
-    const host = $("steps");
-    host.innerHTML = "";
-    const groups = [
-      ["inbound", "Inbound cargo · from Saudi Arabia", "الشاحنات القادمة"],
-      ["outbound", "Outbound cargo · to Saudi Arabia", "الشاحنات المغادرة"],
-      ["passenger", "Passengers · cars and buses", "المسافرون"],
-    ];
-    for (const [flow, title, ar] of groups) {
-      const section = document.createElement("div");
-      section.className = `flow flow-${flow}` + (visible[flow] ? "" : " off") + (expanded === flow ? "" : " collapsed");
-      section.innerHTML = `<div class="flow-head"><input type="checkbox" title="Show on map" ${visible[flow] ? "checked" : ""}><span>${title}</span><i>${ar}</i><b class="caret"></b></div>`;
-      section.querySelector("input").addEventListener("change", (event) => {
-        visible[flow] = event.target.checked;
-        applyVisibility();
-        section.classList.toggle("off", !visible[flow]);
-      });
-      section.querySelector(".flow-head").addEventListener("click", (event) => {
-        if (event.target.tagName === "INPUT") return;
-        expanded = expanded === flow ? null : flow;
-        host.querySelectorAll(".flow").forEach((el) => el.classList.toggle("collapsed", !el.classList.contains(`flow-${expanded}`)));
-      });
-      data.stations.forEach((st, index) => {
-        if (st.flow !== flow) return;
-        const row = document.createElement("button");
-        row.className = `step tone-${st.tone}`;
-        row.dataset.index = index;
-        row.innerHTML = `<span class="num">${st.n}</span><span class="txt"><b>${st.en}</b><i>${st.ar}</i></span>`;
-        row.addEventListener("click", () => focusStation(index));
-        section.appendChild(row);
-      });
-      host.appendChild(section);
-    }
-  }
-  function applyVisibility() {
-    for (const { st, obj, line, dot } of stationObjects) {
-      const on = visible[st.flow] && showLabels;
-      obj.visible = on;
-      line.visible = on;
-      dot.visible = visible[st.flow];
-    }
-    for (const flow of Object.keys(visible)) {
-      flows.setVisible(flow, visible[flow] && showFlows);
-      zones.setVisible(flow, visible[flow] && showZones);
-    }
-  }
+  /* ---------- flow switch and process rail ---------- */
+  let activeFlow = ["inbound", "outbound", "passenger"].includes(params.get("flow")) ? params.get("flow") : "inbound";
   let showLabels = params.get("labels") !== "0";
   let showFlows = params.get("flows") !== "0";
   let showZones = params.get("zones") !== "0";
-  renderSteps();
-  applyVisibility();
-  $("toggle-labels").classList.toggle("on", showLabels);
-  $("toggle-flows").classList.toggle("on", showFlows);
-  $("toggle-zones").classList.toggle("on", showZones);
-  $("toggle-zones").addEventListener("click", () => {
-    showZones = !showZones;
-    $("toggle-zones").classList.toggle("on", showZones);
+  let showRail = params.get("rail") !== "0";
+  function renderRail() {
+    const [title, sub] = FLOWS[activeFlow][lang];
+    $("rail-title").textContent = title;
+    $("rail-sub").textContent = sub;
+    const host = $("steps");
+    host.innerHTML = "";
+    data.stations.forEach((st, index) => {
+      if (st.flow !== activeFlow) return;
+      const li = document.createElement("li");
+      li.innerHTML = `<button type="button" class="step tone-${st.tone}" data-index="${index}" title="${st.en}"><span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span>${st.meta ? `<span class="mt">${stationMeta(st)}</span>` : ""}</button>`;
+      li.firstChild.addEventListener("click", () => focusStation(index));
+      host.appendChild(li);
+    });
+  }
+  function applyVisibility() {
+    for (const { st, obj, line, dot } of stationObjects) {
+      const mine = st.flow === activeFlow;
+      obj.visible = mine && showLabels;
+      line.visible = mine && showLabels;
+      dot.visible = mine;
+    }
+    for (const flow of ["inbound", "outbound", "passenger"]) {
+      flows.setVisible(flow, flow === activeFlow && showFlows);
+      zones.setVisible(flow, flow === activeFlow && showZones);
+    }
+    $("rail").classList.toggle("hidden", !showRail);
+  }
+  function setFlow(flow) {
+    activeFlow = flow;
+    document.querySelectorAll("[data-flow]").forEach((b) => b.classList.toggle("on", b.dataset.flow === flow));
+    renderRail();
     applyVisibility();
+  }
+  document.querySelectorAll("[data-flow]").forEach((b) =>
+    b.addEventListener("click", () => {
+      stopTour();
+      setFlow(b.dataset.flow);
+      const first = data.stations.filter((st) => st.flow === b.dataset.flow && st.n !== 1);
+      if (b.dataset.flow === "inbound") flyTo(VIEWS.overview());
+      else if (first.length) {
+        const cx = first.reduce((s, st) => s + st.x, 0) / first.length;
+        const cy = first.reduce((s, st) => s + st.y, 0) / first.length;
+        flyTo(camPose(cx, cy, b.dataset.flow === "passenger" ? 1100 : 1400, 56, 145));
+      }
+    })
+  );
+
+  function applyLanguage() {
+    document.body.classList.toggle("ar", lang === "ar");
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = I18N[lang][el.dataset.i18n] ?? el.textContent;
+      el.lang = lang;
+    });
+    $("lang").textContent = lang === "ar" ? "EN" : "ع";
+    $("brand-title").innerHTML = lang === "ar" ? "منفذ أبو سمرة <span>البري</span>" : "Abu Samra <span>Land Port</span>";
+    paintPins();
+    renderRail();
+  }
+  $("lang").addEventListener("click", () => {
+    lang = lang === "ar" ? "en" : "ar";
+    applyLanguage();
   });
-  $("toggle-labels").addEventListener("click", () => {
-    showLabels = !showLabels;
-    $("toggle-labels").classList.toggle("on", showLabels);
-    applyVisibility();
+
+  /* ---------- layers popover ---------- */
+  const layerSwitch = (id, get, set) => {
+    const input = $(id);
+    input.checked = get();
+    input.addEventListener("change", () => {
+      set(input.checked);
+      applyVisibility();
+    });
+  };
+  layerSwitch("toggle-labels", () => showLabels, (v) => (showLabels = v));
+  layerSwitch("toggle-flows", () => showFlows, (v) => (showFlows = v));
+  layerSwitch("toggle-zones", () => showZones, (v) => (showZones = v));
+  layerSwitch("toggle-rail", () => showRail, (v) => (showRail = v));
+  $("layers-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("layers").classList.toggle("open");
+    $("layers-btn").classList.toggle("on", $("layers").classList.contains("open"));
   });
-  $("toggle-flows").addEventListener("click", () => {
-    showFlows = !showFlows;
-    $("toggle-flows").classList.toggle("on", showFlows);
-    applyVisibility();
+  document.addEventListener("click", (e) => {
+    if (!$("layers").contains(e.target)) {
+      $("layers").classList.remove("open");
+      $("layers-btn").classList.remove("on");
+    }
   });
+
+  /* ---------- dashboard and presentation mode ---------- */
+  let showDash = params.get("dash") !== "0";
+  const applyDash = () => {
+    $("dash").classList.toggle("hidden", !showDash);
+    $("toggle-dash").classList.toggle("on", showDash);
+  };
+  $("toggle-dash").addEventListener("click", () => {
+    showDash = !showDash;
+    applyDash();
+  });
+  const togglePresent = (on = !document.body.classList.contains("present")) => document.body.classList.toggle("present", on);
+  $("present").addEventListener("click", () => togglePresent());
+  if (params.get("present") === "1") togglePresent(true);
 
   /* ---------- time controls ---------- */
   let speed = Number(params.get("speed") || 20);
@@ -353,23 +426,42 @@ async function main() {
       document.querySelectorAll("[data-speed]").forEach((b) => b.classList.toggle("on", b === el));
     });
   });
-  $("play").addEventListener("click", () => {
+  const togglePause = () => {
     paused = !paused;
     $("play").classList.toggle("paused", paused);
-  });
+    document.body.classList.toggle("paused-all", paused);
+  };
+  $("play").addEventListener("click", togglePause);
   document.querySelectorAll("[data-light]").forEach((el) => el.addEventListener("click", () => applyLighting(el.dataset.light)));
   document.querySelectorAll("[data-view]").forEach((el) =>
     el.addEventListener("click", () => {
       stopTour();
       flyTo(VIEWS[el.dataset.view]());
+      document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b === el));
     })
   );
+  controls.addEventListener("start", () => {
+    if (!flight) document.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("on"));
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "d") $("toggle-dash").click();
+    else if (k === "p") togglePresent();
+    else if (k === "escape") togglePresent(false);
+    else if (k === " ") {
+      e.preventDefault();
+      togglePause();
+    } else if (k === "l") $("toggle-labels").click();
+    else if (k === "1" || k === "2" || k === "3") document.querySelectorAll("[data-flow]")[Number(k) - 1].click();
+  });
 
   /* ---------- tour ---------- */
   let tour = null;
   function startTour() {
     stopFollow();
-    const order = stationObjects.map((s, i) => i).filter((i) => visible[stationObjects[i].st.flow]);
+    const order = stationObjects.map((s, i) => i).filter((i) => stationObjects[i].st.flow === activeFlow);
     tour = { order, k: -1, hold: 0 };
     $("tour").classList.add("on");
     nextTourStop();
@@ -378,8 +470,7 @@ async function main() {
     tour.k = (tour.k + 1) % tour.order.length;
     const index = tour.order[tour.k];
     const { st } = stationObjects[index];
-    const dist = /parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 220;
-    flyTo(camPose(st.x, st.y, dist, 58, 120 + (tour.k % 4) * 25), 3.2);
+    flyTo(camPose(st.x, st.y, focusDistance(st), 58, 120 + (tour.k % 4) * 25), 3.2);
     tour.hold = 9;
     highlightStep(index);
   }
@@ -430,7 +521,8 @@ async function main() {
   }
   $("vehicle-close").addEventListener("click", stopFollow);
   $("follow").addEventListener("click", () => {
-    const candidates = sim.vehicles.filter((v) => v.type === "truck" && v.state === "drive" && Math.hypot(v.x, v.y) < 1500 && v.speed > 2);
+    const flowOf = { inbound: "inbound", outbound: "outbound" };
+    const candidates = sim.vehicles.filter((v) => v.type === "truck" && v.state === "drive" && Math.hypot(v.x, v.y) < 1500 && v.speed > 2 && (!flowOf[activeFlow] || v.route.flow === activeFlow));
     if (candidates.length) select(pick(candidates));
   });
   function renderCard() {
@@ -438,35 +530,56 @@ async function main() {
     if (!v) return;
     if (v.static) {
       $("vehicle-body").innerHTML = `
-        <div class="vc-title">Container truck <span class="tag">${v.where === "yard" ? "Main parking" : "Inspection ramp"}</span></div>
+        <div class="vc-title">Container truck <span class="tag">${v.where === "yard" ? "Parked" : "At ramp"}</span></div>
         <div class="vc-plate">${v.plate}</div>
-        <dl><dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Parked, awaiting x-ray slot" : "Backed onto the dock, under physical inspection"}</dd></dl>`;
+        <dl><dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Awaiting x-ray" : "Physical inspection"}</dd></dl>`;
       return;
     }
     const d = sim.describe(v);
-    const plan = d.plan.map((p) => `<li class="${p.state}">${p.label}</li>`).join("");
+    const plan = d.plan.map((p) => `<li class="${p.state}" title="${p.label}"></li>`).join("");
+    const now = d.plan.find((p) => p.state === "now");
     $("vehicle-body").innerHTML = `
       <div class="vc-title">${d.title} <span class="tag">${d.speed} km/h</span></div>
       <div class="vc-plate">${d.plate}</div>
       <dl>
         <dt>Route</dt><dd>${d.origin}</dd>
         ${d.cargo ? `<dt>Cargo</dt><dd>${d.cargo}</dd>` : ""}
-        ${d.declaration ? `<dt>Declaration</dt><dd>${d.declaration}</dd>` : ""}
         <dt>Status</dt><dd>${d.status}</dd>
-        <dt>Time on site</dt><dd>${d.minutes} min</dd>
+        <dt>On site</dt><dd>${d.minutes} min</dd>
       </dl>
-      <ol class="plan">${plan}</ol>`;
+      <ol class="plan">${plan}</ol>
+      <div class="plan-now">${now ? `Next · <b>${now.label}</b>` : "<b>Leaving the port</b>"}</div>`;
   }
 
-  /* ---------- KPIs ---------- */
+  /* ---------- dashboard metrics ---------- */
   const rampStatic = statics.filter((v) => v.where === "ramp").length;
   const yardStatic = statics.filter((v) => v.where === "yard").length;
-  function renderKpis() {
+  const history = seedHistory.slice(-24);
+  let sampleTimer = 0;
+  function renderSpark() {
+    if (history.length < 2) return;
+    const lo = Math.min(...history) - 2;
+    const hi = Math.max(...history) + 2;
+    const pts = history.map((v, i) => [(i / (history.length - 1)) * 240, 42 - ((v - lo) / (hi - lo)) * 38]);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+    $("spark").querySelector(".line").setAttribute("d", line);
+    $("spark").querySelector(".area").setAttribute("d", `${line}L240,44L0,44Z`);
+    const back = history[Math.max(0, history.length - 16)];
+    const diff = history[history.length - 1] - back;
+    const el = $("k-trend");
+    el.textContent = diff === 0 ? "steady" : `${diff > 0 ? "▲" : "▼"} ${Math.abs(diff)}`;
+    el.className = `delta ${diff > 0 ? "up" : diff < 0 ? "down" : ""}`;
+  }
+  function renderKpis(dt = 0) {
     const k = sim.kpis(yardStatic, world.yardCapacity, rampStatic);
     $("k-trucks").textContent = k.trucksIn;
-    $("k-yard").textContent = `${k.yard}`;
-    $("k-yard-cap").textContent = `/ ${k.yardCapacity} bays`;
-    $("k-yard-bar").style.width = `${Math.min(100, (k.yard / Math.max(1, k.yardCapacity)) * 100)}%`;
+    const pct = k.yard / Math.max(1, k.yardCapacity);
+    $("k-yard").textContent = k.yard;
+    $("k-yard-cap").textContent = k.yardCapacity;
+    $("k-park-pct").textContent = `${Math.round(pct * 100)}%`;
+    const ring = $("g-park");
+    ring.style.strokeDashoffset = `${169.6 * (1 - Math.min(1, pct))}`;
+    ring.style.stroke = pct < 0.75 ? "var(--green)" : pct < 0.9 ? "var(--gold)" : "#e0607e";
     $("k-scans").textContent = k.scansPerHour;
     $("k-clear").textContent = k.avgClearance ? `${Math.round(k.avgClearance)}` : "—";
     $("k-ramps").textContent = k.inspections;
@@ -478,7 +591,17 @@ async function main() {
     const hh = String(Math.floor(c / 3600) % 24).padStart(2, "0");
     const mm = String(Math.floor(c / 60) % 60).padStart(2, "0");
     $("clock").textContent = `${hh}:${mm}`;
+    sampleTimer -= dt;
+    if (sampleTimer <= 0 || history.length === 0) {
+      history.push(k.trucksIn);
+      if (history.length > 48) history.shift();
+      sampleTimer = 2.5;
+      renderSpark();
+    }
   }
+  applyLanguage();
+  setFlow(activeFlow);
+  applyDash();
 
   /* ---------- resize and loop ---------- */
   function resize() {
@@ -576,12 +699,12 @@ async function main() {
       sun.shadow.normalBias = size / 900;
     }
     sun.castShadow = LIGHTING[lighting].sun > 0;
-    labels.domElement.classList.toggle("far", distance > 1500);
-    labels.domElement.classList.toggle("near", distance < 450);
+    labels.domElement.classList.toggle("far", distance > 2400);
+    labels.domElement.classList.toggle("near", distance < 2000);
 
     kpiTimer -= dt;
     if (kpiTimer <= 0) {
-      renderKpis();
+      renderKpis(0.4);
       renderCard();
       kpiTimer = 0.4;
     }

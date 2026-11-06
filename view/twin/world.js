@@ -27,6 +27,7 @@ function bayCentres(L) {
   return { start, count, centres: out };
 }
 const MAROON = "#7a1631";
+const SAND = "#dbc29b";
 
 const norm = (x, y) => {
   const n = Math.hypot(x, y);
@@ -381,14 +382,15 @@ function paintGround(data) {
     });
     ctx.closePath();
   };
-  ctx.fillStyle = "#cfae80";
+  ctx.fillStyle = SAND;
   ctx.fillRect(0, 0, cw, ch);
   let seed = 3;
   const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 220; i += 1) {
-    const rgb = i % 2 ? "236,214,174" : "196,166,122";
+  for (let i = 0; i < 260; i += 1) {
+    const rgb = i % 9 === 0 ? "168,138,104" : i % 2 ? "234,222,198" : "196,174,138";
+    const alpha = i % 9 === 0 ? 0.16 : 0.22;
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-    g.addColorStop(0, `rgba(${rgb},0.24)`);
+    g.addColorStop(0, `rgba(${rgb},${alpha})`);
     g.addColorStop(1, `rgba(${rgb},0)`);
     ctx.save();
     ctx.translate(r() * cw, r() * ch);
@@ -402,7 +404,7 @@ function paintGround(data) {
   }
   ctx.filter = "blur(6px)";
   for (const ring of data.ground.flats) {
-    ctx.fillStyle = "rgba(205,190,160,0.4)";
+    ctx.fillStyle = "rgba(214,202,180,0.45)";
     path(ring);
     ctx.fill();
   }
@@ -416,7 +418,7 @@ function paintGround(data) {
     ctx.fill();
   }
   ctx.filter = "blur(2px)";
-  ctx.fillStyle = "rgba(196,180,152,0.9)";
+  ctx.fillStyle = "rgba(216,199,170,0.7)";
   path(data.ground.port);
   ctx.fill();
   ctx.filter = "none";
@@ -428,8 +430,8 @@ function paintGround(data) {
     [0, ch, 0, ch - edge, 0, ch - edge, cw, edge],
   ]) {
     const g = ctx.createLinearGradient(x0, y0, x1, y1);
-    g.addColorStop(0, "rgba(207,174,128,1)");
-    g.addColorStop(1, "rgba(207,174,128,0)");
+    g.addColorStop(0, SAND);
+    g.addColorStop(1, "rgba(219,194,155,0)");
     ctx.fillStyle = g;
     ctx.fillRect(rx, ry, rw, rh);
   }
@@ -466,13 +468,13 @@ export function buildWorld(scene, data, renderer) {
 
   const mat = {
     ground: new THREE.MeshStandardMaterial({ map: paintGround(data), roughness: 1 }),
-    outer: new THREE.MeshStandardMaterial({ color: "#cfae80", roughness: 1 }),
+    outer: new THREE.MeshStandardMaterial({ color: SAND, roughness: 1 }),
     asphalt: new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.93, side: THREE.DoubleSide }),
     dirt: new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 1, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }),
-    white: new THREE.MeshStandardMaterial({ color: "#f3f2ec", roughness: 0.6, side: THREE.DoubleSide }),
+    white: new THREE.MeshStandardMaterial({ color: "#f5f4f0", emissive: "#3a3a38", roughness: 0.6, side: THREE.DoubleSide }),
     yellow: new THREE.MeshStandardMaterial({ color: "#f0b81c", roughness: 0.6, side: THREE.DoubleSide }),
     concrete: new THREE.MeshStandardMaterial({ map: concreteTex, roughness: 0.85, side: THREE.DoubleSide }),
-    yard: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#c9c5bc", roughness: 0.9, side: THREE.DoubleSide }),
+    yard: new THREE.MeshStandardMaterial({ map: asphaltTex, color: "#d2d4d8", roughness: 0.92, side: THREE.DoubleSide }),
     wall: new THREE.MeshStandardMaterial({ map: wall.day, emissiveMap: wall.night, emissive: "#ffffff", emissiveIntensity: 0, roughness: 0.82, side: THREE.DoubleSide }),
     roof: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#e7e3dc", roughness: 0.9, side: THREE.DoubleSide }),
     maroon: new THREE.MeshStandardMaterial({ color: MAROON, roughness: 0.55, side: THREE.DoubleSide }),
@@ -488,7 +490,7 @@ export function buildWorld(scene, data, renderer) {
     portalBand: new THREE.MeshStandardMaterial({ color: "#1f6fb2", roughness: 0.4 }),
     stripe: new THREE.MeshStandardMaterial({ map: stripe, roughness: 0.5 }),
     cladding: new THREE.MeshStandardMaterial({ map: cladTex, roughness: 0.55, metalness: 0.25, side: THREE.DoubleSide }),
-    gravel: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#857766", roughness: 1, side: THREE.DoubleSide }),
+    gravel: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#9a8c78", roughness: 1, side: THREE.DoubleSide }),
     faint: new THREE.MeshStandardMaterial({ color: "#d9d3c6", roughness: 0.9, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }),
     rubber: new THREE.MeshStandardMaterial({ color: "#1d1f22", roughness: 0.9 }),
     crate: new THREE.MeshStandardMaterial({ color: "#a98457", roughness: 0.95 }),
@@ -1414,8 +1416,8 @@ export function buildFlows(scene, data) {
         uTime: uniforms.uTime,
         uGate: { value: gate ? gate.s - 20 : -1 },
         uRelease: { value: release ? release.s + 20 : 1e9 },
-        uGold: { value: new THREE.Color(passenger ? "#3fd0c9" : "#f5b82e") },
-        uGreen: { value: new THREE.Color(passenger ? "#3fd0c9" : "#2fd17a") },
+        uGold: { value: new THREE.Color(passenger ? "#4cc3c0" : "#e6b86a") },
+        uGreen: { value: new THREE.Color(passenger ? "#4cc3c0" : "#46cf98") },
       },
       vertexShader: `
         #include <common>
@@ -1472,8 +1474,8 @@ export function buildZones(scene, data) {
   const uniforms = { uTime: { value: 0 }, uNight: { value: 0 } };
   const meshes = { inbound: [], outbound: [], passenger: [] };
   const STYLE = {
-    ops: { color: "#2fd17a", fill: 0.13, edge: 0.85, dash: 0 },
-    proposal: { color: "#c0284f", fill: 0.2, edge: 0.95, dash: 1 },
+    ops: { color: "#3fbf8a", fill: 0.06, edge: 0.7, dash: 0 },
+    proposal: { color: "#c23a5e", fill: 0.08, edge: 0.85, dash: 1 },
   };
   const vertex = `
     #include <common>
