@@ -79,7 +79,7 @@ const CARGO = ["Foodstuffs", "Construction steel", "Electronics", "Animal feed",
 const STOP_LABEL = {
   portal: "Radiation scan",
   gate: "Gate check",
-  yard: "Holding yard",
+  yard: "Main parking",
   xray: "X-ray scan",
   ramp: "Inspection ramp",
   booth: "Passport and customs booth",
@@ -105,7 +105,7 @@ export class Simulation {
     this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0 };
     this.tmp = {};
     this.tmp2 = {};
-    this.platforms = data.canopies.filter((c) => c.role === "platform").map((c) => c.ring);
+    this.bays = [];
     this.docks = [];
     this.parked = [];
     this.indexLanes();
@@ -307,9 +307,10 @@ export class Simulation {
     return stop.s;
   }
 
-  /* Static parked trucks occupy some platform docks; the simulation must not dock on top of them. */
-  reserveDocks(points) {
-    for (const [x, y] of points) this.docks.push({ x, y, v: null });
+  /* Inspection bays square to the ramp docks, as { x, y, h, ref, v }; v is "static" when a
+     parked truck already fills the bay. */
+  setBays(bays) {
+    this.bays = bays;
   }
 
   /* Static parked trucks in the yards, as { x, y, h }; yard bays must not overlap them. */
@@ -429,56 +430,67 @@ export class Simulation {
     return !this.vehicles.some((o) => o !== v && o.state !== "dwell" && Math.hypot(o.x - c.x, o.y - c.y) < 24);
   }
 
-  /* Inspection trucks pull out of the lane to a free dock beside the platform. */
+  /* Inspection trucks take the free bay nearest their stop and reverse onto the dock from the
+     point of the lane closest to the bay mouth. */
   chooseDock(v, stop) {
     const r = v.route;
-    for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -2]) {
-      const s = stop.s + k * 19;
-      if (s < 30 || s > r.length - 40 || this.nearBox(r, s)) continue;
-      const a = r.at(s - 3, this.tmp);
-      const ax = a.x;
-      const ay = a.y;
-      const b = r.at(s + 3, this.tmp2);
-      const n = Math.hypot(b.x - ax, b.y - ay) || 1;
-      const dx = (b.x - ax) / n;
-      const dy = (b.y - ay) / n;
-      const c = r.at(s, this.tmp);
-      const lat = this.platformSide(c.x, c.y, dx, dy);
-      if (lat === null || Math.abs(lat) < 5.5 || Math.abs(lat) > 10.5) continue;
-      const shift = Math.sign(lat) * (Math.abs(lat) - 1.75);
-      const x = c.x - dy * shift;
-      const y = c.y + dx * shift;
-      if (this.docks.some((d) => Math.hypot(d.x - x, d.y - y) < 18)) continue;
-      if (this.spotOnTraffic({ x, y, dx, dy }, r, s)) continue;
-      const dock = { x, y, v, s, shift };
-      this.docks.push(dock);
-      return dock;
-    }
-    return null;
-  }
-
-  /* Signed lateral offset (left positive) from a lane point to the nearest platform edge. */
-  platformSide(x, y, dx, dy) {
-    let best = Infinity;
-    let lat = null;
-    for (const ring of this.platforms) {
-      for (let i = 0; i < ring.length; i += 1) {
-        const p = ring[i];
-        const q = ring[(i + 1) % ring.length];
-        const ex = q[0] - p[0];
-        const ey = q[1] - p[1];
-        const span = ex * ex + ey * ey || 1;
-        const t = Math.max(0, Math.min(1, ((x - p[0]) * ex + (y - p[1]) * ey) / span));
-        const nx = p[0] + ex * t - x;
-        const ny = p[1] + ey * t - y;
-        const d = Math.hypot(nx, ny);
-        if (d < best) {
-          best = d;
-          lat = nx * -dy + ny * dx;
-        }
+    const c = r.at(stop.s, this.tmp);
+    const cx = c.x;
+    const cy = c.y;
+    let best = null;
+    let bestD = Infinity;
+    for (const bay of this.bays) {
+      if (bay.v || bay.ref !== String(stop.ref)) continue;
+      const d = Math.hypot(bay.x - cx, bay.y - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = bay;
       }
     }
-    return lat;
+    if (!best || bestD > 110) return null;
+    const mx = best.x + Math.sin(best.h) * 10;
+    const my = best.y + Math.cos(best.h) * 10;
+    let s = stop.s;
+    let near = Infinity;
+    for (let t = Math.max(v.s + 12, stop.s - 90); t < Math.min(r.length - 30, stop.s + 120); t += 2) {
+      const p = r.at(t, this.tmp);
+      const d = Math.hypot(p.x - mx, p.y - my);
+      if (d < near) {
+        near = d;
+        s = t;
+      }
+    }
+    best.v = v;
+    return { bay: best, s, x: best.x, y: best.y, v, shift: 0 };
+  }
+
+  /* Pose while reversing between the lane and a ramp bay: t = 0 on the lane, 1 on the dock. */
+  placeBay(v) {
+    const bay = v.dock.bay;
+    v.shift = 0;
+    v.side = 0;
+    this.position(v);
+    const t = smooth(0, 1, v.bayT);
+    const hx = Math.sin(bay.h);
+    const hy = Math.cos(bay.h);
+    const mx = bay.x + hx * 15;
+    const my = bay.y + hy * 15;
+    const u = 1 - t;
+    const x = u * u * v.x + 2 * u * t * mx + t * t * bay.x;
+    const y = u * u * v.y + 2 * u * t * my + t * t * bay.y;
+    let a0 = Math.atan2(v.dx, v.dy);
+    let a1 = bay.h;
+    while (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
+    while (a1 - a0 < -Math.PI) a1 += 2 * Math.PI;
+    const a = a0 + (a1 - a0) * t;
+    v.x = x;
+    v.y = y;
+    v.dx = Math.sin(a);
+    v.dy = Math.cos(a);
+  }
+
+  freeBay(v) {
+    if (v.dock && v.dock.bay && v.dock.bay.v === v) v.dock.bay.v = null;
   }
 
   arrive(v, stop) {
@@ -515,6 +527,8 @@ export class Simulation {
     }
     if (stop.kind === "xray") this.stats.scans.push(this.time);
     if (stop.kind === "ramp") this.stats.inspections += 1;
+    this.freeBay(v);
+    v.bayT = 0;
     if (v.dock) {
       this.docks = this.docks.filter((d) => d.v !== v);
       v.dock = null;
@@ -641,6 +655,23 @@ export class Simulation {
     for (const v of this.vehicles) {
       const route = v.route;
       const stop = route.stops[v.stopIdx];
+      if (v.state === "dwell" && v.dock && v.dock.bay) {
+        /* Reverse onto the dock, inspect, then wait for a gap and pull back out to the lane. */
+        if (v.dwell > 0) {
+          v.bayT = Math.min(1, (v.bayT || 0) + dt / 14);
+          if (v.bayT >= 1) v.dwell -= dt;
+        } else if (v.bayT >= 1 && v.dwell > -120 && !this.laneClear(v)) {
+          v.dwell -= dt;
+        } else {
+          v.bayT -= dt / 14;
+          if (v.bayT <= 0) {
+            this.finish(v, stop);
+            continue;
+          }
+        }
+        this.placeBay(v);
+        continue;
+      }
       if (v.state === "dwell") {
         v.dwell -= dt;
         if (v.dock) {
@@ -672,7 +703,9 @@ export class Simulation {
           distance = this.stopTarget(stop, v) - v.s;
           target = Math.min(target, Math.sqrt(2 * 1.8 * Math.max(0, distance - 0.2)) + (distance > 0.3 ? 0.25 : 0));
           if (distance <= 0.4 && stop.kind === "ramp" && !v.dock) {
-            target = 0;
+            /* Every bay is taken: this truck is waved through without a physical check. */
+            v.stopIdx += 1;
+            continue;
           } else if (distance <= 0.4) {
             v.s = Math.max(v.s, this.stopTarget(stop, v));
             this.arrive(v, stop);
@@ -737,6 +770,7 @@ export class Simulation {
     if (removed.length) {
       this.docks = this.docks.filter((d) => !removed.includes(d.v));
       for (const v of removed) {
+        this.freeBay(v);
         this.dropLanes(v);
         this.fleet.release(v);
         if (this.hooks.onRemove) this.hooks.onRemove(v);
@@ -759,6 +793,10 @@ export class Simulation {
     const r = v.route;
     if (v.type !== "truck") {
       return { cx: v.x, cz: -v.y, cyaw: Math.atan2(v.dx, -v.dy) };
+    }
+    if (v.bayT > 0) {
+      const yaw = Math.atan2(v.dx, -v.dy);
+      return { cx: v.x + v.dx * 5.5, cz: -(v.y + v.dy * 5.5), cyaw: yaw, tx: v.x - v.dx * 2.05, tz: -(v.y - v.dy * 2.05), tyaw: yaw };
     }
     const sx = -v.dy * (v.shift + v.side);
     const sy = v.dx * (v.shift + v.side);

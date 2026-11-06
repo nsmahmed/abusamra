@@ -134,6 +134,26 @@ export function stripeTexture(a = "#c0392b", b = "#ffffff", count = 8) {
   return texture(c);
 }
 
+/* Ribbed metal cladding for industrial sheds: vertical ribs, a darker plinth band at the base. */
+export function claddingTexture() {
+  const c = canvas(128, (ctx, n) => {
+    ctx.fillStyle = "#e8e6e1";
+    ctx.fillRect(0, 0, n, n);
+    for (let x = 0; x < n; x += 16) {
+      const g = ctx.createLinearGradient(x, 0, x + 16, 0);
+      g.addColorStop(0, "rgba(255,255,255,0.35)");
+      g.addColorStop(0.45, "rgba(0,0,0,0.0)");
+      g.addColorStop(0.55, "rgba(0,0,0,0.12)");
+      g.addColorStop(1, "rgba(255,255,255,0.2)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, 0, 16, n);
+    }
+    ctx.fillStyle = "rgba(90,96,104,0.55)";
+    ctx.fillRect(0, n * 0.9, n, n * 0.1);
+  });
+  return texture(c);
+}
+
 export function hazardTexture() {
   const c = canvas(128, (ctx, n) => {
     ctx.fillStyle = "#f2c12e";

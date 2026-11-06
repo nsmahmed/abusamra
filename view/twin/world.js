@@ -117,6 +117,32 @@ function signedArea(ring) {
   return s / 2;
 }
 
+/* Principal-axis box of a footprint: a along the long axis, c across it. */
+function orientedBox(r) {
+  const cx = r.reduce((s, p) => s + p[0], 0) / r.length;
+  const cy = r.reduce((s, p) => s + p[1], 0) / r.length;
+  let sxx = 0;
+  let sxy = 0;
+  let syy = 0;
+  for (const [x, y] of r) {
+    sxx += (x - cx) ** 2;
+    sxy += (x - cx) * (y - cy);
+    syy += (y - cy) ** 2;
+  }
+  const angle = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const along = r.map(([x, y]) => (x - cx) * ux + (y - cy) * uy);
+  const across = r.map(([x, y]) => -(x - cx) * uy + (y - cy) * ux);
+  const box = { cx, cy, angle, a0: Math.min(...along), a1: Math.max(...along), c0: Math.min(...across), c1: Math.max(...across) };
+  box.at = (a, c) => [cx + ux * a - uy * c, cy + uy * a + ux * c];
+  box.ring = (padC = 0, padA = 0) => {
+    const pts = [box.at(box.a0 - padA, box.c0 - padC), box.at(box.a1 + padA, box.c0 - padC), box.at(box.a1 + padA, box.c1 + padC), box.at(box.a0 - padA, box.c1 + padC)];
+    return [...pts, pts[0]];
+  };
+  return box;
+}
+
 /* Local (lx left, lz forward) around an anchor to dataset x/y. */
 export function local(anchor, lx, lz) {
   const s = Math.sin(anchor.h);
@@ -430,6 +456,7 @@ export function buildWorld(scene, data, renderer) {
   const dirtTex = T.dirtTexture();
   const concreteTex = T.concreteTexture();
   const wall = T.wallTextures();
+  const cladTex = T.claddingTexture();
   const stripe = T.stripeTexture();
   const hazard = T.hazardTexture();
   const glow = T.glowTexture();
@@ -460,13 +487,20 @@ export function buildWorld(scene, data, renderer) {
     portal: new THREE.MeshStandardMaterial({ color: "#f4f6f7", roughness: 0.4 }),
     portalBand: new THREE.MeshStandardMaterial({ color: "#1f6fb2", roughness: 0.4 }),
     stripe: new THREE.MeshStandardMaterial({ map: stripe, roughness: 0.5 }),
+    cladding: new THREE.MeshStandardMaterial({ map: cladTex, roughness: 0.55, metalness: 0.25, side: THREE.DoubleSide }),
+    gravel: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#857766", roughness: 1, side: THREE.DoubleSide }),
+    faint: new THREE.MeshStandardMaterial({ color: "#d9d3c6", roughness: 0.9, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }),
+    rubber: new THREE.MeshStandardMaterial({ color: "#1d1f22", roughness: 0.9 }),
+    crate: new THREE.MeshStandardMaterial({ color: "#a98457", roughness: 0.95 }),
+    skylight: new THREE.MeshStandardMaterial({ color: "#b9d3dc", roughness: 0.25, metalness: 0.1, emissive: "#fff1d2", emissiveIntensity: 0, side: THREE.DoubleSide }),
     fence: null,
   };
   addDetail(mat.ground, noise);
   addDetail(mat.outer, noise);
   addDetail(mat.concrete, noise, [3, 37, 211]);
   addDetail(mat.yard, noise, [5, 61, 307]);
-  nightMaterials.push(mat.wall, mat.canopyGlow, mat.glass);
+  addDetail(mat.gravel, noise, [4, 43, 251]);
+  nightMaterials.push(mat.wall, mat.canopyGlow, mat.glass, mat.skylight);
 
   /* ---------- ground, sea ---------- */
   const b = data.bounds;
@@ -505,6 +539,8 @@ export function buildWorld(scene, data, renderer) {
   const yellow = new Flat(1);
   const concrete = new Flat(4);
   const yardPads = new Flat(8);
+  const gravelPads = new Flat(8);
+  const faint = new Flat(1);
   for (const road of data.roads) {
     if (road.c === "dirt") dirt.ribbon(road.p, road.w, H.dirt);
     else if (road.c === "aisle") yardPads.ribbon(road.p, road.w, H.aisle);
@@ -540,11 +576,15 @@ export function buildWorld(scene, data, renderer) {
     }
   }
 
-  /* ---------- yards: pads, lane lines, bay ticks ---------- */
+  /* ---------- yards: pads, lane lines, bay ticks ----------
+     The unused lot south-west of the main parking is weathered gravel with worn markings. */
   for (const yard of data.yards) {
+    const unused = yard.kind === "external";
+    const pads = unused ? gravelPads : yardPads;
+    const marks = unused ? faint : white;
     for (const pad of yard.pads) {
-      yardPads.poly(pad, H.pad);
-      concrete.ribbon([...pad, pad[0]], 0.6, H.curb);
+      pads.poly(pad, H.pad);
+      if (!unused) concrete.ribbon([...pad, pad[0]], 0.6, H.curb);
     }
     for (const lane of yard.lanes) {
       const P = dedupe(lane.p);
@@ -552,10 +592,11 @@ export function buildWorld(scene, data, renderer) {
       const L = cum[cum.length - 1];
       const { start, count } = bayCentres(L);
       const ext = extendLine(P, 4);
-      yardPads.ribbon(ext, 9.4, H.pad);
+      pads.ribbon(ext, 9.4, H.pad);
       if (!count) continue;
-      white.line(P, 3.9, 0.14, H.mark, start, L - start - count * BAY);
-      white.line(P, -3.9, 0.14, H.mark, start, L - start - count * BAY);
+      marks.line(P, 3.9, 0.14, H.mark, start, L - start - count * BAY);
+      marks.line(P, -3.9, 0.14, H.mark, start, L - start - count * BAY);
+      if (unused) continue;
       for (let k = 0; k <= count; k += 1) {
         const [x, y, h] = pointAt(P, cum, start + k * BAY);
         white.rect({ x, y, h }, -3.9, 3.9, -0.08, 0.08, H.mark);
@@ -578,18 +619,30 @@ export function buildWorld(scene, data, renderer) {
 
   /* ---------- buildings ---------- */
   const walls = new Walls();
+  const clad = new Walls();
   const fascia = new Walls();
   const hazardWalls = new Walls();
   const roofs = new Flat(6);
   const rooftop = [];
+  const sheds = [];
+  const xrayHalls = [];
   for (const bld of data.buildings) {
     const ring = bld.ring;
+    if (bld.role === "ramp_shed") {
+      sheds.push(bld);
+      continue;
+    }
     const floors = Math.max(1, Math.round(bld.h / 3.6));
     const floor = bld.h / floors;
+    if (bld.role === "xray_hall") {
+      /* Scanner halls: comb-shaped roofs whose arms are the drive-through scanning tunnels,
+         so they are built as raised roofs on columns with the gantries beneath. */
+      xrayHalls.push(bld);
+      continue;
+    }
     walls.strip(ring, 0, bld.h + 0.9, { floor });
     roofs.poly(ring, bld.h + 0.25);
     if (bld.role === "terminal") fascia.strip(ring, bld.h + 0.3, bld.h + 0.95, { out: 0.04 });
-    if (bld.role === "scanner_hall") hazardWalls.strip(ring, bld.h + 0.1, bld.h + 0.9, { out: 0.04, module: 2, floor: 0.8 });
     const r = openRing(ring);
     const area = Math.abs(signedArea(r));
     if (area > 600) {
@@ -607,7 +660,6 @@ export function buildWorld(scene, data, renderer) {
   }
   scene.add(walls.mesh(mat.wall));
   scene.add(fascia.mesh(mat.maroon));
-  scene.add(hazardWalls.mesh(mat.hazard));
   const roofMesh = roofs.mesh(mat.roof);
   roofMesh.castShadow = true;
   scene.add(roofMesh);
@@ -631,7 +683,6 @@ export function buildWorld(scene, data, renderer) {
   const canopyFascia = new Walls();
   const canopyUnder = new Flat(4);
   const docks = [];
-  const platformInfo = [];
   for (const cp of data.canopies) {
     const shape = shapeFrom(cp.ring);
     const slab = new THREE.ExtrudeGeometry(shape, { depth: 0.45, bevelEnabled: false });
@@ -641,36 +692,146 @@ export function buildWorld(scene, data, renderer) {
     canopyFascia.strip(cp.ring, cp.h - 0.35, cp.h + 1.15, { out: 0.06, module: 6, floor: 1.5 });
     canopyUnder.poly(cp.ring, cp.h - 0.02);
     const r = openRing(cp.ring);
-    if (cp.role === "platform") {
-      const dock = new THREE.ExtrudeGeometry(shape, { depth: 1.3, bevelEnabled: false });
-      dock.rotateX(-Math.PI / 2);
-      docks.push(dock);
-      platformInfo.push({ id: cp.id, ring: r });
-    }
-    const spacing = cp.role === "platform" ? 12 : 10;
     const perimeter = [...r, r[0]];
     const P = dedupe(perimeter);
     const cum = cumulative(P);
-    const inset = offsetLine(P, 0);
-    for (let s = 0; s < cum[cum.length - 1]; s += spacing) {
-      const [x, y] = pointAt(inset, cum, s);
+    for (let s = 0; s < cum[cum.length - 1]; s += 10) {
+      const [x, y] = pointAt(P, cum, s);
       const cx = r.reduce((a, p) => a + p[0], 0) / r.length;
       const cy = r.reduce((a, p) => a + p[1], 0) / r.length;
       const k = 0.6 / Math.max(1, Math.hypot(cx - x, cy - y));
       const px = x + (cx - x) * k;
       const py = y + (cy - y) * k;
-      if (cp.role === "platform" || roads.clearance(px, py) > 0.6) columns.push([px, py, cp.h]);
+      if (roads.clearance(px, py) > 0.6) columns.push([px, py, cp.h]);
     }
-    if (cp.role !== "platform") {
-      const xs = r.map((p) => p[0]);
-      const ys = r.map((p) => p[1]);
-      for (let x = Math.min(...xs) + 8; x < Math.max(...xs); x += 16) {
-        for (let y = Math.min(...ys) + 8; y < Math.max(...ys); y += 16) {
-          if (inside(x, y, r) && roads.clearance(x, y) > 0.8) columns.push([x, y, cp.h]);
-        }
+    const xs = r.map((p) => p[0]);
+    const ys = r.map((p) => p[1]);
+    for (let x = Math.min(...xs) + 8; x < Math.max(...xs); x += 16) {
+      for (let y = Math.min(...ys) + 8; y < Math.max(...ys); y += 16) {
+        if (inside(x, y, r) && roads.clearance(x, y) > 0.8) columns.push([x, y, cp.h]);
       }
     }
   }
+
+  for (const bld of xrayHalls) {
+    const slab = new THREE.ExtrudeGeometry(shapeFrom(bld.ring), { depth: 0.5, bevelEnabled: false });
+    slab.rotateX(-Math.PI / 2);
+    slab.translate(0, bld.h, 0);
+    canopyParts.push(slab);
+    hazardWalls.strip(bld.ring, bld.h - 0.5, bld.h + 0.9, { out: 0.05, module: 2, floor: 1.4 });
+    canopyUnder.poly(bld.ring, bld.h - 0.02);
+    const r = openRing(bld.ring);
+    const P = dedupe([...r, r[0]]);
+    const cum = cumulative(P);
+    const cx = r.reduce((a, p) => a + p[0], 0) / r.length;
+    const cy = r.reduce((a, p) => a + p[1], 0) / r.length;
+    for (let s = 0; s < cum[cum.length - 1]; s += 7) {
+      const [x, y] = pointAt(P, cum, s);
+      const k = 0.5 / Math.max(1, Math.hypot(cx - x, cy - y));
+      const px = x + (cx - x) * k;
+      const py = y + (cy - y) * k;
+      if (roads.clearance(px, py) > 1.2) columns.push([px, py, bld.h]);
+    }
+  }
+
+  /* ---------- inspection ramp sheds ----------
+     A raised loading dock under a deep roof, open on the long sides so trucks back up to it
+     square-on; a clad office block closes one end. Bays are painted on the apron. */
+  const bumpers = [];
+  const crates = [];
+  const skylights = new Flat(3);
+  for (const bld of sheds) {
+    const r = openRing(bld.ring);
+    const box = orientedBox(r);
+    const shape = shapeFrom(bld.ring);
+    const dock = new THREE.ExtrudeGeometry(shape, { depth: 1.3, bevelEnabled: false });
+    dock.rotateX(-Math.PI / 2);
+    docks.push(dock);
+    hazardWalls.strip(bld.ring, 1.0, 1.32, { out: 0.03, module: 1.2, floor: 0.32 });
+    const roofRing = box.ring(3.0, 1.2);
+    const roof = new THREE.ExtrudeGeometry(shapeFrom(roofRing), { depth: 0.6, bevelEnabled: false });
+    roof.rotateX(-Math.PI / 2);
+    roof.translate(0, bld.h, 0);
+    canopyParts.push(roof);
+    canopyFascia.strip(roofRing, bld.h - 0.3, bld.h + 1.3, { out: 0.05, module: 6, floor: 1.6 });
+    /* Translucent roof-light bands across the roof, glowing at night. */
+    for (let a = box.a0 + 4; a < box.a1 - 4; a += 10) {
+      const q = [box.at(a, box.c0 - 1.5), box.at(a + 2.2, box.c0 - 1.5), box.at(a + 2.2, box.c1 + 1.5), box.at(a, box.c1 + 1.5)];
+      skylights.quad(q[0], q[1], q[2], q[3], bld.h + 0.62);
+    }
+    canopyUnder.poly(roofRing, bld.h - 0.02);
+    /* Columns stand on the dock edges between bays; the roof cantilevers over the trailers. */
+    for (const side of [-1, 1]) {
+      const c = side > 0 ? box.c1 - 0.5 : box.c0 + 0.5;
+      for (let a = box.a0 + 1; a <= box.a1 - 1; a += 9.2) {
+        const [x, y] = box.at(a, c);
+        if (inside(x, y, r)) columns.push([x, y, bld.h]);
+      }
+    }
+    /* Office block at the far end of the dock. */
+    const len = Math.min(14, (box.a1 - box.a0) * 0.18);
+    const office = [box.at(box.a1 - len, box.c0 + 1), box.at(box.a1, box.c0 + 1), box.at(box.a1, box.c1 - 1), box.at(box.a1 - len, box.c1 - 1)];
+    clad.strip([...office, office[0]], 1.3, bld.h, { module: 4, floor: bld.h });
+    /* Pallets and crates on the dock floor waiting for inspection. */
+    let seed = Math.abs(bld.id) % 9973;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const n = Math.floor(((box.a1 - box.a0) * (box.c1 - box.c0)) / 45);
+    for (let k = 0, tries = 0; k < n && tries < n * 4; tries += 1) {
+      const a = box.a0 + 3 + rnd() * (box.a1 - box.a0 - len - 6);
+      const c = box.c0 + 3 + rnd() * (box.c1 - box.c0 - 6);
+      const [x, y] = box.at(a, c);
+      if (!inside(x, y, r)) continue;
+      crates.push([x, y, box.angle + (rnd() - 0.5) * 0.3, 0.8 + rnd() * 0.7]);
+      k += 1;
+    }
+  }
+  for (const ramp of data.ramps || []) {
+    for (const [x, y, h] of ramp.bays) {
+      /* Bay lines run from the dock face out past the tractor; a yellow wheel-stop at the dock. */
+      const a = { x, y, h };
+      for (const side of [-1, 1]) white.rect(a, side * 2.3 - 0.07, side * 2.3 + 0.07, -10.2, 7.5, H.mark);
+      yellow.rect(a, -1.6, 1.6, -9.3, -8.9, H.mark);
+      const back = local(a, 0, -10.05);
+      for (const side of [-0.9, 0.9]) bumpers.push([...local({ x: back[0], y: back[1], h }, side, 0), h]);
+    }
+  }
+  if (skylights.p.length) {
+    const sky = skylights.mesh(mat.skylight, { shadow: false });
+    scene.add(sky);
+  }
+  if (bumpers.length) {
+    const g = new THREE.BoxGeometry(0.5, 0.45, 0.25);
+    g.translate(0, 0.95, 0);
+    const im = new THREE.InstancedMesh(g, mat.rubber, bumpers.length);
+    const m = new THREE.Matrix4();
+    bumpers.forEach(([x, y, h], i) => {
+      m.makeRotationY(Math.PI - h);
+      m.setPosition(x, 0, -y);
+      im.setMatrixAt(i, m);
+    });
+    scene.add(im);
+  }
+  if (crates.length) {
+    const g = new THREE.BoxGeometry(1.3, 1, 1.1);
+    g.translate(0, 0.5, 0);
+    const im = new THREE.InstancedMesh(g, mat.crate, crates.length);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    crates.forEach(([x, y, ang, hgt], i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang);
+      s.set(1, hgt, 1);
+      p.set(x, 1.3, -y);
+      m.compose(p, q, s);
+      im.setMatrixAt(i, m);
+    });
+    im.castShadow = true;
+    im.receiveShadow = true;
+    scene.add(im);
+  }
+  scene.add(clad.mesh(mat.cladding));
+  scene.add(hazardWalls.mesh(mat.hazard));
   if (canopyParts.length) {
     const roof = new THREE.Mesh(mergeGeometries(canopyParts), mat.canopy);
     roof.castShadow = true;
@@ -863,6 +1024,12 @@ export function buildWorld(scene, data, renderer) {
 
   /* ---------- x-ray gantries ---------- */
   const xrayCtl = new Map();
+  const halls = data.buildings
+    .filter((b) => b.role === "xray_hall")
+    .map((b) => {
+      const r = openRing(b.ring);
+      return [r.reduce((s, p) => s + p[0], 0) / r.length, r.reduce((s, p) => s + p[1], 0) / r.length];
+    });
   for (const xr of data.xrays) {
     const g = placeGroup(new THREE.Group(), xr);
     asphalt.rect(xr, -6, 6, -40, 40, H.pad);
@@ -894,9 +1061,13 @@ export function buildWorld(scene, data, renderer) {
       g.add(beacon);
       beacons.push(beacon);
     }
-    g.add(mesh(new THREE.BoxGeometry(2.6, 2.7, 6.2), mat.gantry, 9.5, 1.35, -4));
-    g.add(mesh(new THREE.BoxGeometry(2.62, 0.9, 4.5), mat.glass, 9.5, 1.8, -4, false));
-    g.add(mesh(new THREE.BoxGeometry(2.9, 0.25, 6.6), mat.maroon, 9.5, 2.82, -4));
+    /* Operator cabin on the side away from the scanner hall. */
+    const hall = halls.reduce((best, c) => (!best || Math.hypot(c[0] - xr.x, c[1] - xr.y) < Math.hypot(best[0] - xr.x, best[1] - xr.y) ? c : best), null);
+    const hallLeft = hall ? (hall[0] - xr.x) * -Math.cos(xr.h) + (hall[1] - xr.y) * Math.sin(xr.h) > 0 : false;
+    const cab = hallLeft ? -8.5 : 8.5;
+    g.add(mesh(new THREE.BoxGeometry(2.6, 2.7, 6.2), mat.gantry, cab, 1.35, -4));
+    g.add(mesh(new THREE.BoxGeometry(2.62, 0.9, 4.5), mat.glass, cab, 1.8, -4, false));
+    g.add(mesh(new THREE.BoxGeometry(2.9, 0.25, 6.6), mat.maroon, cab, 2.82, -4));
     scene.add(g);
     xrayCtl.set(xr.id, { beam, beacons, active: 0 });
   }
@@ -911,6 +1082,10 @@ export function buildWorld(scene, data, renderer) {
   scene.add(yellow.mesh(mat.yellow));
   scene.add(concrete.mesh(mat.concrete));
   scene.add(yardPads.mesh(mat.yard));
+  scene.add(gravelPads.mesh(mat.gravel));
+  const faintMesh = faint.mesh(mat.faint, { shadow: false });
+  faintMesh.renderOrder = 1;
+  scene.add(faintMesh);
 
   /* ---------- street lights ---------- */
   const lamp = { heads: null, pools: null };
@@ -1084,6 +1259,8 @@ export function buildWorld(scene, data, renderer) {
     const dy = Math.cos(h);
     return [-7, -3.5, 0, 3.5, 7].every((k) => !nearRoute(x + dx * k, y + dy * k, clear));
   };
+  /* Main parking is busy; the unused lot holds only a few stray trucks, as on the imagery. */
+  const FILL = { main: 0.7, export: 0.6, external: 0.025 };
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
@@ -1092,9 +1269,9 @@ export function buildWorld(scene, data, renderer) {
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
       for (const c of bayCentres(L).centres) {
-        yardCapacity += 1;
-        if (activeAisles.has(String(lane.way))) continue;
-        if (Math.random() > (yard.extra ? 0.4 : 0.64)) continue;
+        if (yard.kind === "main") yardCapacity += 1;
+        if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
+        if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
         const [x0, y0, h] = pointAt(P, cum, c);
         const x = x0 - Math.sin(h) * 0.25;
         const y = y0 - Math.cos(h) * 0.25;
@@ -1102,44 +1279,17 @@ export function buildWorld(scene, data, renderer) {
       }
     }
   }
+  /* Inspection bays: some hold trucks backed onto the dock; the rest are free for the simulation. */
+  const rampBays = [];
   const rampSlots = [];
-  const rampStops = [];
-  for (const route of data.routes) {
-    const P = route.p;
-    const cum = cumulative(P);
-    for (const stop of route.stops) if (stop.kind === "ramp") rampStops.push(pointAt(P, cum, stop.s));
-  }
-  for (const info of platformInfo) {
-    const r = info.ring;
-    const cx = r.reduce((a, p) => a + p[0], 0) / r.length;
-    const cy = r.reduce((a, p) => a + p[1], 0) / r.length;
-    let sxx = 0;
-    let sxy = 0;
-    let syy = 0;
-    for (const [x, y] of r) {
-      sxx += (x - cx) ** 2;
-      sxy += (x - cx) * (y - cy);
-      syy += (y - cy) ** 2;
-    }
-    const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-    const ux = Math.cos(ang);
-    const uy = Math.sin(ang);
-    const along = r.map(([x, y]) => (x - cx) * ux + (y - cy) * uy);
-    const across = r.map(([x, y]) => -(x - cx) * uy + (y - cy) * ux);
-    const half = (Math.max(...across) - Math.min(...across)) / 2;
-    const a0 = Math.min(...along) + 9;
-    const a1 = Math.max(...along) - 9;
-    const h = Math.atan2(ux, uy);
-    for (const side of [-1, 1]) {
-      for (let a = a0; a <= a1; a += 18.5) {
-        const off = side * (half + 2.1);
-        const x = cx + ux * a - uy * off;
-        const y = cy + uy * a + ux * off;
-        if (rampStops.some((p) => Math.hypot(p[0] - x, p[1] - y) < 20)) continue;
-        if (Math.random() > 0.6) continue;
-        const heading = side > 0 ? h : h + Math.PI;
-        if (slotFree(x, y, heading, 11)) rampSlots.push({ x, y, h: heading });
+  for (const ramp of data.ramps || []) {
+    for (const [x, y, h] of ramp.bays) {
+      const bay = { x, y, h, ref: ramp.id, v: null };
+      if (Math.random() < 0.58 && slotFree(x, y, h, 3.2)) {
+        bay.v = "static";
+        rampSlots.push({ x, y, h });
       }
+      rampBays.push(bay);
     }
   }
 
@@ -1152,6 +1302,7 @@ export function buildWorld(scene, data, renderer) {
     xrayCtl,
     yardSlots,
     rampSlots,
+    rampBays,
     yardCapacity,
     water,
     lamp,
@@ -1160,6 +1311,7 @@ export function buildWorld(scene, data, renderer) {
       mat.wall.emissiveIntensity = 0.95 * f;
       mat.canopyGlow.emissiveIntensity = 1.1 * f;
       mat.glass.emissiveIntensity = 0.9 * f;
+      mat.skylight.emissiveIntensity = 0.8 * f;
       if (lamp.heads) {
         lamp.headMat.color.set(f > 0.05 ? "#ffd9a0" : "#cfd3d6").multiplyScalar(1 + 5 * f);
         lamp.poolMat.opacity = 0.42 * f;
@@ -1309,6 +1461,105 @@ export function buildFlows(scene, data) {
     uniforms,
     setVisible(group, on) {
       for (const m of groups[group]) m.visible = on;
+    },
+  };
+}
+
+/* Zone overlays in the style of the GAC process maps: the import operational area in green, the
+   unused lot proposed for external parking in maroon with a marching dashed edge. Both fade out as
+   the camera closes in so they never wash over the detail. */
+export function buildZones(scene, data) {
+  const uniforms = { uTime: { value: 0 }, uNight: { value: 0 } };
+  const meshes = { inbound: [], outbound: [], passenger: [] };
+  const STYLE = {
+    ops: { color: "#2fd17a", fill: 0.13, edge: 0.85, dash: 0 },
+    proposal: { color: "#c0284f", fill: 0.2, edge: 0.95, dash: 1 },
+  };
+  const vertex = `
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    varying vec2 vUv;
+    varying float vDist;
+    void main() {
+      vUv = uv;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vDist = -mv.z;
+      gl_Position = projectionMatrix * mv;
+      #include <logdepthbuf_vertex>
+    }`;
+  const fragment = `
+    #include <common>
+    #include <logdepthbuf_pars_fragment>
+    uniform vec3 uColor;
+    uniform float uAlpha, uDash, uTime, uEdge, uNight;
+    varying vec2 vUv;
+    varying float vDist;
+    void main() {
+      #include <logdepthbuf_fragment>
+      float fade = smoothstep(350.0, 1500.0, vDist);
+      float a = uAlpha;
+      if (uEdge > 0.5) {
+        float across = abs(vUv.y * 2.0 - 1.0);
+        a *= 1.0 - smoothstep(0.55, 1.0, across);
+        if (uDash > 0.5) a *= step(0.45, fract((vUv.x - uTime * 6.0) / 14.0));
+        fade = mix(0.45, 1.0, smoothstep(140.0, 650.0, vDist));
+      } else {
+        a *= 1.0 - 0.75 * uNight;
+      }
+      gl_FragColor = vec4(uColor * (uEdge > 0.5 ? 1.25 : 1.0), a * fade);
+    }`;
+  const material = (style, edge) =>
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(style.color) },
+        uAlpha: { value: edge ? style.edge : style.fill },
+        uDash: { value: style.dash },
+        uEdge: { value: edge ? 1 : 0 },
+        uTime: uniforms.uTime,
+        uNight: uniforms.uNight,
+      },
+      vertexShader: vertex,
+      fragmentShader: fragment,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    });
+  for (const zone of data.zones || []) {
+    const style = STYLE[zone.kind] || STYLE.ops;
+    const fillGeo = new THREE.ShapeGeometry(shapeFrom(zone.ring));
+    fillGeo.rotateX(-Math.PI / 2);
+    fillGeo.translate(0, 0.32, 0);
+    const fill = new THREE.Mesh(fillGeo, material(style, false));
+    fill.renderOrder = 3;
+    const ring = dedupe([...openRing(zone.ring), zone.ring[0]]);
+    const width = zone.kind === "proposal" ? 3.2 : 2.6;
+    const L = offsetLine(ring, width / 2);
+    const R = offsetLine(ring, -width / 2);
+    const cum = cumulative(ring);
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    for (let k = 0; k < ring.length; k += 1) {
+      pos.push(L[k][0], 0.36, -L[k][1], R[k][0], 0.36, -R[k][1]);
+      uv.push(cum[k], 0, cum[k], 1);
+      if (k < ring.length - 1) idx.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 1, k * 2 + 3, k * 2 + 2);
+    }
+    const edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    edgeGeo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    edgeGeo.setIndex(idx);
+    const edge = new THREE.Mesh(edgeGeo, material(style, true));
+    edge.renderOrder = 4;
+    scene.add(fill, edge);
+    (meshes[zone.flow] || meshes.inbound).push(fill, edge);
+  }
+  return {
+    uniforms,
+    setNight(f) {
+      uniforms.uNight.value = f;
+    },
+    setVisible(flow, on) {
+      for (const m of meshes[flow] || []) m.visible = on;
     },
   };
 }

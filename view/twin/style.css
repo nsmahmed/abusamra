@@ -160,6 +160,7 @@ button { font: inherit; color: inherit; }
 .tone-maroon .num { background: var(--maroon-2); }
 .tone-green .num { background: var(--green); }
 .tone-teal .num { background: var(--teal); }
+.tone-proposal .num { background: #f6dcd6; color: #7a1631; }
 
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .kpi { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; }
@@ -265,6 +266,7 @@ button { font: inherit; color: inherit; }
 .tone-maroon.station { border-color: rgba(176, 36, 79, 0.9); }
 .tone-green.station { border-color: rgba(47, 209, 122, 0.75); }
 .tone-teal.station { border-color: rgba(63, 208, 201, 0.75); }
+.tone-proposal.station { border-color: rgba(233, 183, 181, 0.9); border-style: dashed; }
 .labels.far .station .txt i { display: none; }
 .labels.far .station b { font-size: 11px; }
 

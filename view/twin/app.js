@@ -6,7 +6,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { buildWorld, buildFlows } from "./world.js";
+import { buildWorld, buildFlows, buildZones } from "./world.js";
 import { Fleet, pick } from "./vehicles.js";
 import { Simulation } from "./sim.js";
 
@@ -24,7 +24,7 @@ const LIGHTING = {
   night: { elevation: -10, azimuth: 280, exposure: 1.05, sun: 0.0, hemi: 0.32, bloom: 0.9, threshold: 0.5, fog: "#0d1726", night: 1, env: 0.18, turbidity: 2, rayleigh: 0.5 },
 };
 
-const TONES = { gold: "#e3a72f", maroon: "#9b1d3f", green: "#1f8a5b", teal: "#1b9aa0" };
+const TONES = { gold: "#e3a72f", maroon: "#9b1d3f", green: "#1f8a5b", teal: "#1b9aa0", proposal: "#e9b7b5" };
 
 async function main() {
   status("Loading port geometry");
@@ -87,6 +87,7 @@ async function main() {
   await wait();
   const world = buildWorld(scene, data, renderer);
   const flows = buildFlows(scene, data);
+  const zones = buildZones(scene, data);
   const fleet = new Fleet(scene);
   let followed = null;
   const sim = new Simulation(data, fleet, {
@@ -115,7 +116,7 @@ async function main() {
   };
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
   world.rampSlots.forEach((slot) => placeStatic(slot, "ramp"));
-  sim.reserveDocks(world.rampSlots.map((slot) => [slot.x, slot.y]));
+  sim.setBays(world.rampBays);
   sim.reserveParked(world.yardSlots);
   fleet.commit();
 
@@ -173,6 +174,7 @@ async function main() {
     scene.environment = envTarget.texture;
     scene.environmentIntensity = L.env;
     world.setNight(L.night);
+    zones.setNight(L.night);
     fleet.lightMaterial.color.setScalar(1 + L.night * 3);
     document.querySelectorAll("[data-light]").forEach((el) => el.classList.toggle("on", el.dataset.light === name));
     document.body.classList.toggle("is-night", L.night > 0.5);
@@ -205,11 +207,14 @@ async function main() {
   }
 
   const VIEWS = {
-    overview: () => camPose(-60, -60, 1750, 60, 132),
-    yard: () => camPose(-420, -470, 520, 50, 150),
+    overview: () => camPose(110, -130, 1800, 57, 148),
+    yard: () => {
+      const s = data.stations.find((st) => st.flow === "inbound" && st.n === 4);
+      return camPose(s.x, s.y, 560, 52, 145);
+    },
     xray: () => {
       const x = data.xrays[0];
-      return camPose(x.x, x.y, 150, 58, 120);
+      return camPose(x.x, x.y, 170, 56, 120);
     },
     gates: () => {
       const p = data.portals[0] || data.gates[0];
@@ -221,8 +226,8 @@ async function main() {
       return camPose(b.x, b.y, 70, 74, THREE.MathUtils.radToDeg(b.h) + 35);
     },
     ramps: () => {
-      const s = data.stations.find((st) => st.en.startsWith("Inspection ramps"));
-      return camPose(s.x, s.y, 230, 55, 160);
+      const s = data.stations.find((st) => st.flow === "inbound" && st.n === 6);
+      return camPose(s.x, s.y, 260, 52, 150);
     },
   };
 
@@ -255,7 +260,7 @@ async function main() {
   function focusStation(index) {
     const { st } = stationObjects[index];
     stopTour();
-    const dist = st.n === 4 || st.en.includes("parking") ? 520 : st.n === 1 ? 420 : 210;
+    const dist = /parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 210;
     flyTo(camPose(st.x, st.y, dist, 56, 145));
     highlightStep(index);
   }
@@ -309,14 +314,24 @@ async function main() {
       line.visible = on;
       dot.visible = visible[st.flow];
     }
-    for (const flow of Object.keys(visible)) flows.setVisible(flow, visible[flow] && showFlows);
+    for (const flow of Object.keys(visible)) {
+      flows.setVisible(flow, visible[flow] && showFlows);
+      zones.setVisible(flow, visible[flow] && showZones);
+    }
   }
   let showLabels = params.get("labels") !== "0";
   let showFlows = params.get("flows") !== "0";
+  let showZones = params.get("zones") !== "0";
   renderSteps();
   applyVisibility();
   $("toggle-labels").classList.toggle("on", showLabels);
   $("toggle-flows").classList.toggle("on", showFlows);
+  $("toggle-zones").classList.toggle("on", showZones);
+  $("toggle-zones").addEventListener("click", () => {
+    showZones = !showZones;
+    $("toggle-zones").classList.toggle("on", showZones);
+    applyVisibility();
+  });
   $("toggle-labels").addEventListener("click", () => {
     showLabels = !showLabels;
     $("toggle-labels").classList.toggle("on", showLabels);
@@ -363,7 +378,7 @@ async function main() {
     tour.k = (tour.k + 1) % tour.order.length;
     const index = tour.order[tour.k];
     const { st } = stationObjects[index];
-    const dist = st.n === 4 || st.en.includes("parking") ? 520 : st.n === 1 ? 420 : 220;
+    const dist = /parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 220;
     flyTo(camPose(st.x, st.y, dist, 58, 120 + (tour.k % 4) * 25), 3.2);
     tour.hold = 9;
     highlightStep(index);
@@ -423,9 +438,9 @@ async function main() {
     if (!v) return;
     if (v.static) {
       $("vehicle-body").innerHTML = `
-        <div class="vc-title">Container truck <span class="tag">${v.where === "yard" ? "Holding yard" : "Inspection ramp"}</span></div>
+        <div class="vc-title">Container truck <span class="tag">${v.where === "yard" ? "Main parking" : "Inspection ramp"}</span></div>
         <div class="vc-plate">${v.plate}</div>
-        <dl><dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Parked, awaiting x-ray slot" : "Under physical inspection"}</dd></dl>`;
+        <dl><dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Parked, awaiting x-ray slot" : "Backed onto the dock, under physical inspection"}</dd></dl>`;
       return;
     }
     const d = sim.describe(v);
@@ -479,8 +494,11 @@ async function main() {
 
   applyLighting(lighting);
   const startView = params.get("view");
-  const intro = params.get("intro") !== "0" && !startView;
-  const initial = startView && VIEWS[startView] ? VIEWS[startView]() : VIEWS.overview();
+  /* ?cam=x,y,distance,polar,bearing frames an exact shot (deep links, screenshots). */
+  const camParam = (params.get("cam") || "").split(",").map(Number);
+  const camShot = camParam.length === 5 && camParam.every(Number.isFinite) ? camPose(...camParam) : null;
+  const intro = params.get("intro") !== "0" && !startView && !camShot;
+  const initial = camShot || (startView && VIEWS[startView] ? VIEWS[startView]() : VIEWS.overview());
   if (intro) {
     const far = camPose(-40, 40, 6200, 70, 200);
     camera.position.copy(far.position);
@@ -514,6 +532,7 @@ async function main() {
     fleet.commit();
     world.update(elapsed, dt, sim);
     flows.uniforms.uTime.value = elapsed;
+    zones.uniforms.uTime.value = elapsed;
 
     marker.visible = !!followed;
     if (followed) {
@@ -572,7 +591,7 @@ async function main() {
   }
   renderKpis();
   requestAnimationFrame(frame);
-  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting };
+  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose };
 }
 
 main().catch((error) => {

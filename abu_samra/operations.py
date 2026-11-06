@@ -1,9 +1,12 @@
 """Customs operations layout for Abu Samra, derived from the mapped geometry.
 
 Booth lanes are the short carriageways that pass under the inspection roofs.
-Truck platforms are the long canopies beside the holding yards. The two cargo
-scanners sit on the service roads in front of the gantry building. Nothing
-here invents a lane that is not already a road in the dataset.
+Following the GAC import process map (reference/img02-import.jpeg) checked against
+satellite imagery: the two cargo scanners are the lanes past the comb-shaped
+x-ray halls between the main parking and Salwa Road, and the truck inspection
+ramps are the two long sheds and one short shed in the walled compound east of
+the main parking. Nothing here invents a lane that is not already a road in
+the dataset.
 """
 
 from __future__ import annotations
@@ -26,12 +29,12 @@ ARRIVAL_CANOPY = 295856215
 DEPARTURE_CANOPY = 295856213
 DEPARTURE_HALL_CANOPY = 295856183
 
-# Long platforms beside the truck queues, and the narrow gantry with two
-# service roads in front of it (the two contracted cargo scanners).
-TRUCK_PLATFORMS = (1485001841, 1485001842)
-SCANNER_BUILDING = 1485001846
-SCANNER_ROADS = (1202482927, 1202482922)
-PLATFORM_LANES = (1409965497, 1328553508)
+# The two x-ray scanning halls and the lane past each (the two contracted cargo scanners).
+SCANNER_BUILDINGS = (1485001841, 1485001842)
+SCANNER_ROADS = (1409965497, 1328553508)
+# Inspection ramp sheds, and the compound lanes trucks take to reach their docks.
+TRUCK_PLATFORMS = (295856199, 295856216, 295856190)
+PLATFORM_LANES = (1457063892, 1457063896)
 
 
 def _load(path: Path) -> dict:
@@ -202,9 +205,8 @@ def build_operations() -> dict:
         site(ARRIVAL_CANOPY, "arrival_canopy", "Arrival inspection canopy", "مظلة تفتيش القدوم"),
         site(DEPARTURE_CANOPY, "departure_canopy", "Departure inspection canopy", "مظلة تفتيش المغادرة"),
         site(DEPARTURE_HALL_CANOPY, "customs_canopy", "Customs canopy over the departure carriageways", "مظلة الجمارك"),
-        site(TRUCK_PLATFORMS[0], "truck_platform", "Truck inspection platform", "منصة تفتيش الشاحنات"),
-        site(TRUCK_PLATFORMS[1], "truck_platform", "Truck inspection platform", "منصة تفتيش الشاحنات"),
-        site(SCANNER_BUILDING, "scanner_hall", "Cargo scanner gantry", "جهاز فحص الشاحنات"),
+        *(site(osm_id, "truck_platform", "Truck inspection ramps", "رمبات التفتيش") for osm_id in TRUCK_PLATFORMS),
+        *(site(osm_id, "scanner_hall", "Cargo x-ray scanning hall", "منطقة المسح بالأشعة") for osm_id in SCANNER_BUILDINGS),
     ]
 
     scanners = []
@@ -226,7 +228,7 @@ def build_operations() -> dict:
                 "name": f"Cargo x-ray {index}",
                 "name_ar": f"جهاز الأشعة {index}",
                 "osm_way_id": way_id,
-                "building_osm_id": SCANNER_BUILDING,
+                "building_osm_id": SCANNER_BUILDINGS[index - 1],
                 "lon": round(lon, 7),
                 "lat": round(lat, 7),
                 "bearing": round(_bearing(road["xy"]), 1),
@@ -311,8 +313,8 @@ def build_operations() -> dict:
         "authority_ar": "الهيئة العامة للجمارك",
         "method": (
             "Booths are the mapped carriageways under the inspection roofs. "
-            "Truck platforms are the long canopies beside the yards. "
-            "The two cargo x-ray lanes are the service roads in front of the scanner gantry. "
+            "The two cargo x-ray lanes pass the comb-shaped scanning halls beside the main parking. "
+            "Truck inspection ramps are the three sheds in the compound east of the main parking. "
             "Vehicles follow those roads."
         ),
         "published_context": {

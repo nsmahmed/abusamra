@@ -33,13 +33,39 @@ NE_EXIT = "c50.86578_24.77268"
 ARRIVAL_CANOPY = 295856215
 DEPARTURE_CANOPY = 295856213
 CUSTOMS_CANOPY = 295856183
-TRUCK_PLATFORMS = (1485001841, 1485001842)
-SCANNER_HALL = 1485001846
-SCANNER_ROADS = (1202482927, 1202482922)
-# Service road leaving the roundabout toward the main parking; every inbound truck takes it,
-# and the radiation portals and appointment gates stand along it.
-INBOUND_APPROACH = 1168194979
-PLATFORM_LANES = (1409965497, 1328553508)
+# Service road leaving the roundabout along the south-east edge of the unused lot; every inbound
+# truck takes it, and the radiation portals and appointment gates stand along it. Its last edge
+# turns back into the lot's roundabout, so trucks leave it one edge early for the main parking.
+INBOUND_APPROACH = (1168194979, 7)
+
+# The layout below follows the GAC import and export process maps (reference/img0*.jpeg)
+# checked against satellite imagery of the site.
+#
+# Import: the comb-shaped halls between the main parking and Salwa Road are the x-ray
+# scanning area (one scanner lane past each hall). The walled compound with two long sheds
+# and one short shed east of the main parking holds the inspection ramps (~130 bays); the
+# release gate sits on the compound's south-west exit.
+XRAY_HALLS = (1485001841, 1485001842)
+XRAY_LANES = (1409965497, 1328553508)
+IMPORT_RAMP_SHEDS = (295856199, 295856216, 295856190)
+# Lanes past the sheds: (way, edges to drive). The second runs only the first two edges of its
+# way (north-east face, then the south-east side) so both lanes leave by the release exit road.
+RAMP_LANES = ((1457063892, None), (1457063896, 2))
+RELEASE_EXIT = 1457063895
+INBOUND_RELEASE_XY = (496.0, -2.0)
+# The large lot between the south-west roundabout and the main parking is unused today; the
+# import map proposes part of it as external parking. Lots east of this line are main parking.
+PARKING_DIVIDER = ((-140.0, -320.0), (-50.0, -400.0))
+# Export: trucks enter through the two-lane gate in the canopy lot beside the north-east
+# roundabout, follow the service road along the north-west edge past the parking strip
+# (~12 bays) and the export inspection shed, and leave through the release gate toward Saudi.
+EXPORT_GATE_LANE = 1168202690
+EXPORT_ROAD = 145634746
+EXPORT_RAMP_SHEDS = (1485001858,)
+OUTBOUND_GATE_XY = (725.0, 926.0)
+OUTBOUND_RELEASE_XY = (52.0, 470.0)
+RAMP_PITCH = 4.6  # bay width along a dock face
+TRUCK_REACH = 10.2  # bay centre from the dock face: dock apron plus half a 17 m truck
 
 MAJOR = {"motorway", "trunk", "primary", "secondary"}
 LANE_W = 3.6
@@ -215,12 +241,15 @@ class Graph:
                     heapq.heappush(queue, (nd, edge["to"]))
         return None
 
-    def journey(self, start: str, ways: list[int], end: str) -> list[dict] | None:
-        """Start node, then drive the full length of each way in order, then the end node."""
+    def journey(self, start: str, ways: list, end: str) -> list[dict] | None:
+        """Start node, then drive each way in order, then the end node.
+
+        A way is an id (drive its full length) or (id, n) to drive only its first n edges."""
         edges: list[dict] = []
         node = start
-        for way_id in ways:
-            chain = self.way_chain(way_id)
+        for way in ways:
+            way_id, count = way if isinstance(way, tuple) else (way, None)
+            chain = self.way_chain(way_id)[:count]
             if not chain:
                 return None
             leg = self.route(node, {chain[0]["from"]}) if node != chain[0]["from"] else []
@@ -296,18 +325,6 @@ def _point_at(path, cum, s: float) -> tuple[float, float, float]:
     return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, _heading(a, b)
 
 
-def _turnoff_s(edges: list[dict], path, cum, from_end: bool) -> float:
-    """Distance where the journey leaves (or rejoins) the main road for the port service roads."""
-    sequence = list(enumerate(edges))
-    if from_end:
-        sequence = sequence[::-1]
-    for _, edge in sequence:
-        if edge["highway"] not in MAJOR:
-            anchor = edge["xy"][-1] if from_end else edge["xy"][0]
-            return _nearest_s(path, cum, anchor)
-    return cum[-1] * (0.8 if from_end else 0.2)
-
-
 def build_scene() -> dict:
     graph_raw = _load(PROCESSED / "road_graph.json")
     origin = LocalOrigin(**{k: graph_raw["local_origin"][k] for k in ("longitude", "latitude", "easting", "northing", "utm_zone", "epsg")})
@@ -365,7 +382,7 @@ def build_scene() -> dict:
         joints.append([_r(node["x"]), _r(node["y"]), _r(width / 2)])
 
     # --- buildings with height classes ---
-    platform_ids = set(TRUCK_PLATFORMS)
+    ramp_sheds = {**{i: "inbound" for i in IMPORT_RAMP_SHEDS}, **{i: "outbound" for i in EXPORT_RAMP_SHEDS}}
     buildings = []
     canopies = []
     by_id = {}
@@ -379,11 +396,11 @@ def build_scene() -> dict:
             role = {ARRIVAL_CANOPY: "arrival", DEPARTURE_CANOPY: "departure", CUSTOMS_CANOPY: "customs"}.get(osm_id, "canopy")
             canopies.append({"id": osm_id, "role": role, "h": 7.5, "ring": _xy(ring)})
             continue
-        if osm_id in platform_ids:
-            canopies.append({"id": osm_id, "role": "platform", "h": 6.5, "ring": _xy(ring)})
+        if osm_id in XRAY_HALLS:
+            buildings.append({"id": osm_id, "role": "xray_hall", "h": 9.6, "ring": _xy(ring)})
             continue
-        if osm_id == SCANNER_HALL:
-            buildings.append({"id": osm_id, "role": "scanner_hall", "h": 9.0, "ring": _xy(ring)})
+        if osm_id in ramp_sheds:
+            buildings.append({"id": osm_id, "role": "ramp_shed", "flow": ramp_sheds[osm_id], "h": 9.0, "ring": _xy(ring)})
             continue
         height = 12.0 if area > 2500 else 8.5 if area > 1000 else 6.0 if area > 300 else 4.2
         role = "terminal" if props.get("inside_port") and area > 1000 else "block"
@@ -402,6 +419,14 @@ def build_scene() -> dict:
             continue
         yards.append({"id": yard["id"], "name": yard["name"], "pads": _yard_pads(lanes), "lanes": lanes})
     yards.extend(_overflow_lots(roads, yards))
+    for yard in yards:
+        yard["kind"] = _parking_kind(yard)
+        yard["name"] = "Main truck parking" if yard["kind"] == "main" else "Unused lot (proposed external parking)"
+        yard.pop("extra", None)
+    infill = _main_infill(yards, roads)
+    if infill:
+        yards.append(infill)
+    yards.append(_export_parking(graph))
 
     # --- passenger booth lanes (cars and buses) ---
     car_routes = []
@@ -426,8 +451,23 @@ def build_scene() -> dict:
                 }
             )
 
+    # --- inspection ramps: perpendicular dock bays along the long faces of each shed ---
+    shed_rings = [by_id[i] for i in IMPORT_RAMP_SHEDS + EXPORT_RAMP_SHEDS]
+    other_rings = [b["ring"] for b in buildings if b["role"] != "ramp_shed"]
+    ramps = {}
+    for flow, sheds, ramp_id in (("inbound", IMPORT_RAMP_SHEDS, "ramp-import"), ("outbound", EXPORT_RAMP_SHEDS, "ramp-export")):
+        bays = []
+        for shed in sheds:
+            bays += _dock_bays(by_id[shed], roads, other_rings + [r for r in shed_rings if r is not by_id[shed]])
+        ramps[flow] = {"id": ramp_id, "flow": flow, "sheds": list(sheds), "bays": bays}
+
     # --- truck journeys over the road graph ---
-    yard_ways = {yard["id"]: [lane["way"] for lane in yard["lanes"]] for yard in yards}
+    yard_ways = {
+        yard["id"]: [lane["way"] for lane in yard["lanes"] if isinstance(lane["way"], int)]
+        for yard in yards
+        if yard["kind"] == "main"
+    }
+    export_lane = next(y for y in yards if y["kind"] == "export")["lanes"][0]["p"]
 
     def pick(ways: list[int], count: int) -> list[int]:
         if len(ways) <= count:
@@ -435,47 +475,63 @@ def build_scene() -> dict:
         step = len(ways) / count
         return [ways[int(i * step + step / 2)] for i in range(count)]
 
+    def lane_mid(way_id: int, count: int | None = None) -> tuple[float, float]:
+        pts = [p for e in graph.way_chain(way_id)[:count] for p in e["xy"]]
+        return _point_at(pts, _cum(pts), _length(pts) / 2)[:2]
+
+    # Aisles are one-way as mapped. Keep the ones a truck can reach from the approach road and
+    # leave toward the x-ray lanes without looping the site (most exit on the north-west edge).
+    approach_end = graph.way_chain(INBOUND_APPROACH[0])[INBOUND_APPROACH[1] - 1]["to"]
+    xray_start = graph.way_chain(XRAY_LANES[0])[0]["from"]
+
+    def detour(aisle: int) -> float:
+        chain = graph.way_chain(aisle)
+        legs = (graph.route(approach_end, {chain[0]["from"]}), graph.route(chain[-1]["to"], {xray_start}))
+        return sum(_length(_journey_path(leg)) if leg else 0.0 if leg == [] else math.inf for leg in legs)
+
+    usable = [a for ways in yard_ways.values() for a in ways if detour(a) < 1000]
     truck_routes = []
     inbound_specs = []
-    for yard_id, count in (("yard-1", 5), ("yard-2", 4), ("yard-3", 2)):
-        for i, aisle in enumerate(pick(yard_ways.get(yard_id, []), count)):
-            scanner = SCANNER_ROADS[(i + len(inbound_specs)) % 2]
-            ramp = PLATFORM_LANES[i % 2] if (i + len(inbound_specs)) % 3 != 2 else None
-            inbound_specs.append((aisle, scanner, ramp))
-    outbound_specs = []
-    for yard_id, count in (("yard-3", 3), ("yard-2", 3)):
-        for i, aisle in enumerate(pick(yard_ways.get(yard_id, [])[::-1], count)):
-            outbound_specs.append((aisle, None, PLATFORM_LANES[i % 2]))
+    for ways in [usable]:
+        for aisle in pick(ways, 6):
+            n = len(inbound_specs)
+            ramp_way, ramp_edges = RAMP_LANES[n % 2]
+            inbound_specs.append(
+                {
+                    "ways": [INBOUND_APPROACH, aisle, XRAY_LANES[n % 2], (ramp_way, ramp_edges), RELEASE_EXIT],
+                    "yard": (aisle, lane_mid(aisle)),
+                    "xray": n % 2,
+                    # Most trucks are pulled for a physical check; the rest only drive through.
+                    "ramp": lane_mid(ramp_way, 1) if n % 3 != 2 else None,
+                }
+            )
+    export_mid = export_lane[len(export_lane) // 2]
+    export_shed = _centroid(by_id[EXPORT_RAMP_SHEDS[0]])
+    outbound_specs = [
+        {"ways": [EXPORT_GATE_LANE, EXPORT_ROAD], "yard": ("export-parking", export_mid), "xray": None, "ramp": export_shed}
+        for _ in range(2)
+    ]
 
     def plan(flow: str, start: str, end: str, specs) -> list[dict]:
         made = []
-        for index, (aisle, scanner, ramp) in enumerate(specs):
-            ways = ([INBOUND_APPROACH] if flow == "inbound" else []) + [aisle] + ([scanner] if scanner else []) + ([ramp] if ramp else [])
-            edges = graph.journey(start, ways, end)
+        for index, spec in enumerate(specs):
+            edges = graph.journey(start, spec["ways"], end)
             if not edges:
+                print(f"  ! no {flow} journey through ways {spec['ways']}")
                 continue
             path = _journey_path(edges)
             cum = _cum(path)
-            stops = []
-            aisle_chain = graph.way_chain(aisle)
-            aisle_pts = [p for e in aisle_chain for p in e["xy"]]
-            mid = aisle_pts[len(aisle_pts) // 2]
-            s_yard = _nearest_s(path, cum, mid)
-            stops.append({"s": _r(s_yard), "kind": "yard", "ref": aisle})
-            after = s_yard + 20
-            if scanner:
-                sc = next(item for item in ops["scanners"] if item["osm_way_id"] == scanner)
-                s = _nearest_s(path, cum, ll(sc["lon"], sc["lat"]), after)
-                stops.append({"s": _r(s), "kind": "xray", "ref": sc["id"]})
+            ref, at = spec["yard"]
+            s = _nearest_s(path, cum, at)
+            stops = [{"s": _r(s), "kind": "yard", "ref": ref}]
+            after = s + 20
+            if spec["xray"] is not None:
+                s = _nearest_s(path, cum, _centroid(by_id[XRAY_HALLS[spec["xray"]]]), after)
+                stops.append({"s": _r(s), "kind": "xray", "ref": f"xray-{spec['xray'] + 1}"})
                 after = s + 20
-            if ramp:
-                chain = graph.way_chain(ramp)
-                pts = [p for e in chain for p in e["xy"]]
-                platform = TRUCK_PLATFORMS[PLATFORM_LANES.index(ramp)]
-                target = _centroid(by_id[platform])
-                best = min(pts, key=lambda p: math.dist(p, target))
-                s = _nearest_s(path, cum, best, after)
-                stops.append({"s": _r(s), "kind": "ramp", "ref": f"ramp-{PLATFORM_LANES.index(ramp) + 1}"})
+            if spec["ramp"] is not None:
+                s = _nearest_s(path, cum, spec["ramp"], after)
+                stops.append({"s": _r(s), "kind": "ramp", "ref": ramps[flow]["id"]})
             made.append({"edges": edges, "path": path, "cum": cum, "stops": stops, "flow": flow, "index": index})
         return made
 
@@ -495,10 +551,6 @@ def build_scene() -> dict:
             prefix = prefix[:n]
         return prefix
 
-    def common_suffix(group: list[dict]) -> list[dict]:
-        reversed_group = [{"edges": g["edges"][::-1]} for g in group]
-        return common_prefix(reversed_group)[::-1]
-
     def place(route: dict, s: float, kind: str, ref: str, extra: dict | None = None) -> dict:
         x, y, heading = _point_at(route["path"], route["cum"], s)
         record = {"x": _r(x), "y": _r(y), "h": round(heading, 3), "kind": kind, "ref": ref}
@@ -510,42 +562,33 @@ def build_scene() -> dict:
         if not group:
             continue
         lead = group[0]
-        prefix = common_prefix(group)
-        prefix_len = _length(_journey_path(prefix)) if prefix else 0.0
-        turn = _turnoff_s(prefix or lead["edges"], lead["path"], lead["cum"], from_end=False)
-        first_stop = min(stop["s"] for stop in lead["stops"])
-        limit = min(prefix_len - 15, first_stop - 60) if prefix else first_stop - 60
-        if flow == "inbound":
-            approach = graph.way_chain(INBOUND_APPROACH)[0]["xy"][0]
-            turn = _nearest_s(lead["path"], lead["cum"], approach)
-            s_portal = min(turn + 50, limit - 90)
-            s_gate = min(turn + 230, limit)
-        else:
-            s_portal = min(turn + 40, limit - 90)
-            s_gate = min(turn + 130, limit)
-        suffix = common_suffix(group)
         last_stop = max(stop["s"] for stop in lead["stops"])
-        if suffix:
-            suffix_start = lead["cum"][-1] - _length(_journey_path(suffix))
-            rejoin = _turnoff_s(suffix, lead["path"], lead["cum"], from_end=True)
-            s_release = max(min(rejoin - 45, lead["cum"][-1] - 200), suffix_start + 10, last_stop + 60)
-        else:
-            s_release = last_stop + 120
-
         portal_ref = f"{flow}-portal"
         gate_ref = f"{flow}-gate"
         release_ref = f"{flow}-release"
         if flow == "inbound":
+            # Radiation portals, then the appointment gates, on the approach road every truck shares.
+            prefix = common_prefix(group)
+            prefix_len = _length(_journey_path(prefix)) if prefix else 0.0
+            first_stop = min(stop["s"] for stop in lead["stops"])
+            limit = min(prefix_len - 15, first_stop - 60) if prefix else first_stop - 60
+            approach = graph.way_chain(INBOUND_APPROACH[0])[0]["xy"][0]
+            turn = _nearest_s(lead["path"], lead["cum"], approach)
+            s_portal = min(turn + 50, limit - 90)
+            s_gate = min(turn + 230, limit)
+            s_release = _nearest_s(lead["path"], lead["cum"], INBOUND_RELEASE_XY, last_stop + 30)
             portals.append(place(lead, s_portal, "portal", portal_ref))
+            anchors = {portal_ref: s_portal, gate_ref: s_gate, release_ref: s_release}
+        else:
+            s_gate = _nearest_s(lead["path"], lead["cum"], OUTBOUND_GATE_XY)
+            s_release = _nearest_s(lead["path"], lead["cum"], OUTBOUND_RELEASE_XY, last_stop + 30)
+            anchors = {gate_ref: s_gate, release_ref: s_release}
         gates.append(place(lead, s_gate, "gate", gate_ref, {"lanes": 3 if flow == "inbound" else 2}))
         gates.append(place(lead, s_release, "release", release_ref, {"lanes": 2}))
-        anchors = {portal_ref: s_portal, gate_ref: s_gate, release_ref: s_release}
 
         for route in group:
             stops = list(route["stops"])
             for ref, s_lead in anchors.items():
-                if ref == portal_ref and flow != "inbound":
-                    continue
                 x, y, _ = _point_at(lead["path"], lead["cum"], s_lead)
                 lo = 0.0 if ref != release_ref else max(stop["s"] for stop in route["stops"])
                 s = _nearest_s(route["path"], route["cum"], (x, y), lo)
@@ -564,52 +607,61 @@ def build_scene() -> dict:
                 }
             )
 
-    # --- x-ray gantries and inspection ramps ---
+    # --- x-ray gantries: one scanner on the lane past each hall ---
     xrays = []
-    for item in ops["scanners"]:
-        route = next((r for r in truck_routes if any(st["ref"] == item["id"] for st in r["stops"])), None)
+    for index in range(len(XRAY_HALLS)):
+        ref = f"xray-{index + 1}"
+        route = next((r for r in truck_routes if any(st["ref"] == ref for st in r["stops"])), None)
         if not route:
             continue
-        stop = next(st for st in route["stops"] if st["ref"] == item["id"])
-        pts = route["p"]
-        cum = _cum(pts)
-        x, y, heading = _point_at(pts, cum, stop["s"])
-        xrays.append({"id": item["id"], "x": _r(x), "y": _r(y), "h": round(heading, 3), "name": item["name"]})
+        stop = next(st for st in route["stops"] if st["ref"] == ref)
+        x, y, heading = _point_at(route["p"], _cum(route["p"]), stop["s"])
+        xrays.append({"id": ref, "x": _r(x), "y": _r(y), "h": round(heading, 3), "name": f"Cargo x-ray {index + 1}"})
+
+    # --- operational zones, drawn like the GAC process maps ---
+    main_pts = [p for y in yards if y["kind"] == "main" for ring in y["pads"] for p in ring]
+    main_pts += [p for y in yards if y["kind"] == "main" for lane in y["lanes"] for p in lane["p"]]
+    external_pts = [p for y in yards if y["kind"] == "external" for ring in y["pads"] for p in ring]
+    ops_pts = main_pts + [p for i in XRAY_HALLS + IMPORT_RAMP_SHEDS for p in by_id[i]]
+    ops_pts += [bay[:2] for bay in ramps["inbound"]["bays"]]
+    zones = [
+        {"id": "import-ops", "kind": "ops", "flow": "inbound", "ring": _xy(_soft_hull(ops_pts, 14.0))},
+        {"id": "external-parking", "kind": "proposal", "flow": "inbound", "ring": _xy(_soft_hull(external_pts, 10.0))},
+    ]
 
     # --- stations from the published inbound and outbound truck process ---
-    def anchor(kind: str, ref: str):
-        for collection in (portals, gates):
-            for item in collection:
-                if item["ref"] == ref:
-                    return item["x"], item["y"]
+    def anchor(ref: str):
+        for item in portals + gates:
+            if item["ref"] == ref:
+                return item["x"], item["y"]
         return None
 
-    def route_point(flow: str, frac: float):
-        route = next(r for r in truck_routes if r["flow"] == flow)
-        pts = route["p"]
-        cum = _cum(pts)
-        x, y, _ = _point_at(pts, cum, cum[-1] * frac)
-        return x, y
+    def centre(points) -> tuple[float, float]:
+        return _r(sum(p[0] for p in points) / len(points)), _r(sum(p[1] for p in points) / len(points))
 
-    def yard_center(yard_id: str):
-        yard = next(y for y in yards if y["id"] == yard_id)
-        pad = max(yard["pads"], key=lambda r: abs(_shoelace(r)))
-        return _centroid(pad + [pad[0]])
+    def area_centre(rings) -> tuple[float, float]:
+        total = sum(abs(_shoelace(r)) for r in rings) or 1.0
+        x = sum(_centroid(r + [r[0]])[0] * abs(_shoelace(r)) for r in rings) / total
+        y = sum(_centroid(r + [r[0]])[1] * abs(_shoelace(r)) for r in rings) / total
+        return _r(x), _r(y)
 
-    ramp_center = _centroid([p for pid in TRUCK_PLATFORMS for p in by_id[pid]])
-    xray_center = (sum(x["x"] for x in xrays) / max(1, len(xrays)), sum(x["y"] for x in xrays) / max(1, len(xrays)))
+    main_capacity = sum(_bay_count(lane["p"]) for y in yards if y["kind"] == "main" for lane in y["lanes"])
+    import_bays = len(ramps["inbound"]["bays"])
     if inbound:
         lead = next(r for r in truck_routes if r["flow"] == "inbound")
         first = next(st for st in lead["stops"] if st["kind"] == "portal")
         x0, y0, _ = _point_at(lead["p"], _cum(lead["p"]), max(0, first["s"] - 450))
+        mx, my = area_centre([ring for y in yards if y["kind"] == "main" for ring in y["pads"]])
+        ex, ey = area_centre([ring for y in yards if y["kind"] == "external" for ring in y["pads"]])
         stations += [
             {"n": 1, "flow": "inbound", "tone": "gold", "en": "Truck road from Saudi Arabia", "ar": "طريق الشاحنات القادمة من السعودية", "x": _r(x0), "y": _r(y0)},
-            {"n": 2, "flow": "inbound", "tone": "maroon", "en": "Radiation detection portals", "ar": "بوابات كشف المواد المشعة", "x": anchor("portal", "inbound-portal")[0], "y": anchor("portal", "inbound-portal")[1]},
-            {"n": 3, "flow": "inbound", "tone": "maroon", "en": "Appointment check gates (3)", "ar": "بوابات التحقق من الموعد", "x": anchor("gate", "inbound-gate")[0], "y": anchor("gate", "inbound-gate")[1]},
-            {"n": 4, "flow": "inbound", "tone": "green", "en": "Main truck parking (~700)", "ar": "المواقف الرئيسية (حوالي 700 موقف)", "x": _r(yard_center("yard-1")[0]), "y": _r(yard_center("yard-1")[1])},
-            {"n": 5, "flow": "inbound", "tone": "green", "en": "X-ray scanning area", "ar": "منطقة المسح بالأشعة", "x": _r(xray_center[0]), "y": _r(xray_center[1])},
-            {"n": 6, "flow": "inbound", "tone": "green", "en": "Inspection ramps", "ar": "رمبات التفتيش", "x": _r(ramp_center[0]), "y": _r(ramp_center[1])},
-            {"n": 7, "flow": "inbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("gate", "inbound-release")[0], "y": anchor("gate", "inbound-release")[1]},
+            {"n": 2, "flow": "inbound", "tone": "maroon", "en": "Radiation detection portals", "ar": "بوابات كشف المواد المشعة", "x": anchor("inbound-portal")[0], "y": anchor("inbound-portal")[1]},
+            {"n": 3, "flow": "inbound", "tone": "maroon", "en": "Appointment check gates (3)", "ar": "بوابات التحقق من الموعد", "x": anchor("inbound-gate")[0], "y": anchor("inbound-gate")[1]},
+            {"n": "+", "flow": "inbound", "tone": "proposal", "en": "Unused lot · proposed external parking", "ar": "منطقة غير مستغلة، مقترح تخصيص جزء منها كمواقف خارجية", "x": ex, "y": ey},
+            {"n": 4, "flow": "inbound", "tone": "green", "en": "Main parking (~700)", "ar": "المواقف الرئيسية (حوالي 700 موقف)", "x": mx, "y": my, "capacity": main_capacity},
+            {"n": 5, "flow": "inbound", "tone": "green", "en": "X-ray scanning area", "ar": "منطقة المسح بالأشعة", "x": centre([p for i in XRAY_HALLS for p in by_id[i]])[0], "y": centre([p for i in XRAY_HALLS for p in by_id[i]])[1]},
+            {"n": 6, "flow": "inbound", "tone": "green", "en": "Inspection ramps (~130)", "ar": "رمبات التفتيش (حوالي 130 موقف)", "x": area_centre([by_id[i] for i in IMPORT_RAMP_SHEDS])[0], "y": area_centre([by_id[i] for i in IMPORT_RAMP_SHEDS])[1], "capacity": import_bays},
+            {"n": 7, "flow": "inbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("inbound-release")[0], "y": anchor("inbound-release")[1]},
         ]
     if outbound:
         lead = next(r for r in truck_routes if r["flow"] == "outbound")
@@ -617,10 +669,10 @@ def build_scene() -> dict:
         x0, y0, _ = _point_at(lead["p"], _cum(lead["p"]), max(0, gate["s"] - 450))
         stations += [
             {"n": 1, "flow": "outbound", "tone": "gold", "en": "Truck road from Doha", "ar": "طريق الشاحنات القادمة من الدوحة", "x": _r(x0), "y": _r(y0)},
-            {"n": 4, "flow": "outbound", "tone": "green", "en": "Outbound zone entrance (2 gates)", "ar": "مدخل منطقة الصادر التشغيلية", "x": anchor("gate", "outbound-gate")[0], "y": anchor("gate", "outbound-gate")[1]},
-            {"n": 5, "flow": "outbound", "tone": "green", "en": "Outbound truck parking", "ar": "مواقف الصادر", "x": _r(yard_center("yard-3")[0]), "y": _r(yard_center("yard-3")[1])},
-            {"n": 6, "flow": "outbound", "tone": "green", "en": "Inspection ramps", "ar": "رمبات التفتيش", "x": _r(ramp_center[0]) + 15, "y": _r(ramp_center[1]) - 15},
-            {"n": 7, "flow": "outbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("gate", "outbound-release")[0], "y": anchor("gate", "outbound-release")[1]},
+            {"n": 4, "flow": "outbound", "tone": "green", "en": "Export zone entrance (2 gates)", "ar": "مدخل منطقة الصادر التشغيلية", "x": anchor("outbound-gate")[0], "y": anchor("outbound-gate")[1]},
+            {"n": 5, "flow": "outbound", "tone": "green", "en": "Export parking (~12)", "ar": "المواقف الرئيسية (حوالي 12 موقف)", "x": _r(export_mid[0]), "y": _r(export_mid[1])},
+            {"n": 6, "flow": "outbound", "tone": "green", "en": "Export inspection ramps", "ar": "رمبات التفتيش", "x": _r(export_shed[0]), "y": _r(export_shed[1])},
+            {"n": 7, "flow": "outbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("outbound-release")[0], "y": anchor("outbound-release")[1]},
         ]
     arrival_canopy = _centroid(by_id[ARRIVAL_CANOPY])
     departure_canopy = _centroid(by_id[DEPARTURE_CANOPY])
@@ -693,11 +745,12 @@ def build_scene() -> dict:
     joints = [j for j in joints if (round(j[0]), round(j[1])) in ends]
     buildings = [b for b in buildings if near_port(b["ring"], 60.0)]
 
-    vegetation = _clear_trees(
-        _load(VEGETATION_PATH)["palms"] if VEGETATION_PATH.exists() else [],
-        roads,
-        [b["ring"] for b in buildings + canopies] + [pad for y in yards for pad in y["pads"]],
-    )
+    # Trees never stand in a truck bay, under a shed roof, or on a parking lane.
+    keep_clear = [b["ring"] for b in buildings + canopies] + [pad for y in yards for pad in y["pads"]]
+    keep_clear += [_bay_ring(bay) for ramp in ramps.values() for bay in ramp["bays"]]
+    keep_clear += [_soft_hull(by_id[i], 5.0) for i in IMPORT_RAMP_SHEDS + EXPORT_RAMP_SHEDS]
+    keep_clear += [_lane_ring(lane["p"], 5.5) for y in yards if not y["pads"] for lane in y["lanes"]]
+    vegetation = _clear_trees(_load(VEGETATION_PATH)["palms"] if VEGETATION_PATH.exists() else [], roads, keep_clear)
 
     return {
         "site": "Abu Samra Border Post",
@@ -713,6 +766,8 @@ def build_scene() -> dict:
         "yards": yards,
         "booths": booths,
         "xrays": xrays,
+        "ramps": list(ramps.values()),
+        "zones": zones,
         "portals": portals,
         "gates": gates,
         "stations": stations,
@@ -725,6 +780,177 @@ def build_scene() -> dict:
 
 def _shoelace(ring) -> float:
     return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:] + ring[:1])) / 2
+
+
+YARD_BAY = 18.5  # one truck nose-to-tail along a yard lane; matches BAY in view/twin/world.js
+
+
+def _bay_count(lane) -> int:
+    return max(0, int((_length(lane) - 2) // YARD_BAY))
+
+
+def _parking_kind(yard: dict) -> str:
+    """Main parking lies north-east of the divider road; the lot south-west of it is unused."""
+    pts = [p for ring in yard["pads"] for p in ring] or [p for lane in yard["lanes"] for p in lane["p"]]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    (ax, ay), (bx, by) = PARKING_DIVIDER
+    side = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+    return "main" if side > 0 else "external"
+
+
+def _export_parking(graph: Graph) -> dict:
+    """The roughly twelve export bays: one kerbside lane beside the first stretch of the export road."""
+    road = graph.way_chain(EXPORT_ROAD)[0]["xy"]
+    line = _offset(_resample(road, 3.0), 4.6)
+    cum = _cum(line)
+    start, end = 40.0, min(cum[-1] - 30.0, 40.0 + 12 * YARD_BAY + 2)
+    lane = [p for p, s in zip(line, cum) if start <= s <= end]
+    return {"id": "export-parking", "name": "Export parking", "kind": "export", "pads": [], "lanes": [{"way": "export-parking", "p": _xy(lane)}]}
+
+
+def _dock_bays(ring, roads: list[dict], obstacles) -> list[list[float]]:
+    """Truck bays square to both long faces of a shed: [x, y, heading], trucks backed in, nose out."""
+    pts = ring[:-1] if ring[0] == ring[-1] else list(ring)
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    sxx = sum((p[0] - cx) ** 2 for p in pts)
+    syy = sum((p[1] - cy) ** 2 for p in pts)
+    sxy = sum((p[0] - cx) * (p[1] - cy) for p in pts)
+    ang = 0.5 * math.atan2(2 * sxy, sxx - syy)
+    ux, uy = math.cos(ang), math.sin(ang)
+    vx, vy = -uy, ux
+    along = [(p[0] - cx) * ux + (p[1] - cy) * uy for p in pts]
+    across = [(p[0] - cx) * vx + (p[1] - cy) * vy for p in pts]
+    a0, a1 = min(along) + 2.0, max(along) - 2.0
+    count = int((a1 - a0) // RAMP_PITCH)
+    first = (a0 + a1) / 2 - (count - 1) * RAMP_PITCH / 2
+    bays = []
+    for side in (-1, 1):
+        face = max(across) if side > 0 else min(across)
+        ox, oy = vx * side, vy * side
+        heading = math.atan2(ox, oy)
+        for k in range(count):
+            a = first + k * RAMP_PITCH
+            x = cx + ux * a + vx * face + ox * TRUCK_REACH
+            y = cy + uy * a + vy * face + oy * TRUCK_REACH
+            body = [(x + ox * t, y + oy * t) for t in (-8.0, 0.0, 8.0)]
+            if any(_road_clearance(p, roads) < 1.2 for p in body):
+                continue
+            if any(point_in_ring(p[0], p[1], r) for r in obstacles for p in body):
+                continue
+            bays.append([_r(x), _r(y), round(heading, 3)])
+    return bays
+
+
+def _main_infill(yards: list[dict], roads: list[dict]) -> dict | None:
+    """Rows across the paved block between the mapped main-parking aisles.
+
+    OpenStreetMap maps aisles in only parts of the main lot; the imagery shows one continuous
+    fan of rows. Rows run parallel to the mapped aisles, 11 m apart, wherever the block is free
+    of roads, aisles and existing pads."""
+    main = [y for y in yards if y["kind"] == "main" and y["pads"]]
+    if not main:
+        return None
+    biggest = max(main, key=lambda y: len(y["lanes"]))
+    dirs = [math.atan2(l["p"][-1][0] - l["p"][0][0], l["p"][-1][1] - l["p"][0][1]) % math.pi for l in biggest["lanes"]]
+    ang = sorted(dirs)[len(dirs) // 2]
+    ux, uy = math.sin(ang), math.cos(ang)
+    vx, vy = uy, -ux
+    hull = _soft_hull([p for y in main for ring in y["pads"] for p in ring], 0.0)
+    hull_edges = list(zip(hull, hull[1:] + hull[:1]))
+    pads = [_soft_hull(ring, 4.0) for y in yards for ring in y["pads"]]
+    boxes = []
+    for road in roads:
+        if road["c"] == "dirt":
+            continue
+        xs = [q[0] for q in road["p"]]
+        ys = [q[1] for q in road["p"]]
+        need = road["w"] / 2 + (7.75 if road["c"] == "aisle" else 5.7)
+        boxes.append((min(xs) - need, max(xs) + need, min(ys) - need, max(ys) + need, need, road["p"]))
+
+    def free(p) -> bool:
+        if not point_in_ring(p[0], p[1], hull) or any(_segment_distance(p, a, b) < 7 for a, b in hull_edges):
+            return False
+        for x0, x1, y0, y1, need, pts in boxes:
+            if x0 <= p[0] <= x1 and y0 <= p[1] <= y1 and any(_segment_distance(p, a, b) < need for a, b in zip(pts, pts[1:])):
+                return False
+        return not any(point_in_ring(p[0], p[1], ring) for ring in pads)
+
+    along = [p[0] * ux + p[1] * uy for p in hull]
+    across = [p[0] * vx + p[1] * vy for p in hull]
+    lanes = []
+    c = min(across) + 8
+    while c < max(across) - 8:
+        run = []
+        a = min(along)
+        while a <= max(along) + 2:
+            p = (a * ux + c * vx, a * uy + c * vy)
+            if a <= max(along) and free(p):
+                run.append(p)
+            else:
+                if len(run) > 1 and math.dist(run[0], run[-1]) >= 40:
+                    lanes.append({"way": f"infill-{len(lanes)}", "p": _xy([run[1], run[-2]])})
+                run = []
+            a += 2.0
+        c += 11.0
+    if not lanes:
+        return None
+    return {"id": "main-infill", "name": "Main truck parking", "kind": "main", "pads": _yard_pads(lanes), "lanes": lanes}
+
+
+def _bay_ring(bay) -> list[tuple[float, float]]:
+    x, y, h = bay
+    fx, fy = math.sin(h), math.cos(h)
+    lx, ly = -fy, fx
+    return [(x + fx * a + lx * b, y + fy * a + ly * b) for a, b in ((-10.5, -2.4), (9.5, -2.4), (9.5, 2.4), (-10.5, 2.4))]
+
+
+def _lane_ring(points, half: float) -> list[tuple[float, float]]:
+    left = _offset(points, -half)
+    right = _offset(points, half)
+    return left + right[::-1]
+
+
+def _road_clearance(p, roads: list[dict]) -> float:
+    best = math.inf
+    for road in roads:
+        if road["c"] == "dirt":
+            continue
+        pts = road["p"]
+        reach = road["w"] / 2 + 5
+        if (
+            p[0] < min(q[0] for q in pts) - reach
+            or p[0] > max(q[0] for q in pts) + reach
+            or p[1] < min(q[1] for q in pts) - reach
+            or p[1] > max(q[1] for q in pts) + reach
+        ):
+            continue
+        for a, b in zip(pts, pts[1:]):
+            best = min(best, _segment_distance(p, a, b) - road["w"] / 2)
+    return best
+
+
+def _soft_hull(points, pad: float) -> list[tuple[float, float]]:
+    """Convex hull grown by pad metres with rounded corners: a zone outline like the process maps."""
+    grown = [(p[0] + pad * math.cos(a), p[1] + pad * math.sin(a)) for p in points for a in (i * math.pi / 8 for i in range(16))]
+    pts = sorted(set((round(x, 1), round(y, 1)) for x, y in grown))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return _resample(lower[:-1] + upper[:-1] + [lower[0]], 12.0)
 
 
 def _yard_pads(lanes: list[dict]) -> list[list[list[float]]]:
