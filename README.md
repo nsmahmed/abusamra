@@ -1,45 +1,52 @@
-# Abu Samra customs port — data foundation
+# Abu Samra
 
-Free geometric data for a later 2D map and 3D model of Abu Samra, Qatar's land customs port on Salwa Road. This package downloads and normalizes that data. It does not build the map or the model.
+Geospatial foundation and interactive views for **Abu Samra**, Qatar’s land customs port on Salwa Road.
 
-## Run
+## Quick start
 
-From this directory:
+Python 3.11+. No third-party packages.
 
 ```powershell
-python tests/test_foundations.py
+# Optional: download / refresh OSM + elevation, then check the dataset
 python -m abu_samra fetch
 python -m abu_samra validate
+
+# Serve the local maps
+python view/serve.py
 ```
 
-`fetch` reuses raw downloads already on disk. Pass `--refresh` to download again.
+Open in a browser:
 
-The contract for the next stage is `data/processed/catalog.json`.
+| View | URL |
+|---|---|
+| 2D satellite map | http://127.0.0.1:8765/view/ |
+| 3D digital twin | http://127.0.0.1:8765/view/twin/ |
+
+`fetch` reuses downloads already on disk. Pass `--refresh` to download again.
+
+## What this repo does
+
+- Pulls OpenStreetMap features and SRTM elevation for the Abu Samra study area
+- Writes a normalized dataset under `data/processed/`
+- Serves a 2D map and a 3D operations twin from that data
+
+The Saudi Salwa border post (~8 km southwest) is outside the study area.
+
+## Using the dataset
+
+The contract for downstream work is `data/processed/catalog.json`.
 
 ```python
-from abu_samra.loaders import load_layer, load_road_graph, load_dem, iter_dem_posts
+from abu_samra.loaders import load_layer, load_road_graph, load_dem
 
 roads = load_layer("roads")          # local meters, x east, y north
-port = load_layer("port_footprint")  # the border-control polygon
+port = load_layer("port_footprint")
 graph = load_road_graph()
 dem = load_dem()
 ```
 
-`port_footprint` is also written at `data/processed/local/port_footprint.json`.
-
-## What is included
-
-- The Abu Samra Border Post polygon and the roads, gates, and barriers inside and around it.
-- Salwa Road on the Qatar side: the approach toward Doha and the exit toward the border. The Saudi Salwa post, about 8 km southwest, is outside the study area.
-- Building footprints and land cover where OpenStreetMap has them, as context only.
-- A 1 arc-second terrain grid (SRTM) in meters, plus a road graph split at intersections and gates.
-
-## Frame
-
-Geographic files are WGS84. Local files are EPSG:32639 (UTM 39N) meters with the origin at the port, **x east, y north**. Elevation is a separate up axis. This is not a Y-up 3D scene.
-
-Lane counts are copied only when OpenStreetMap tagged them. Parallel ways at the port may already be separate carriageways, so an untagged way must be drawn as one ribbon.
+Geographic files are WGS84. Local files are UTM 39N (EPSG:32639) meters with origin at the port (**x** east, **y** north).
 
 ## Sources
 
-Map data © OpenStreetMap contributors, ODbL. Elevation is public-domain SRTM from the public `elevation-tiles-prod` bucket. See `data/processed/DATA_SOURCES.txt`.
+Map data © OpenStreetMap contributors (ODbL). Elevation is public-domain SRTM. Details: `data/processed/DATA_SOURCES.txt`.
