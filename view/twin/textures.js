@@ -276,3 +276,25 @@ export function frondTexture() {
   });
   return texture(c, false);
 }
+
+/* Qatar flag, 11:28: maroon with a white hoist band and a nine-point serrated edge. */
+export function flagTexture() {
+  const c = document.createElement("canvas");
+  c.width = 560;
+  c.height = 220;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#8a1538";
+  ctx.fillRect(0, 0, 560, 220);
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(150, 0);
+  for (let i = 0; i < 9; i += 1) {
+    ctx.lineTo(205, ((i + 0.5) * 220) / 9);
+    ctx.lineTo(150, ((i + 1) * 220) / 9);
+  }
+  ctx.lineTo(0, 220);
+  ctx.closePath();
+  ctx.fill();
+  return texture(c, false);
+}

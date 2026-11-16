@@ -34,7 +34,7 @@ const norm = (x, y) => {
   return n < 1e-9 ? null : [x / n, y / n];
 };
 
-function dedupe(points) {
+export function dedupe(points) {
   const out = [];
   for (const p of points) {
     const last = out[out.length - 1];
@@ -43,7 +43,7 @@ function dedupe(points) {
   return out;
 }
 
-function offsetLine(points, off) {
+export function offsetLine(points, off) {
   const out = [];
   for (let k = 0; k < points.length; k += 1) {
     const a = k > 0 ? norm(points[k][0] - points[k - 1][0], points[k][1] - points[k - 1][1]) : null;
@@ -62,7 +62,7 @@ function offsetLine(points, off) {
   return out;
 }
 
-function cumulative(points) {
+export function cumulative(points) {
   const cum = [0];
   for (let i = 1; i < points.length; i += 1) cum.push(cum[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
   return cum;
@@ -469,16 +469,16 @@ export function buildWorld(scene, data, renderer) {
   const mat = {
     ground: new THREE.MeshStandardMaterial({ map: paintGround(data), roughness: 1 }),
     outer: new THREE.MeshStandardMaterial({ color: SAND, roughness: 1 }),
-    asphalt: new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.93, side: THREE.DoubleSide }),
+    asphalt: new THREE.MeshStandardMaterial({ map: asphaltTex, color: "#c4c6cc", roughness: 0.9, side: THREE.DoubleSide }),
     dirt: new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 1, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }),
     white: new THREE.MeshStandardMaterial({ color: "#f5f4f0", emissive: "#3a3a38", roughness: 0.6, side: THREE.DoubleSide }),
     yellow: new THREE.MeshStandardMaterial({ color: "#f0b81c", roughness: 0.6, side: THREE.DoubleSide }),
     concrete: new THREE.MeshStandardMaterial({ map: concreteTex, roughness: 0.85, side: THREE.DoubleSide }),
-    yard: new THREE.MeshStandardMaterial({ map: asphaltTex, color: "#d2d4d8", roughness: 0.92, side: THREE.DoubleSide }),
+    yard: new THREE.MeshStandardMaterial({ map: asphaltTex, color: "#e2e0dc", roughness: 0.92, side: THREE.DoubleSide }),
     wall: new THREE.MeshStandardMaterial({ map: wall.day, emissiveMap: wall.night, emissive: "#ffffff", emissiveIntensity: 0, roughness: 0.82, side: THREE.DoubleSide }),
-    roof: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#e7e3dc", roughness: 0.9, side: THREE.DoubleSide }),
+    roof: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#d8d3ca", roughness: 0.9, side: THREE.DoubleSide }),
     maroon: new THREE.MeshStandardMaterial({ color: MAROON, roughness: 0.55, side: THREE.DoubleSide }),
-    canopy: new THREE.MeshStandardMaterial({ color: "#f5f4f0", roughness: 0.5, metalness: 0.1 }),
+    canopy: new THREE.MeshStandardMaterial({ color: "#dedbd3", roughness: 0.6, metalness: 0.05 }),
     canopyGlow: new THREE.MeshStandardMaterial({ color: "#f2efe8", emissive: "#fff1d2", emissiveIntensity: 0, roughness: 0.7, side: THREE.DoubleSide }),
     steel: new THREE.MeshStandardMaterial({ color: "#c9ced2", roughness: 0.45, metalness: 0.6 }),
     darkSteel: new THREE.MeshStandardMaterial({ color: "#4a5056", roughness: 0.5, metalness: 0.5 }),
@@ -522,6 +522,7 @@ export function buildWorld(scene, data, renderer) {
   scene.add(outer);
 
   let water = null;
+  let seaMesh = null;
   if (data.ground.sea) {
     const normal = T.waterNormalTexture();
     normal.repeat.set(1 / 70, 1 / 70);
@@ -531,6 +532,7 @@ export function buildWorld(scene, data, renderer) {
     water = new THREE.MeshStandardMaterial({ color: "#2a7a8c", roughness: 0.06, metalness: 0.05, normalMap: normal, normalScale: new THREE.Vector2(0.35, 0.35), transparent: true, opacity: 0.93 });
     const sea = new THREE.Mesh(seaGeo, water);
     sea.receiveShadow = true;
+    seaMesh = sea;
     scene.add(sea);
   }
 
@@ -959,13 +961,21 @@ export function buildWorld(scene, data, renderer) {
     "outbound-gate": ["مدخل منطقة الصادر", "OUTBOUND ENTRANCE"],
     "outbound-release": ["بوابة الإفراج", "RELEASE GATE"],
   };
-  function canopyOver(g, x0, x1, z0, z1, h, sign) {
+  const glowSpots = [];
+  const flagSpots = [];
+  function canopyOver(g, x0, x1, z0, z1, h, sign, anchor) {
     const width = x1 - x0;
     const depth = z1 - z0;
+    if (anchor) {
+      const [gx, gy] = local(anchor, (x0 + x1) / 2, (z0 + z1) / 2);
+      glowSpots.push([gx, gy, Math.max(width, depth) * 1.5]);
+      for (const fx of [x0 + 0.7, x1 - 0.7]) flagSpots.push([...local(anchor, fx, z1 - 0.7), h + 1.3]);
+    }
     const slab = mesh(new THREE.BoxGeometry(width, 0.5, depth), mat.canopy, (x0 + x1) / 2, h, (z0 + z1) / 2);
     g.add(slab);
     const band = mesh(new THREE.BoxGeometry(width + 0.3, 1.3, depth + 0.3), mat.maroon, (x0 + x1) / 2, h + 0.65, (z0 + z1) / 2);
     g.add(band);
+    g.add(mesh(new THREE.BoxGeometry(width, 0.14, depth), mat.canopy, (x0 + x1) / 2, h + 1.34, (z0 + z1) / 2));
     if (sign) {
       const tex = T.signTexture(sign, { width: 1024, height: 160 });
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(width - 0.4, 14), 1.1), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
@@ -994,7 +1004,7 @@ export function buildWorld(scene, data, renderer) {
     for (const cx of cols) {
       for (const z of [front - 6.5, front + 2.5]) g.add(mesh(new THREE.CylinderGeometry(0.28, 0.28, 6.2, 10), mat.steel, cx, 3.1, z));
     }
-    canopyOver(g, x0 + 0.4, x1 - 0.4, front - 8, front + 4, 6.4, signs[gate.ref]);
+    canopyOver(g, x0 + 0.4, x1 - 0.4, front - 8, front + 4, 6.4, signs[gate.ref], gate);
     scene.add(g);
     gateCtl.set(gate.ref, ctl);
   }
@@ -1019,7 +1029,7 @@ export function buildWorld(scene, data, renderer) {
       lights.push(light);
       stopLine(portal, cx, 1.8, 8.9);
     }
-    canopyOver(g, -3.0, 7.6, -5, 5, 5.6, ["بوابات كشف المواد المشعة", "RADIATION PORTAL MONITORS"]);
+    canopyOver(g, -3.0, 7.6, -5, 5, 5.6, ["بوابات كشف المواد المشعة", "RADIATION PORTAL MONITORS"], portal);
     scene.add(g);
     portalCtl.set(portal.ref, { lights });
   }
@@ -1071,6 +1081,7 @@ export function buildWorld(scene, data, renderer) {
     g.add(mesh(new THREE.BoxGeometry(2.62, 0.9, 4.5), mat.glass, cab, 1.8, -4, false));
     g.add(mesh(new THREE.BoxGeometry(2.9, 0.25, 6.6), mat.maroon, cab, 2.82, -4));
     scene.add(g);
+    glowSpots.push([xr.x, xr.y, 46]);
     xrayCtl.set(xr.id, { beam, beacons, active: 0 });
   }
 
@@ -1084,10 +1095,126 @@ export function buildWorld(scene, data, renderer) {
   scene.add(yellow.mesh(mat.yellow));
   scene.add(concrete.mesh(mat.concrete));
   scene.add(yardPads.mesh(mat.yard));
-  scene.add(gravelPads.mesh(mat.gravel));
+  const gravelMesh = gravelPads.mesh(mat.gravel);
+  scene.add(gravelMesh);
   const faintMesh = faint.mesh(mat.faint, { shadow: false });
   faintMesh.renderOrder = 1;
   scene.add(faintMesh);
+
+  /* ---------- warm light spilling from canopies and halls after dark ---------- */
+  for (const cp of data.canopies) {
+    const r = openRing(cp.ring);
+    const box = orientedBox(r);
+    const steps = Math.max(1, Math.round((box.a1 - box.a0) / 40));
+    for (let k = 0; k < steps; k += 1) {
+      const [x, y] = box.at(box.a0 + ((k + 0.5) * (box.a1 - box.a0)) / steps, (box.c0 + box.c1) / 2);
+      glowSpots.push([x, y, Math.max(50, (box.c1 - box.c0) * 1.5)]);
+    }
+  }
+  for (const bld of sheds) {
+    const box = orientedBox(openRing(bld.ring));
+    const steps = Math.max(1, Math.round((box.a1 - box.a0) / 30));
+    for (let k = 0; k < steps; k += 1) {
+      const [x, y] = box.at(box.a0 + ((k + 0.5) * (box.a1 - box.a0)) / steps, (box.c0 + box.c1) / 2);
+      glowSpots.push([x, y, (box.c1 - box.c0) * 2.1]);
+    }
+  }
+  for (const bt of data.booths) glowSpots.push([bt.x, bt.y, 16]);
+
+  /* High-mast floodlights round the working truck yards. */
+  const masts = [];
+  for (const yard of data.yards) {
+    if (yard.kind === "external") continue;
+    for (const pad of yard.pads) {
+      const r = openRing(pad);
+      const cx = r.reduce((s, p) => s + p[0], 0) / r.length;
+      const cy = r.reduce((s, p) => s + p[1], 0) / r.length;
+      const P = dedupe([...r, r[0]]);
+      const cum = cumulative(P);
+      const L = cum[cum.length - 1];
+      const count = Math.max(2, Math.round(L / 95));
+      for (let k = 0; k < count; k += 1) {
+        const [x, y] = pointAt(P, cum, ((k + 0.5) * L) / count);
+        const d = Math.max(1, Math.hypot(cx - x, cy - y));
+        const mx = x + ((cx - x) / d) * 1.2;
+        const my = y + ((cy - y) / d) * 1.2;
+        if (roads.clearance(mx, my) < 2.5 || masts.some((m) => Math.hypot(m[0] - mx, m[1] - my) < 45)) continue;
+        masts.push([mx, my]);
+        glowSpots.push([x + ((cx - x) / d) * 26, y + ((cy - y) / d) * 26, 105]);
+      }
+    }
+  }
+  const mastHeadMat = new THREE.MeshBasicMaterial({ color: "#cfd3d6", toneMapped: false });
+  if (masts.length) {
+    const pole = new THREE.CylinderGeometry(0.16, 0.34, 27, 8);
+    pole.translate(0, 13.5, 0);
+    const crown = new THREE.CylinderGeometry(1.5, 1.5, 0.18, 12);
+    crown.translate(0, 27, 0);
+    const poleMesh = new THREE.InstancedMesh(mergeGeometries([pole, crown]), mat.darkSteel, masts.length);
+    const head = new THREE.CylinderGeometry(1.35, 1.35, 0.22, 12);
+    head.translate(0, 26.8, 0);
+    const headMesh = new THREE.InstancedMesh(head, mastHeadMat, masts.length);
+    const m = new THREE.Matrix4();
+    masts.forEach(([x, y], i) => {
+      m.makeTranslation(x, 0, -y);
+      poleMesh.setMatrixAt(i, m);
+      headMesh.setMatrixAt(i, m);
+    });
+    poleMesh.castShadow = true;
+    scene.add(poleMesh, headMesh);
+  }
+  const spill = { mat: new THREE.MeshBasicMaterial({ map: glow, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), mesh: null };
+  {
+    const g = new THREE.PlaneGeometry(1, 1);
+    g.rotateX(-Math.PI / 2);
+    spill.mesh = new THREE.InstancedMesh(g, spill.mat, glowSpots.length);
+    const m = new THREE.Matrix4();
+    glowSpots.forEach(([x, y, size], i) => {
+      m.makeScale(size, 1, size);
+      m.setPosition(x, 0.3, -y);
+      spill.mesh.setMatrixAt(i, m);
+    });
+    spill.mesh.visible = false;
+    spill.mesh.renderOrder = 2;
+    scene.add(spill.mesh);
+  }
+
+  /* ---------- Qatar flags on the gate canopies ---------- */
+  const flagUniforms = { uTime: { value: 0 } };
+  if (flagSpots.length) {
+    const pole = new THREE.CylinderGeometry(0.06, 0.08, 7.5, 6);
+    pole.translate(0, 3.75, 0);
+    const poles = new THREE.InstancedMesh(pole, mat.steel, flagSpots.length);
+    const cloth = new THREE.PlaneGeometry(4.6, 1.8, 16, 2);
+    cloth.translate(2.3 + 0.08, 6.5, 0);
+    const flagMat = new THREE.MeshStandardMaterial({ map: T.flagTexture(), side: THREE.DoubleSide, roughness: 0.75 });
+    flagMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = flagUniforms.uTime;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uTime;")
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          float ph = instanceMatrix[3].x * 0.13 + instanceMatrix[3].z * 0.07;
+          float grip = uv.x;
+          transformed.z += sin(uv.x * 7.0 - uTime * 4.2 + ph) * 0.32 * grip + sin(uv.x * 13.0 - uTime * 6.5 + ph) * 0.08 * grip;
+          transformed.y += sin(uv.x * 5.0 - uTime * 3.1 + ph) * 0.07 * grip - grip * grip * 0.12;`
+        );
+    };
+    const flags = new THREE.InstancedMesh(cloth, flagMat, flagSpots.length);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.6);
+    const one = new THREE.Vector3(1, 1, 1);
+    flagSpots.forEach(([x, y, h], i) => {
+      m.compose(new THREE.Vector3(x, h, -y), q, one);
+      poles.setMatrixAt(i, m);
+      flags.setMatrixAt(i, m);
+    });
+    poles.castShadow = true;
+    flags.castShadow = true;
+    flags.frustumCulled = false;
+    scene.add(poles, flags);
+  }
 
   /* ---------- street lights ---------- */
   const lamp = { heads: null, pools: null };
@@ -1101,9 +1228,9 @@ export function buildWorld(scene, data, renderer) {
     const poleMesh = new THREE.InstancedMesh(mergeGeometries([pole, arm]), mat.darkSteel, data.lights.length);
     lamp.headMat = new THREE.MeshBasicMaterial({ color: "#cfd3d6", toneMapped: false });
     lamp.heads = new THREE.InstancedMesh(head, lamp.headMat, data.lights.length);
-    const poolGeo = new THREE.PlaneGeometry(20, 20);
+    const poolGeo = new THREE.PlaneGeometry(30, 30);
     poolGeo.rotateX(-Math.PI / 2);
-    poolGeo.translate(2.25, 0.16, 0);
+    poolGeo.translate(2.25, 0.26, 0);
     lamp.poolMat = new THREE.MeshBasicMaterial({ map: glow, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     lamp.pools = new THREE.InstancedMesh(poolGeo, lamp.poolMat, data.lights.length);
     const m = new THREE.Matrix4();
@@ -1116,6 +1243,7 @@ export function buildWorld(scene, data, renderer) {
     });
     poleMesh.castShadow = true;
     lamp.pools.visible = false;
+    lamp.pools.renderOrder = 2;
     scene.add(poleMesh, lamp.heads, lamp.pools);
   }
 
@@ -1297,6 +1425,7 @@ export function buildWorld(scene, data, renderer) {
 
   return {
     roads,
+    noise,
     boothCtl,
     staticBooths,
     gateCtl,
@@ -1309,18 +1438,31 @@ export function buildWorld(scene, data, renderer) {
     water,
     lamp,
     nightMaterials,
+    /* Swap the painted desert for satellite imagery once its tiles are in. */
+    setImagery(on) {
+      if (seaMesh) seaMesh.visible = !on;
+      ground.visible = !on;
+      dirtMesh.visible = !on;
+      gravelMesh.visible = !on;
+      faintMesh.visible = !on;
+    },
     setNight(f) {
-      mat.wall.emissiveIntensity = 0.95 * f;
-      mat.canopyGlow.emissiveIntensity = 1.1 * f;
-      mat.glass.emissiveIntensity = 0.9 * f;
-      mat.skylight.emissiveIntensity = 0.8 * f;
+      mat.wall.emissiveIntensity = 1.5 * f;
+      mat.canopyGlow.emissiveIntensity = 1.9 * f;
+      mat.glass.emissiveIntensity = 1.4 * f;
+      mat.skylight.emissiveIntensity = 0.42 * f;
+      const lit = Math.min(1, Math.max(0, (f - 0.1) / 0.6));
+      spill.mat.opacity = 0.42 * lit;
+      spill.mesh.visible = lit > 0.01;
+      mastHeadMat.color.set(f > 0.05 ? "#f4f1e6" : "#cfd3d6").multiplyScalar(1 + 5 * f);
       if (lamp.heads) {
-        lamp.headMat.color.set(f > 0.05 ? "#ffd9a0" : "#cfd3d6").multiplyScalar(1 + 5 * f);
-        lamp.poolMat.opacity = 0.42 * f;
-        lamp.pools.visible = f > 0.02;
+        lamp.headMat.color.set(f > 0.05 ? "#ffd9a0" : "#cfd3d6").multiplyScalar(1 + 6 * f);
+        lamp.poolMat.opacity = 0.42 * lit;
+        lamp.pools.visible = lit > 0.01;
       }
     },
     update(t, dt, sim) {
+      flagUniforms.uTime.value = t;
       if (water) water.normalMap.offset.set((t * 0.004) % 1, (t * 0.0025) % 1);
       const now = performance.now();
       for (const [ref, ctl] of boothCtl) {

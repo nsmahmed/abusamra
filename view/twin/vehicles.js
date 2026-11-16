@@ -146,6 +146,40 @@ function trailerLights() {
   ]);
 }
 
+/* Headlight throw on the road: a soft additive fan ahead of the vehicle, shown after dark. */
+function beamGeometry(width, length, front) {
+  const g = new THREE.PlaneGeometry(width, length);
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0.1, front + length / 2 - 0.5);
+  return g;
+}
+
+function beamTexture() {
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  const along = ctx.createLinearGradient(0, 0, 0, 128);
+  along.addColorStop(0, "rgba(255,236,200,0.0)");
+  along.addColorStop(0.06, "rgba(255,236,200,0.95)");
+  along.addColorStop(0.4, "rgba(255,232,190,0.4)");
+  along.addColorStop(1, "rgba(255,230,185,0)");
+  ctx.fillStyle = along;
+  ctx.fillRect(0, 0, 64, 128);
+  ctx.globalCompositeOperation = "destination-in";
+  const across = ctx.createLinearGradient(0, 0, 64, 0);
+  across.addColorStop(0, "rgba(0,0,0,0)");
+  across.addColorStop(0.3, "rgba(0,0,0,0.9)");
+  across.addColorStop(0.5, "rgba(0,0,0,1)");
+  across.addColorStop(0.7, "rgba(0,0,0,0.9)");
+  across.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = across;
+  ctx.fillRect(0, 0, 64, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /* A restrained fleet palette: mostly whites, greys and navy, with brand maroon and sand accents. */
 const CONTAINER_COLORS = ["#ecebe7", "#dcd9d2", "#c3c0b8", "#9a9da3", "#6b7079", "#3d4652", "#26364a", "#1f3a5c", "#6e2236", "#8a1538", "#46606f", "#b29d77", "#cdb88f"];
 const CAB_COLORS = ["#f2f1ee", "#f2f1ee", "#e4e3df", "#c9cbcf", "#8f949b", "#2b2f36", "#6e2236", "#1f3a5c"];
@@ -176,6 +210,7 @@ export class Fleet {
     const container = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.3 });
     const tank = new THREE.MeshStandardMaterial({ color: "#d5d8dc", roughness: 0.25, metalness: 0.85 });
     this.lightMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+    this.beamMaterial = new THREE.MeshBasicMaterial({ map: beamTexture(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 
     this.tractor = new Pool(scene, tractorGeometry(), paint, trucks);
     this.tractorLights = new Pool(scene, tractorLights(), this.lightMaterial, trucks, { shadow: false });
@@ -187,6 +222,13 @@ export class Fleet {
     this.carLights = new Pool(scene, carLights(), this.lightMaterial, cars, { shadow: false });
     this.bus = new Pool(scene, busGeometry(), paint, buses);
     this.busLights = new Pool(scene, busLights(), this.lightMaterial, buses, { shadow: false });
+    this.truckBeam = new Pool(scene, beamGeometry(6.5, 26, 3.1), this.beamMaterial, trucks, { shadow: false });
+    this.carBeam = new Pool(scene, beamGeometry(5.5, 20, 2.3), this.beamMaterial, cars, { shadow: false });
+    this.busBeam = new Pool(scene, beamGeometry(6.5, 24, 5.9), this.beamMaterial, buses, { shadow: false });
+    for (const pool of [this.truckBeam, this.carBeam, this.busBeam]) {
+      pool.mesh.renderOrder = 2;
+      pool.mesh.visible = false;
+    }
 
     this.free = { truck: [...Array(trucks).keys()].reverse(), car: [...Array(cars).keys()].reverse(), bus: [...Array(buses).keys()].reverse() };
     this.owner = { truck: new Array(trucks), car: new Array(cars), bus: new Array(buses) };
@@ -225,7 +267,7 @@ export class Fleet {
     const type = vehicle.type;
     if (vehicle.slot === undefined) return;
     const slot = vehicle.slot;
-    const pools = type === "truck" ? [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights] : type === "car" ? [this.car, this.carLights] : [this.bus, this.busLights];
+    const pools = type === "truck" ? [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights, this.truckBeam] : type === "car" ? [this.car, this.carLights, this.carBeam] : [this.bus, this.busLights, this.busBeam];
     for (const pool of pools) pool.mesh.setMatrixAt(slot, this.zero);
     this.owner[type][slot] = undefined;
     this.free[type].push(slot);
@@ -243,10 +285,12 @@ export class Fleet {
   place(vehicle, pose) {
     const slot = vehicle.slot;
     if (slot === undefined) return;
+    const lit = !vehicle.static && vehicle.state !== "dwell";
     if (vehicle.type === "truck") {
       const tm = this.compose(pose.cx, pose.cz, pose.cyaw);
       this.tractor.mesh.setMatrixAt(slot, tm);
       this.tractorLights.mesh.setMatrixAt(slot, tm);
+      this.truckBeam.mesh.setMatrixAt(slot, lit ? tm : this.zero);
       const rm = this.compose(pose.tx, pose.tz, pose.tyaw);
       this.chassis.mesh.setMatrixAt(slot, rm);
       this.trailerLights.mesh.setMatrixAt(slot, rm);
@@ -256,10 +300,12 @@ export class Fleet {
       const m = this.compose(pose.cx, pose.cz, pose.cyaw, vehicle.scale || 1);
       this.car.mesh.setMatrixAt(slot, m);
       this.carLights.mesh.setMatrixAt(slot, m);
+      this.carBeam.mesh.setMatrixAt(slot, lit ? m : this.zero);
     } else {
       const m = this.compose(pose.cx, pose.cz, pose.cyaw);
       this.bus.mesh.setMatrixAt(slot, m);
       this.busLights.mesh.setMatrixAt(slot, m);
+      this.busBeam.mesh.setMatrixAt(slot, lit ? m : this.zero);
     }
   }
 
@@ -267,6 +313,15 @@ export class Fleet {
     for (const pool of [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights, this.car, this.carLights, this.bus, this.busLights]) {
       pool.mesh.instanceMatrix.needsUpdate = true;
     }
+    if (this.truckBeam.mesh.visible) for (const pool of [this.truckBeam, this.carBeam, this.busBeam]) pool.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /* 0 by day, 1 at night: lamps brighten and headlight beams appear on the road. */
+  setNight(f) {
+    this.lightMaterial.color.setScalar(1 + f * 3.2);
+    this.beamMaterial.opacity = 0.5 * Math.max(0, (f - 0.15) / 0.85);
+    const on = f > 0.16;
+    for (const pool of [this.truckBeam, this.carBeam, this.busBeam]) pool.mesh.visible = on;
   }
 
   pickables() {

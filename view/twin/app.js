@@ -1,14 +1,17 @@
 import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
-import { Sky } from "three/addons/objects/Sky.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { buildWorld, buildFlows, buildZones } from "./world.js";
 import { Fleet, pick } from "./vehicles.js";
 import { Simulation } from "./sim.js";
+import { Atmosphere, PRESETS } from "./atmosphere.js";
+import { buildSatellite } from "./terrain.js";
+import { buildBeacons, buildRouteTrace } from "./overlays.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -18,17 +21,53 @@ function status(text) {
   $("loader-step").textContent = text;
 }
 
-const LIGHTING = {
-  day: { elevation: 38, azimuth: 225, exposure: 0.42, sun: 3.0, hemi: 0.5, bloom: 0.1, threshold: 0.97, fog: "#e7dccb", night: 0, env: 0.55, turbidity: 4, rayleigh: 1.0 },
-  sunset: { elevation: 9, azimuth: 258, exposure: 0.5, sun: 3.2, hemi: 0.35, bloom: 0.35, threshold: 0.85, fog: "#e6b48a", night: 0.2, env: 0.5, turbidity: 8, rayleigh: 2.4 },
-  night: { elevation: -10, azimuth: 280, exposure: 1.05, sun: 0.0, hemi: 0.32, bloom: 0.9, threshold: 0.5, fog: "#0d1726", night: 1, env: 0.18, turbidity: 2, rayleigh: 0.5 },
-};
+const TONES = { gold: "#e6bd74", maroon: "#e0527a", green: "#3fd193", teal: "#4ccfd0", proposal: "#f0c9c4" };
 
-const TONES = { gold: "#d6b47a", maroon: "#d8577b", green: "#3fbf8a", teal: "#4cc3c0", proposal: "#f0c9c4" };
+/* Final colour pass, applied after tone mapping: saturation, contrast, a tint, a soft vignette
+   and a little grain to take the digital edge off flat surfaces. */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSaturation: { value: 1 },
+    uContrast: { value: 1 },
+    uVignette: { value: 0.3 },
+    uGrain: { value: 0.022 },
+    uTime: { value: 0 },
+    uTint: { value: new THREE.Color("#ffffff") },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uSaturation, uContrast, uVignette, uGrain, uTime;
+    uniform vec3 uTint;
+    varying vec2 vUv;
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+    void main() {
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, uSaturation);
+      c = (c - 0.5) * uContrast + 0.5;
+      c *= uTint;
+      vec2 q = (vUv - 0.5) * vec2(1.0, 0.82);
+      c *= 1.0 - uVignette * smoothstep(0.32, 0.86, length(q));
+      c += (hash(vUv * 937.0 + fract(uTime) * 61.0) - 0.5) * uGrain;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }`,
+};
 
 async function main() {
   status("Loading port geometry");
-  const response = await fetch("../../data/processed/scene.json", { cache: "no-store" });
+  const [response, manifest] = await Promise.all([
+    fetch("../../data/processed/scene.json", { cache: "no-store" }),
+    fetch("../../data/processed/manifest.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
   if (!response.ok) throw new Error("scene.json returned " + response.status);
   const data = await response.json();
   if (!Array.isArray(data.roads) || !Array.isArray(data.routes)) {
@@ -38,7 +77,8 @@ async function main() {
 
   const stage = $("stage");
   const renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  let pixelRatio = Math.min(window.devicePixelRatio, 1.75);
+  renderer.setPixelRatio(pixelRatio);
   renderer.setSize(stage.clientWidth, stage.clientHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -56,45 +96,50 @@ async function main() {
   const controls = new MapControls(camera, labels.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.maxPolarAngle = THREE.MathUtils.degToRad(84);
+  controls.maxPolarAngle = THREE.MathUtils.degToRad(86);
   controls.minDistance = 12;
   controls.maxDistance = 7000;
   controls.zoomToCursor = true;
 
-  const sky = new Sky();
-  sky.scale.setScalar(45000);
-  scene.add(sky);
-  const skyScene = new THREE.Scene();
-  const skyEnv = new Sky();
-  skyEnv.scale.setScalar(1000);
-  skyScene.add(skyEnv);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  let envTarget = null;
-
-  const sun = new THREE.DirectionalLight("#fff4e0", 2.5);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
-  sun.shadow.bias = -0.0003;
-  scene.add(sun, sun.target);
-  const moon = new THREE.DirectionalLight("#9fb6e6", 0);
-  scene.add(moon, moon.target);
-  const hemi = new THREE.HemisphereLight("#cfe3ff", "#c9a87a", 0.7);
-  scene.add(hemi);
-  scene.fog = new THREE.Fog("#dfe3e4", 5000, 26000);
-  const sunDir = new THREE.Vector3();
+  const atmosphere = new Atmosphere(scene, renderer);
 
   status("Building roads, yards and customs structures");
   await wait();
   const world = buildWorld(scene, data, renderer);
   const flows = buildFlows(scene, data);
   const zones = buildZones(scene, data);
+  const beacons = buildBeacons(scene, data.stations, TONES);
+  const trace = buildRouteTrace(scene);
   const fleet = new Fleet(scene);
+
+  /* ---------- satellite ground ---------- */
+  let showSat = params.get("sat") !== "0";
+  let satellite = null;
+  const applySat = () => {
+    const on = !!(satellite && satellite.state.active && showSat);
+    if (satellite) satellite.group.visible = on;
+    world.setImagery(on);
+  };
+  if (manifest && manifest.local_origin && showSat) {
+    satellite = buildSatellite(scene, manifest.local_origin, { anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()), detail: world.noise, onReady: applySat });
+  }
+
+  /* ---------- simulation ---------- */
   let followed = null;
+  let warming = true;
+  const feed = [];
   const sim = new Simulation(data, fleet, {
     onRemove(v) {
       if (followed === v) stopFollow();
     },
+    onEvent(kind, v) {
+      if (kind !== "release" && kind !== "xray" && kind !== "ramp" && kind !== "gate") return;
+      feed.unshift({ kind, v, plate: v.plate, flow: v.route.flow, clock: sim.clock, fresh: !warming });
+      if (feed.length > 4) feed.pop();
+      feedDirty = true;
+    },
   });
+  let feedDirty = true;
 
   const statics = [];
   const placeStatic = (slot, where) => {
@@ -111,6 +156,8 @@ async function main() {
     const yaw = Math.atan2(dx, -dy);
     v.x = slot.x;
     v.y = slot.y;
+    v.dx = dx;
+    v.dy = dy;
     fleet.place(v, { cx: slot.x + dx * 5.5, cz: -(slot.y + dy * 5.5), cyaw: yaw, tx: slot.x - dx * 2.05, tz: -(slot.y - dy * 2.05), tyaw: yaw });
     statics.push(v);
   };
@@ -131,57 +178,46 @@ async function main() {
     $("loader-bar").style.width = `${Math.round((t / prewarm) * 100)}%`;
     await wait();
   }
-  sim.clock0 = 9 * 3600 - sim.time;
+  warming = false;
   sim.render();
   fleet.commit();
 
   /* ---------- post-processing ---------- */
   const target = new THREE.WebGLRenderTarget(stage.clientWidth, stage.clientHeight, { type: THREE.HalfFloatType, samples: 4 });
   const composer = new EffectComposer(renderer, target);
-  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setPixelRatio(pixelRatio);
   composer.setSize(stage.clientWidth, stage.clientHeight);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(stage.clientWidth, stage.clientHeight), 0.2, 0.55, 0.9);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  const grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
 
-  /* ---------- lighting presets ---------- */
-  let lighting = params.get("light") || "day";
-  function applyLighting(name) {
+  /* ---------- lighting ---------- */
+  let lighting = PRESETS[params.get("light")] ? params.get("light") : "sunset";
+  /* Everything outside the atmosphere that follows the time of day. */
+  function pushLighting() {
+    const v = atmosphere.now;
+    bloom.strength = v.bloom;
+    bloom.threshold = v.threshold;
+    bloom.radius = v.radius;
+    grade.uniforms.uSaturation.value = v.saturation;
+    grade.uniforms.uContrast.value = v.contrast;
+    grade.uniforms.uVignette.value = v.vignette;
+    grade.uniforms.uTint.value.copy(v.tint);
+    world.setNight(v.night);
+    zones.setNight(v.night);
+    fleet.setNight(v.night);
+    beacons.shared.uNight.value = v.night;
+    document.body.classList.toggle("is-night", v.night > 0.5);
+  }
+  function applyLighting(name, instant = false) {
     lighting = name;
-    const L = LIGHTING[name];
-    const phi = THREE.MathUtils.degToRad(90 - L.elevation);
-    const theta = THREE.MathUtils.degToRad(180 - L.azimuth);
-    sunDir.setFromSphericalCoords(1, phi, theta);
-    for (const s of [sky, skyEnv]) {
-      const u = s.material.uniforms;
-      u.sunPosition.value.copy(sunDir);
-      u.turbidity.value = L.turbidity;
-      u.rayleigh.value = L.rayleigh;
-      u.mieCoefficient.value = 0.005;
-      u.mieDirectionalG.value = 0.82;
-    }
-    sky.visible = L.elevation > -5;
-    scene.background = L.elevation > -5 ? null : new THREE.Color("#070d18");
-    renderer.toneMappingExposure = L.exposure;
-    sun.intensity = L.sun;
-    sun.color.set(L.elevation < 12 ? "#ffcf9a" : "#fff4e0");
-    moon.intensity = L.night ? 0.35 * L.night : 0;
-    hemi.intensity = L.hemi;
-    hemi.color.set(L.night > 0.5 ? "#6d82b8" : "#cfe3ff");
-    hemi.groundColor.set(L.night > 0.5 ? "#2a2433" : "#c9a87a");
-    scene.fog.color.set(L.fog);
-    bloom.strength = L.bloom;
-    bloom.threshold = L.threshold;
-    if (envTarget) envTarget.dispose();
-    envTarget = pmrem.fromScene(skyScene, 0.02);
-    scene.environment = envTarget.texture;
-    scene.environmentIntensity = L.env;
-    world.setNight(L.night);
-    zones.setNight(L.night);
-    fleet.lightMaterial.color.setScalar(1 + L.night * 3);
+    atmosphere.set(name, instant);
+    sim.clock0 = PRESETS[name].clock * 3600 - sim.time;
+    pushLighting();
     document.querySelectorAll("[data-light]").forEach((el) => el.classList.toggle("on", el.dataset.light === name));
-    document.body.classList.toggle("is-night", L.night > 0.5);
   }
 
   /* ---------- camera helpers ---------- */
@@ -192,46 +228,52 @@ async function main() {
     return { target: t, position: t.clone().add(offset) };
   }
   let flight = null;
+  let idle = 0;
+  const drift = params.get("drift") !== "0";
   function flyTo(pose, duration = 2.6) {
     flight = { from: { p: camera.position.clone(), t: controls.target.clone() }, to: pose, t: 0, duration };
     controls.enabled = false;
+    idle = 0;
   }
   function stepFlight(dt) {
     if (!flight) return;
     flight.t += dt / flight.duration;
     const k = flight.t >= 1 ? 1 : flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
-    const lift = Math.sin(Math.PI * Math.min(1, flight.t)) * flight.from.p.distanceTo(flight.to.position) * 0.12;
+    const lift = Math.sin(Math.PI * Math.min(1, flight.t)) * flight.from.p.distanceTo(flight.to.position) * (flight.lift ?? 0.12);
     camera.position.lerpVectors(flight.from.p, flight.to.position, k);
     camera.position.y += lift;
     controls.target.lerpVectors(flight.from.t, flight.to.target, k);
     if (flight.t >= 1) {
+      const done = flight.then;
       flight = null;
       controls.enabled = true;
+      if (done) done();
     }
   }
 
+  const station = (flow, n) => data.stations.find((st) => st.flow === flow && st.n === n);
   const VIEWS = {
-    overview: () => camPose(110, -130, 1800, 57, 148),
+    overview: () => camPose(170, 130, 1680, 67, 152),
     yard: () => {
-      const s = data.stations.find((st) => st.flow === "inbound" && st.n === 4);
-      return camPose(s.x, s.y, 560, 52, 145);
+      const s = station("inbound", 4);
+      return camPose(s.x, s.y, 470, 62, 128);
     },
     xray: () => {
       const x = data.xrays[0];
-      return camPose(x.x, x.y, 170, 56, 120);
+      return camPose(x.x, x.y, 150, 66, 108);
     },
     gates: () => {
       const p = data.portals[0] || data.gates[0];
       const g = data.gates.find((item) => item.ref === "inbound-gate") || p;
-      return camPose((p.x + g.x) / 2, (p.y + g.y) / 2, 260, 58, 160);
+      return camPose(g.x, g.y, 150, 73, 96);
     },
     booths: () => {
       const b = data.booths[0];
-      return camPose(b.x, b.y, 70, 74, THREE.MathUtils.radToDeg(b.h) + 35);
+      return camPose(b.x, b.y, 78, 76, THREE.MathUtils.radToDeg(b.h) + 35);
     },
     ramps: () => {
-      const s = data.stations.find((st) => st.flow === "inbound" && st.n === 6);
-      return camPose(s.x, s.y, 260, 52, 150);
+      const s = station("inbound", 6);
+      return camPose(s.x, s.y, 290, 64, 132);
     },
   };
 
@@ -239,19 +281,23 @@ async function main() {
   const I18N = {
     en: {
       subtitle: "Digital twin · Customs operations", import: "Import", export: "Export", passengers: "Passengers",
-      layers: "Layers", labels: "Labels", paths: "Flow paths", zones: "Zones", process: "Process steps",
+      layers: "Layers", labels: "Labels", paths: "Flow paths", zones: "Zones", process: "Process steps", satellite: "Satellite ground",
       operations: "Operations", simulated: "Simulated", trucksOnSite: "Trucks on site", parking: "Main parking", bays: "bays",
       scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
-      cleared: "cleared", booths: "booths active", queue: "on approach", min: "min",
+      cleared: "cleared", booths: "booths active", queue: "on approach", min: "min", activity: "Live activity",
       vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour",
+      uQueue: "in queue", uRoute: "en route", uFull: "full", uHour: "/ hr", uRamps: "at ramps", uReleased: "released", uParked: "parked", uCleared: "cleared",
+      eRelease: "Released", eXray: "X-ray scan complete", eRamp: "Inspection complete", eGate: "Gate check passed",
     },
     ar: {
       subtitle: "التوأم الرقمي · العمليات الجمركية", import: "الوارد", export: "الصادر", passengers: "المسافرون",
-      layers: "الطبقات", labels: "التسميات", paths: "مسارات الحركة", zones: "المناطق", process: "خطوات الإجراء",
+      layers: "الطبقات", labels: "التسميات", paths: "مسارات الحركة", zones: "المناطق", process: "خطوات الإجراء", satellite: "صور الأقمار الصناعية",
       operations: "العمليات", simulated: "محاكاة", trucksOnSite: "الشاحنات في المنفذ", parking: "المواقف الرئيسية", bays: "موقف",
       scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
-      cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة",
+      cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة", activity: "النشاط المباشر",
       vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة",
+      uQueue: "في الانتظار", uRoute: "في الطريق", uFull: "إشغال", uHour: "/ ساعة", uRamps: "في الرمبات", uReleased: "أُفرج عنها", uParked: "متوقفة", uCleared: "مسافر",
+      eRelease: "تم الإفراج", eXray: "اكتمل المسح بالأشعة", eRamp: "اكتمل التفتيش", eGate: "اجتياز البوابة",
     },
   };
   const FLOWS = {
@@ -260,13 +306,43 @@ async function main() {
     passenger: { en: ["Passengers", "Cars and buses"], ar: ["المسافرون", "السيارات والحافلات"] },
   };
   let lang = params.get("lang") === "ar" ? "ar" : "en";
+  const tr = (key) => I18N[lang][key] ?? key;
   const stationName = (st) => (lang === "ar" ? st.ar_short || st.ar : st.short || st.en);
-  const META_AR = { "2 lanes": "مساران", "3 lanes": "3 مسارات", "4 lanes": "4 مسارات", unused: "غير مستغلة" };
-  const stationMeta = (st) => (lang === "ar" ? META_AR[st.meta] || st.meta : st.meta);
+
+  /* ---------- live values per station ---------- */
+  /* Each station shows one live number from the simulation and a status light. */
+  function stationLive(st, k, live) {
+    const q = (...refs) => refs.reduce((s, ref) => s + (live.queue.get(ref) || 0), 0);
+    const queue = (n) => [n, "uQueue", n >= 6 ? 2 : n >= 3 ? 1 : 0];
+    if (st.flow === "inbound") {
+      if (st.n === 1) return [live.approach.inbound, "uRoute", 0];
+      if (st.n === 2) return queue(q("inbound-portal"));
+      if (st.n === 3) return queue(q("inbound-gate"));
+      if (st.n === 4) {
+        const pct = k.yard / Math.max(1, k.yardCapacity);
+        return [`${Math.round(pct * 100)}%`, "uFull", pct >= 0.9 ? 2 : pct >= 0.75 ? 1 : 0];
+      }
+      if (st.n === 5) return [k.scansPerHour, "uHour", 0];
+      if (st.n === 6) return [k.inspections, "uRamps", 0];
+      if (st.n === 7) return [sim.stats.releasedBy.inbound, "uReleased", 0];
+      return null;
+    }
+    if (st.flow === "outbound") {
+      if (st.n === 1) return [live.approach.outbound, "uRoute", 0];
+      if (st.n === 4) return queue(q("outbound-gate"));
+      if (st.n === 5) return [q("export-parking"), "uParked", 0];
+      if (st.n === 6) return [q("ramp-export"), "uRamps", 0];
+      if (st.n === 7) return [sim.stats.releasedBy.outbound, "uReleased", 0];
+      return null;
+    }
+    if (st.n === "C") return [k.passengers.toLocaleString(), "uCleared", 0];
+    const side = /arrival/i.test(st.en) ? "arrival" : "departure";
+    return queue(q(`${side}-1`, `${side}-2`, `${side}-3`, `${side}-4`));
+  }
+  const liveHtml = (value) => (value ? `<i></i><b>${value[0]}</b><em>${tr(value[1])}</em>` : "");
 
   /* ---------- station pins ---------- */
   const stationObjects = [];
-  const lineMat = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.45, depthWrite: false });
   data.stations.forEach((st, index) => {
     const el = document.createElement("button");
     el.className = `station tone-${st.tone}`;
@@ -276,36 +352,32 @@ async function main() {
       focusStation(index);
     });
     const obj = new CSS2DObject(el);
-    const height = st.flow === "passenger" ? 26 : 20;
-    obj.position.copy(v3(st.x, st.y, height));
+    obj.position.copy(v3(st.x, st.y, beacons.items[index].height + 1.5));
     obj.center.set(0.5, 1);
     scene.add(obj);
-    const geo = new THREE.BufferGeometry().setFromPoints([v3(st.x, st.y, 0.6), v3(st.x, st.y, height)]);
-    const line = new THREE.Line(geo, lineMat);
-    scene.add(line);
-    const dot = new THREE.Mesh(new THREE.RingGeometry(1.4, 2.4, 32), new THREE.MeshBasicMaterial({ color: TONES[st.tone], toneMapped: false, transparent: true, opacity: 0.95, depthWrite: false }));
-    dot.rotation.x = -Math.PI / 2;
-    dot.position.copy(v3(st.x, st.y, 0.6));
-    scene.add(dot);
-    stationObjects.push({ st, obj, line, dot, el });
+    stationObjects.push({ st, obj, el, lv: null, railLv: null });
   });
   function paintPins() {
-    for (const { st, el } of stationObjects) {
-      el.innerHTML = `<span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span>${st.meta ? `<span class="mt">${stationMeta(st)}</span>` : ""}`;
+    for (const s of stationObjects) {
+      s.el.innerHTML = `<span class="dotn">${s.st.n}</span><span class="nm">${stationName(s.st)}</span><span class="lv"></span>`;
+      s.lv = s.el.querySelector(".lv");
+      s.shown = null;
     }
   }
 
-  const focusDistance = (st) => (/parking/i.test(st.en) ? 560 : st.n === 1 ? 420 : st.n === 6 ? 280 : 220);
+  const focusDistance = (st) => (/parking/i.test(st.en) ? 520 : st.n === 1 ? 420 : st.n === 6 ? 300 : 210);
   function focusStation(index) {
     const { st } = stationObjects[index];
     stopTour();
+    stopFollow();
     if (st.flow !== activeFlow) setFlow(st.flow);
-    flyTo(camPose(st.x, st.y, focusDistance(st), 56, 145));
+    flyTo(camPose(st.x, st.y, focusDistance(st), 64, 138));
     highlightStep(index);
   }
   function highlightStep(index) {
     document.querySelectorAll(".step").forEach((el) => el.classList.toggle("on", Number(el.dataset.index) === index));
     stationObjects.forEach((s, i) => s.el.classList.toggle("on", i === index));
+    beacons.setActive(index);
   }
 
   /* ---------- flow switch and process rail ---------- */
@@ -320,21 +392,24 @@ async function main() {
     $("rail-sub").textContent = sub;
     const host = $("steps");
     host.innerHTML = "";
-    data.stations.forEach((st, index) => {
+    stationObjects.forEach((s, index) => {
+      s.railLv = null;
+      const st = s.st;
       if (st.flow !== activeFlow) return;
       const li = document.createElement("li");
-      li.innerHTML = `<button type="button" class="step tone-${st.tone}" data-index="${index}" title="${st.en}"><span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span>${st.meta ? `<span class="mt">${stationMeta(st)}</span>` : ""}</button>`;
+      li.innerHTML = `<button type="button" class="step tone-${st.tone}" data-index="${index}" title="${st.en}"><span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span><span class="lv"></span></button>`;
       li.firstChild.addEventListener("click", () => focusStation(index));
       host.appendChild(li);
+      s.railLv = li.querySelector(".lv");
+      s.shown = null;
     });
   }
   function applyVisibility() {
-    for (const { st, obj, line, dot } of stationObjects) {
+    stationObjects.forEach(({ st, obj }, index) => {
       const mine = st.flow === activeFlow;
       obj.visible = mine && showLabels;
-      line.visible = mine && showLabels;
-      dot.visible = mine;
-    }
+      beacons.setVisible(index, mine);
+    });
     for (const flow of ["inbound", "outbound", "passenger"]) {
       flows.setVisible(flow, flow === activeFlow && showFlows);
       zones.setVisible(flow, flow === activeFlow && showZones);
@@ -346,17 +421,19 @@ async function main() {
     document.querySelectorAll("[data-flow]").forEach((b) => b.classList.toggle("on", b.dataset.flow === flow));
     renderRail();
     applyVisibility();
+    renderKpis();
   }
   document.querySelectorAll("[data-flow]").forEach((b) =>
     b.addEventListener("click", () => {
       stopTour();
+      stopFollow();
       setFlow(b.dataset.flow);
       const first = data.stations.filter((st) => st.flow === b.dataset.flow && st.n !== 1);
       if (b.dataset.flow === "inbound") flyTo(VIEWS.overview());
       else if (first.length) {
         const cx = first.reduce((s, st) => s + st.x, 0) / first.length;
         const cy = first.reduce((s, st) => s + st.y, 0) / first.length;
-        flyTo(camPose(cx, cy, b.dataset.flow === "passenger" ? 1100 : 1400, 56, 145));
+        flyTo(camPose(cx, cy, b.dataset.flow === "passenger" ? 1150 : 1000, 62, 145));
       }
     })
   );
@@ -371,10 +448,12 @@ async function main() {
     $("brand-title").innerHTML = lang === "ar" ? "منفذ أبو سمرة <span>البري</span>" : "Abu Samra <span>Land Port</span>";
     paintPins();
     renderRail();
+    feedDirty = true;
   }
   $("lang").addEventListener("click", () => {
     lang = lang === "ar" ? "en" : "ar";
     applyLanguage();
+    renderKpis();
   });
 
   /* ---------- layers popover ---------- */
@@ -384,12 +463,14 @@ async function main() {
     input.addEventListener("change", () => {
       set(input.checked);
       applyVisibility();
+      applySat();
     });
   };
   layerSwitch("toggle-labels", () => showLabels, (v) => (showLabels = v));
   layerSwitch("toggle-flows", () => showFlows, (v) => (showFlows = v));
   layerSwitch("toggle-zones", () => showZones, (v) => (showZones = v));
   layerSwitch("toggle-rail", () => showRail, (v) => (showRail = v));
+  layerSwitch("toggle-sat", () => showSat, (v) => (showSat = v));
   $("layers-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     $("layers").classList.toggle("open");
@@ -436,11 +517,14 @@ async function main() {
   document.querySelectorAll("[data-view]").forEach((el) =>
     el.addEventListener("click", () => {
       stopTour();
+      stopFollow();
       flyTo(VIEWS[el.dataset.view]());
       document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b === el));
     })
   );
   controls.addEventListener("start", () => {
+    idle = 0;
+    chase = false;
     if (!flight) document.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("on"));
   });
 
@@ -449,11 +533,16 @@ async function main() {
     const k = e.key.toLowerCase();
     if (k === "d") $("toggle-dash").click();
     else if (k === "p") togglePresent();
-    else if (k === "escape") togglePresent(false);
-    else if (k === " ") {
+    else if (k === "escape") {
+      togglePresent(false);
+      stopFollow();
+    } else if (k === " ") {
       e.preventDefault();
       togglePause();
     } else if (k === "l") $("toggle-labels").click();
+    else if (k === "t") $("tour").click();
+    else if (k === "f") $("follow").click();
+    else if (k === "n") applyLighting({ day: "sunset", sunset: "night", night: "day" }[lighting]);
     else if (k === "1" || k === "2" || k === "3") document.querySelectorAll("[data-flow]")[Number(k) - 1].click();
   });
 
@@ -461,7 +550,7 @@ async function main() {
   let tour = null;
   function startTour() {
     stopFollow();
-    const order = stationObjects.map((s, i) => i).filter((i) => stationObjects[i].st.flow === activeFlow);
+    const order = stationObjects.map((s, i) => i).filter((i) => stationObjects[i].st.flow === activeFlow && stationObjects[i].st.n !== "+");
     tour = { order, k: -1, hold: 0 };
     $("tour").classList.add("on");
     nextTourStop();
@@ -470,14 +559,13 @@ async function main() {
     tour.k = (tour.k + 1) % tour.order.length;
     const index = tour.order[tour.k];
     const { st } = stationObjects[index];
-    flyTo(camPose(st.x, st.y, focusDistance(st), 58, 120 + (tour.k % 4) * 25), 3.2);
+    flyTo(camPose(st.x, st.y, focusDistance(st) * 0.9, 64, 100 + (tour.k % 4) * 28), 3.4);
     tour.hold = 9;
     highlightStep(index);
   }
   function stopTour() {
     if (!tour) return;
     tour = null;
-    controls.autoRotate = false;
     $("tour").classList.remove("on");
   }
   $("tour").addEventListener("click", () => (tour ? stopTour() : startTour()));
@@ -485,10 +573,11 @@ async function main() {
     if (!flight) stopTour();
   });
 
-  /* ---------- vehicle picking and following ---------- */
+  /* ---------- vehicle picking and ride-along ---------- */
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let downAt = null;
+  let chase = false;
   labels.domElement.addEventListener("pointerdown", (e) => (downAt = [e.clientX, e.clientY]));
   labels.domElement.addEventListener("pointerup", (e) => {
     if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
@@ -502,27 +591,39 @@ async function main() {
     const v = fleet.ownerOf(hit.object, hit.instanceId);
     if (v) select(v);
   });
+  /* The camera rides behind and above the vehicle, looking along its heading. */
+  const chaseOffset = (v, back = 50, up = 17) => new THREE.Vector3(-v.dx * back, up, v.dy * back);
   function select(v) {
     stopTour();
     followed = v;
     $("vehicle").classList.add("open");
-    if (!v.static) {
-      const p = v3(v.x, v.y);
-      const offset = camera.position.clone().sub(controls.target);
-      const want = Math.min(offset.length(), 140);
-      offset.setLength(Math.max(want, 60));
-      flyTo({ target: p, position: p.clone().add(offset) }, 1.4);
+    const p = v3(v.x, v.y, 1.5);
+    if (v.static) {
+      trace.hide();
+      chase = false;
+      flyTo({ target: p, position: p.clone().add(chaseOffset(v, -34, 17)) }, 1.8);
+    } else {
+      trace.show(v.route);
+      const pose = { target: p, position: p.clone().add(chaseOffset(v)) };
+      flyTo(pose, 2.0);
+      flight.lift = 0.04;
+      flight.then = () => (chase = true);
     }
     renderCard();
   }
   function stopFollow() {
     followed = null;
+    chase = false;
+    trace.hide();
     $("vehicle").classList.remove("open");
   }
   $("vehicle-close").addEventListener("click", stopFollow);
   $("follow").addEventListener("click", () => {
     const flowOf = { inbound: "inbound", outbound: "outbound" };
-    const candidates = sim.vehicles.filter((v) => v.type === "truck" && v.state === "drive" && Math.hypot(v.x, v.y) < 1500 && v.speed > 2 && (!flowOf[activeFlow] || v.route.flow === activeFlow));
+    const moving = sim.vehicles.filter((v) => v.type === "truck" && v.state === "drive" && Math.hypot(v.x, v.y) < 1500 && v.speed > 2 && (!flowOf[activeFlow] || v.route.flow === activeFlow));
+    /* Prefer a truck that still has most of the process ahead of it. */
+    const early = moving.filter((v) => v.stopIdx <= 2 && v !== followed);
+    const candidates = early.length ? early : moving;
     if (candidates.length) select(pick(candidates));
   });
   function renderCard() {
@@ -538,17 +639,39 @@ async function main() {
     const d = sim.describe(v);
     const plan = d.plan.map((p) => `<li class="${p.state}" title="${p.label}"></li>`).join("");
     const now = d.plan.find((p) => p.state === "now");
+    const inspect = v.type === "truck" && v.route.stops.some((s) => s.kind === "ramp");
+    const channel = v.type === "truck" ? `<span class="vc-chan ${inspect ? "red" : "green"}">${inspect ? "Red channel · inspection" : "Green channel"}</span>` : "";
     $("vehicle-body").innerHTML = `
       <div class="vc-title">${d.title} <span class="tag">${d.speed} km/h</span></div>
-      <div class="vc-plate">${d.plate}</div>
+      <div class="vc-plate">${d.plate}</div>${channel}
       <dl>
         <dt>Route</dt><dd>${d.origin}</dd>
+        ${d.declaration ? `<dt>Declaration</dt><dd>${d.declaration}</dd>` : ""}
         ${d.cargo ? `<dt>Cargo</dt><dd>${d.cargo}</dd>` : ""}
         <dt>Status</dt><dd>${d.status}</dd>
         <dt>On site</dt><dd>${d.minutes} min</dd>
       </dl>
       <ol class="plan">${plan}</ol>
       <div class="plan-now">${now ? `Next · <b>${now.label}</b>` : "<b>Leaving the port</b>"}</div>`;
+  }
+
+  /* ---------- live activity feed ---------- */
+  const EVENT_KEY = { release: "eRelease", xray: "eXray", ramp: "eRamp", gate: "eGate" };
+  const hhmm = (c) => `${String(Math.floor(c / 3600) % 24).padStart(2, "0")}:${String(Math.floor(c / 60) % 60).padStart(2, "0")}`;
+  function renderFeed() {
+    feedDirty = false;
+    const host = $("feed");
+    host.innerHTML = "";
+    feed.forEach((item, i) => {
+      const li = document.createElement("li");
+      if (i === 0 && item.fresh) li.className = "new";
+      item.fresh = false;
+      li.innerHTML = `<time>${hhmm(item.clock)}</time><span><b>${tr(EVENT_KEY[item.kind])}</b> · ${item.plate}</span>`;
+      li.addEventListener("click", () => {
+        if (sim.vehicles.includes(item.v)) select(item.v);
+      });
+      host.appendChild(li);
+    });
   }
 
   /* ---------- dashboard metrics ---------- */
@@ -587,10 +710,25 @@ async function main() {
     $("k-booths").textContent = `${k.boothsBusy}/${k.booths}`;
     $("k-cars").textContent = k.vehicles;
     $("k-released").textContent = k.released;
-    const c = sim.clock;
-    const hh = String(Math.floor(c / 3600) % 24).padStart(2, "0");
-    const mm = String(Math.floor(c / 60) % 60).padStart(2, "0");
-    $("clock").textContent = `${hh}:${mm}`;
+    $("clock").textContent = hhmm(sim.clock);
+
+    const live = sim.live();
+    for (const s of stationObjects) {
+      if (s.st.flow !== activeFlow) continue;
+      const value = stationLive(s.st, k, live);
+      const key = value ? value.join("|") + lang : "";
+      if (key === s.shown) continue;
+      s.shown = key;
+      const html = liveHtml(value);
+      const cls = `lv${value && value[2] ? ` l${value[2]}` : ""}`;
+      for (const el of [s.lv, s.railLv]) {
+        if (!el) continue;
+        el.innerHTML = html;
+        el.className = cls;
+      }
+    }
+    if (feedDirty) renderFeed();
+
     sampleTimer -= dt;
     if (sampleTimer <= 0 || history.length === 0) {
       history.push(k.trucksIn);
@@ -615,30 +753,50 @@ async function main() {
   }
   window.addEventListener("resize", resize);
 
-  applyLighting(lighting);
+  applyLighting(lighting, true);
   const startView = params.get("view");
   /* ?cam=x,y,distance,polar,bearing frames an exact shot (deep links, screenshots). */
   const camParam = (params.get("cam") || "").split(",").map(Number);
   const camShot = camParam.length === 5 && camParam.every(Number.isFinite) ? camPose(...camParam) : null;
   const intro = params.get("intro") !== "0" && !startView && !camShot;
   const initial = camShot || (startView && VIEWS[startView] ? VIEWS[startView]() : VIEWS.overview());
+  /* Open high over the desert and descend into the port while the title holds. The opening is
+     timed in rendered seconds and starts only once the first frames are on screen, so shader
+     compilation on a slow machine cannot swallow it. */
+  let opening = null;
   if (intro) {
-    const far = camPose(-40, 40, 6200, 70, 200);
+    const far = camPose(-300, 300, 6400, 52, 205);
     camera.position.copy(far.position);
     controls.target.copy(far.target);
-    flyTo(initial, 5.5);
+    document.body.classList.add("intro-on");
   } else {
     camera.position.copy(initial.position);
     controls.target.copy(initial.target);
   }
   controls.update();
+  idle = 1e3;
+  function reveal() {
+    $("loader").classList.add("done");
+    setTimeout(() => $("loader").remove(), 900);
+    if (!intro) return;
+    $("intro").classList.add("show");
+    flyTo(initial, 8);
+    flight.lift = 0;
+    opening = { t: 0 };
+  }
+  function stepOpening(dt) {
+    if (!opening) return;
+    opening.t += dt;
+    if (opening.t > 3.8) $("intro").classList.remove("show");
+    if (opening.t > 5.6) {
+      document.body.classList.remove("intro-on");
+      opening = null;
+    }
+  }
 
-  $("loader").classList.add("done");
-  setTimeout(() => $("loader").remove(), 900);
-
-  const markerGeo = new THREE.RingGeometry(9, 10.5, 48);
+  const markerGeo = new THREE.RingGeometry(10.4, 10.9, 72);
   markerGeo.rotateX(-Math.PI / 2);
-  const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color("#f3c56b").multiplyScalar(2), toneMapped: false, transparent: true, opacity: 0.9, depthWrite: false }));
+  const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color("#ffd27a").multiplyScalar(1.25), toneMapped: false, transparent: true, opacity: 0.85, depthWrite: false }));
   marker.renderOrder = 6;
   marker.visible = false;
   scene.add(marker);
@@ -646,9 +804,13 @@ async function main() {
   const clock = new THREE.Clock();
   let kpiTimer = 0;
   let elapsed = 0;
+  let slowFrames = 0;
+  let frames = 0;
   const lastTarget = new THREE.Vector3();
+  const want = new THREE.Vector3();
   function frame() {
-    const dt = Math.min(0.05, clock.getDelta());
+    const raw = clock.getDelta();
+    const dt = Math.min(0.05, raw);
     elapsed += dt;
     if (!paused) sim.advance(dt * speed);
     sim.render();
@@ -656,51 +818,41 @@ async function main() {
     world.update(elapsed, dt, sim);
     flows.uniforms.uTime.value = elapsed;
     zones.uniforms.uTime.value = elapsed;
+    beacons.shared.uTime.value = elapsed;
+    trace.uniforms.uTime.value = elapsed;
+    grade.uniforms.uTime.value = elapsed;
+    if (satellite) satellite.update(dt);
 
     marker.visible = !!followed;
     if (followed) {
-      marker.position.set(followed.x, 0.3, -followed.y);
-      const pulse = 1 + 0.18 * Math.sin(elapsed * 5);
+      marker.position.set(followed.x, 0.4, -followed.y);
+      const pulse = 1 + 0.06 * Math.sin(elapsed * 4);
       marker.scale.set(pulse, 1, pulse);
+      if (!followed.static) trace.progress(followed.s + 9);
     }
     if (followed && !followed.static && !flight) {
       lastTarget.copy(controls.target);
-      const want = v3(followed.x, followed.y);
+      want.set(followed.x, 1.5, -followed.y);
       controls.target.lerp(want, Math.min(1, dt * 4));
-      camera.position.add(controls.target.clone().sub(lastTarget));
+      camera.position.add(want.copy(controls.target).sub(lastTarget));
+      if (chase) camera.position.lerp(want.copy(controls.target).add(chaseOffset(followed)), Math.min(1, dt * 0.8));
     }
     if (tour && !flight) {
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.55;
       tour.hold -= dt;
-      if (tour.hold <= 0) {
-        controls.autoRotate = false;
-        nextTourStop();
-      }
+      if (tour.hold <= 0) nextTourStop();
     }
+    /* Left alone, the camera drifts slowly round the port so the picture never sits still. */
+    idle += dt;
+    const drifting = drift && !followed && !tour && idle > 25;
+    controls.autoRotate = !flight && (!!tour || drifting);
+    controls.autoRotateSpeed = tour ? 0.55 : 0.22;
     stepFlight(dt);
+    stepOpening(dt);
     controls.update();
 
     const distance = camera.position.distanceTo(controls.target);
-    const size = THREE.MathUtils.clamp(distance * 0.75, 90, 1700);
-    sun.target.position.copy(controls.target);
-    sun.position.copy(controls.target).addScaledVector(sunDir, 2500);
-    moon.position.copy(controls.target).add(new THREE.Vector3(600, 1400, -400));
-    moon.target.position.copy(controls.target);
-    const cam = sun.shadow.camera;
-    if (Math.abs(cam.right - size) > 1) {
-      cam.left = -size;
-      cam.right = size;
-      cam.top = size;
-      cam.bottom = -size;
-      cam.near = 100;
-      cam.far = 5200;
-      cam.updateProjectionMatrix();
-      sun.shadow.normalBias = size / 900;
-    }
-    sun.castShadow = LIGHTING[lighting].sun > 0;
+    if (atmosphere.update(dt, elapsed, camera, controls.target, distance)) pushLighting();
     labels.domElement.classList.toggle("far", distance > 2400);
-    labels.domElement.classList.toggle("near", distance < 2000);
 
     kpiTimer -= dt;
     if (kpiTimer <= 0) {
@@ -710,11 +862,24 @@ async function main() {
     }
     composer.render();
     labels.render(scene, camera);
+
+    /* Trade resolution for smoothness on weak GPUs: sustained slow frames lower the pixel ratio. */
+    frames += 1;
+    if (frames === 4) reveal();
+    if (frames > 120 && pixelRatio > 1) {
+      slowFrames = raw > 1 / 30 ? slowFrames + 1 : Math.max(0, slowFrames - 2);
+      if (slowFrames > 90) {
+        pixelRatio = Math.max(1, pixelRatio - 0.25);
+        renderer.setPixelRatio(pixelRatio);
+        composer.setPixelRatio(pixelRatio);
+        slowFrames = 0;
+      }
+    }
     requestAnimationFrame(frame);
   }
   renderKpis();
   requestAnimationFrame(frame);
-  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose };
+  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, satellite, select, scene };
 }
 
 main().catch((error) => {

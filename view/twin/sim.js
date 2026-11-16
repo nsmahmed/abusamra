@@ -102,7 +102,7 @@ export class Simulation {
     this.vehicles = [];
     this.nextId = 1;
     this.stations = new Map();
-    this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0 };
+    this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0, releasedBy: { inbound: 0, outbound: 0 } };
     this.tmp = {};
     this.tmp2 = {};
     this.bays = [];
@@ -527,6 +527,7 @@ export class Simulation {
     }
     if (stop.kind === "xray") this.stats.scans.push(this.time);
     if (stop.kind === "ramp") this.stats.inspections += 1;
+    if (this.hooks.onEvent && v.type === "truck") this.hooks.onEvent(ref.endsWith("release") ? "release" : stop.kind, v, stop);
     this.freeBay(v);
     v.bayT = 0;
     if (v.dock) {
@@ -540,6 +541,7 @@ export class Simulation {
     if (stop.kind === "gate" && ref.endsWith("release")) {
       v.phase = "cleared";
       this.stats.released += 1;
+      if (this.stats.releasedBy[v.route.flow] !== undefined) this.stats.releasedBy[v.route.flow] += 1;
       if (v.enteredAt !== undefined) {
         this.stats.cleared.push((this.time - v.enteredAt) / 60);
         if (this.stats.cleared.length > 30) this.stats.cleared.shift();
@@ -825,6 +827,22 @@ export class Simulation {
 
   render() {
     for (const v of this.vehicles) this.fleet.place(v, this.pose(v));
+  }
+
+  /* Vehicles standing at, or queued within 250 m of, each stop; plus trucks still on approach. */
+  live() {
+    const queue = new Map();
+    const approach = { inbound: 0, outbound: 0, arrival: 0, departure: 0 };
+    for (const v of this.vehicles) {
+      const stop = v.route.stops[v.stopIdx];
+      if (v.stopIdx === 0 && approach[v.route.flow] !== undefined) approach[v.route.flow] += 1;
+      if (!stop) continue;
+      const waiting = v.state === "dwell" || v.state === "scan" || (v.speed < 1.2 && stop.s - v.s < 250);
+      if (!waiting) continue;
+      const ref = String(stop.ref);
+      queue.set(ref, (queue.get(ref) || 0) + 1);
+    }
+    return { queue, approach };
   }
 
   describe(v) {
