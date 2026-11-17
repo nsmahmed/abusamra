@@ -48,17 +48,31 @@ INBOUND_APPROACH = (1168194979, 7)
 XRAY_HALLS = (1485001841, 1485001842)
 XRAY_LANES = (1409965497, 1328553508)
 IMPORT_RAMP_SHEDS = (295856199, 295856216, 295856190)
-# Lanes past the sheds: (way, edges to drive). The second runs only the first two edges of its
-# way (north-east face, then the south-east side) so both lanes leave by the release exit road.
+# Lanes past the sheds: (way, edges to drive). Trucks circle the compound clockwise: up the
+# north-west side, down past the sheds (between the long sheds, or the outer lane), back along the
+# south-east side, and out through the release gate on the exit road, which curves away south.
+# The second runs only the first two edges of its way so both lanes leave by that exit road.
 RAMP_LANES = ((1457063892, None), (1457063896, 2))
 RELEASE_EXIT = 1457063895
 INBOUND_RELEASE_XY = (496.0, -2.0)
+# After release, import trucks take the road under the ramps east, circle the civil defence
+# compound and drive north to the roundabout by the helipad, where they join Salwa Road for Doha.
+INBOUND_EXIT_VIA = ((1545.0, -229.0), (1571.0, -239.0), (1653.0, -125.0), (1609.0, -80.0), (1350.0, 241.0), (955.0, 929.0))
+CIVIL_DEFENCE = ((1440.0, -420.0), (1720.0, -40.0))
 # The large lot between the south-west roundabout and the main parking is unused today; the
 # import map proposes part of it as external parking. Lots east of this line are main parking.
 PARKING_DIVIDER = ((-140.0, -320.0), (-50.0, -400.0))
-# Export: trucks enter through the two-lane gate in the canopy lot beside the north-east
-# roundabout, follow the service road along the north-west edge past the parking strip
-# (~12 bays) and the export inspection shed, and leave through the release gate toward Saudi.
+# Export (reference/img01-export.jpeg): trucks from Doha leave the north-east roundabout for the
+# external export parking, the large lot north-west of it. They drive in at its south corner,
+# round its far side, park on one of its aisles, and leave by its west corner, where the permit
+# gate stands on the road. They drive back down to the roundabout, enter the export zone through
+# the two-lane gate in the canopy lot, follow the service road along the north-west edge to the
+# parking strip (~12 bays) beside the export inspection shed, and leave through the release gate.
+EXPORT_LOT_IN = (1168202683, 4)
+EXPORT_LOT_AISLES = (1168202679, 1168202681)
+EXPORT_LOT_OUT = 1168202667
+EXPORT_LOT_LANES = (1168202668, 1168202669, 1168202670, 1168202671, 1168202672, 1168202673, 1168202678, 1168202679, 1168202680, 1168202681)
+OUTBOUND_PERMIT_XY = (521.0, 1512.0)
 EXPORT_GATE_LANE = 1168202690
 EXPORT_ROAD = 145634746
 EXPORT_RAMP_SHEDS = (1485001858,)
@@ -75,6 +89,8 @@ STATION_SHORT = {
     ("inbound", 6): ("Inspection ramps", "رمبات التفتيش", "~130"),
     ("inbound", 7): ("Release", "الإفراج", ""),
     ("outbound", 1): ("Doha road", "طريق الدوحة", ""),
+    ("outbound", 2): ("External parking", "المواقف الخارجية", ""),
+    ("outbound", 3): ("Permit gate", "مخرج المواقف", "1 lane"),
     ("outbound", 4): ("Entrance gates", "بوابات الدخول", "2 lanes"),
     ("outbound", 5): ("Export parking", "مواقف الصادر", "~12"),
     ("outbound", 6): ("Inspection ramps", "رمبات التفتيش", ""),
@@ -257,13 +273,33 @@ class Graph:
                     heapq.heappush(queue, (nd, edge["to"]))
         return None
 
+    def node_at(self, xy) -> str:
+        """The drivable junction nearest a surveyed point; waypoints must sit on one."""
+        best, best_d = None, math.inf
+        for node_id in self.out:
+            n = self.nodes[node_id]
+            d = math.hypot(n["x"] - xy[0], n["y"] - xy[1])
+            if d < best_d:
+                best, best_d = node_id, d
+        assert best_d < 6.0, f"no junction near {xy} (nearest {best_d:.1f} m)"
+        return best
+
     def journey(self, start: str, ways: list, end: str) -> list[dict] | None:
         """Start node, then drive each way in order, then the end node.
 
-        A way is an id (drive its full length) or (id, n) to drive only its first n edges."""
+        A way is an id (drive its full length), (id, n) to drive only its first n edges, or
+        {"via": (x, y)} to drive the shortest way to the junction at that point."""
         edges: list[dict] = []
         node = start
         for way in ways:
+            if isinstance(way, dict):
+                target = self.node_at(way["via"])
+                leg = self.route(node, {target}) if node != target else []
+                if leg is None:
+                    return None
+                edges += leg
+                node = target
+                continue
             way_id, count = way if isinstance(way, tuple) else (way, None)
             chain = self.way_chain(way_id)[:count]
             if not chain:
@@ -442,7 +478,8 @@ def build_scene() -> dict:
     infill = _main_infill(yards, roads)
     if infill:
         yards.append(infill)
-    yards.append(_export_parking(graph))
+    yards.append(_export_parking(graph, by_id[EXPORT_RAMP_SHEDS[0]]))
+    yards.append(_export_staging(graph))
 
     # --- passenger booth lanes (cars and buses) ---
     car_routes = []
@@ -508,24 +545,29 @@ def build_scene() -> dict:
     usable = [a for ways in yard_ways.values() for a in ways if detour(a) < 1000]
     truck_routes = []
     inbound_specs = []
+    via = lambda points: [{"via": p} for p in points]
     for ways in [usable]:
         for aisle in pick(ways, 6):
             n = len(inbound_specs)
-            ramp_way, ramp_edges = RAMP_LANES[n % 2]
             inbound_specs.append(
                 {
-                    "ways": [INBOUND_APPROACH, aisle, XRAY_LANES[n % 2], (ramp_way, ramp_edges), RELEASE_EXIT],
-                    "yard": (aisle, lane_mid(aisle)),
+                    "ways": [INBOUND_APPROACH, aisle, XRAY_LANES[n % 2], RAMP_LANES[n % 2], RELEASE_EXIT, *via(INBOUND_EXIT_VIA)],
+                    "yards": [(aisle, lane_mid(aisle))],
                     "xray": n % 2,
                     # Most trucks are pulled for a physical check; the rest only drive through.
-                    "ramp": lane_mid(ramp_way, 1) if n % 3 != 2 else None,
+                    "ramp": lane_mid(RAMP_LANES[n % 2][0], 1) if n % 3 != 2 else None,
                 }
             )
     export_mid = export_lane[len(export_lane) // 2]
     export_shed = _centroid(by_id[EXPORT_RAMP_SHEDS[0]])
     outbound_specs = [
-        {"ways": [EXPORT_GATE_LANE, EXPORT_ROAD], "yard": ("export-parking", export_mid), "xray": None, "ramp": export_shed}
-        for _ in range(2)
+        {
+            "ways": [EXPORT_LOT_IN, _spine_to(graph, aisle), aisle, EXPORT_LOT_OUT, EXPORT_GATE_LANE, EXPORT_ROAD],
+            "yards": [("export-staging", lane_mid(aisle)), ("export-parking", export_mid)],
+            "xray": None,
+            "ramp": export_shed,
+        }
+        for aisle in EXPORT_LOT_AISLES
     ]
 
     def plan(flow: str, start: str, end: str, specs) -> list[dict]:
@@ -537,10 +579,12 @@ def build_scene() -> dict:
                 continue
             path = _journey_path(edges)
             cum = _cum(path)
-            ref, at = spec["yard"]
-            s = _nearest_s(path, cum, at)
-            stops = [{"s": _r(s), "kind": "yard", "ref": ref}]
-            after = s + 20
+            stops = []
+            after = 0.0
+            for ref, at in spec["yards"]:
+                s = _nearest_s(path, cum, at, after)
+                stops.append({"s": _r(s), "kind": "yard", "ref": ref})
+                after = s + 20
             if spec["xray"] is not None:
                 s = _nearest_s(path, cum, _centroid(by_id[XRAY_HALLS[spec["xray"]]]), after)
                 stops.append({"s": _r(s), "kind": "xray", "ref": f"xray-{spec['xray'] + 1}"})
@@ -596,18 +640,26 @@ def build_scene() -> dict:
             portals.append(place(lead, s_portal, "portal", portal_ref))
             anchors = {portal_ref: s_portal, gate_ref: s_gate, release_ref: s_release}
         else:
-            s_gate = _nearest_s(lead["path"], lead["cum"], OUTBOUND_GATE_XY)
+            staging = next(stop["s"] for stop in lead["stops"] if stop["ref"] == "export-staging")
+            s_permit = _nearest_s(lead["path"], lead["cum"], OUTBOUND_PERMIT_XY, staging + 20)
+            s_gate = _nearest_s(lead["path"], lead["cum"], OUTBOUND_GATE_XY, s_permit + 20)
             s_release = _nearest_s(lead["path"], lead["cum"], OUTBOUND_RELEASE_XY, last_stop + 30)
-            anchors = {gate_ref: s_gate, release_ref: s_release}
+            anchors = {"outbound-permit": s_permit, gate_ref: s_gate, release_ref: s_release}
+            gates.append(place(lead, s_permit, "gate", "outbound-permit", {"lanes": 1}))
         gates.append(place(lead, s_gate, "gate", gate_ref, {"lanes": 3 if flow == "inbound" else 2}))
         gates.append(place(lead, s_release, "release", release_ref, {"lanes": 2}))
 
         for route in group:
             stops = list(route["stops"])
+            lo = 0.0
             for ref, s_lead in anchors.items():
                 x, y, _ = _point_at(lead["path"], lead["cum"], s_lead)
-                lo = 0.0 if ref != release_ref else max(stop["s"] for stop in route["stops"])
+                if ref == release_ref:
+                    lo = max(lo, max(stop["s"] for stop in route["stops"]))
+                elif ref == "outbound-permit":
+                    lo = next(stop["s"] for stop in route["stops"] if stop["ref"] == "export-staging")
                 s = _nearest_s(route["path"], route["cum"], (x, y), lo)
+                lo = s + 1
                 kind = "portal" if ref == portal_ref else "gate"
                 stops.append({"s": _r(s), "kind": kind, "ref": ref})
             stops.sort(key=lambda stop: stop["s"])
@@ -644,6 +696,10 @@ def build_scene() -> dict:
         {"id": "import-ops", "kind": "ops", "flow": "inbound", "ring": _xy(_soft_hull(ops_pts, 14.0))},
         {"id": "external-parking", "kind": "proposal", "flow": "inbound", "ring": _xy(_soft_hull(external_pts, 10.0))},
     ]
+    staging_pts = [p for y in yards if y["kind"] == "staging" for lane in y["lanes"] for p in lane["p"]]
+    # The lot's own perimeter lane, without the stubs that reach out to the public road.
+    staging_pts += [p for e in graph.way_chain(EXPORT_LOT_IN[0])[1:9] for p in e["xy"]]
+    zones.append({"id": "export-staging", "kind": "outside", "flow": "outbound", "ring": _xy(_soft_hull(staging_pts, 8.0))})
 
     # --- stations from the published inbound and outbound truck process ---
     def anchor(ref: str):
@@ -681,12 +737,15 @@ def build_scene() -> dict:
         ]
     if outbound:
         lead = next(r for r in truck_routes if r["flow"] == "outbound")
-        gate = next(st for st in lead["stops"] if st["ref"] == "outbound-gate")
-        x0, y0, _ = _point_at(lead["p"], _cum(lead["p"]), max(0, gate["s"] - 450))
+        first = lead["stops"][0]
+        x0, y0, _ = _point_at(lead["p"], _cum(lead["p"]), max(0, first["s"] - 900))
+        staging_c = area_centre([ring for y in yards if y["kind"] == "staging" for ring in y["pads"]])
         stations += [
             {"n": 1, "flow": "outbound", "tone": "gold", "en": "Truck road from Doha", "ar": "طريق الشاحنات القادمة من الدوحة", "x": _r(x0), "y": _r(y0)},
+            {"n": 2, "flow": "outbound", "tone": "maroon", "en": "External export parking", "ar": "المواقف الخارجية لمنطقة الصادر", "x": staging_c[0], "y": staging_c[1]},
+            {"n": 3, "flow": "outbound", "tone": "maroon", "en": "External parking exit (entry-permit gate)", "ar": "مخرج المواقف الخارجية (بوابة لإصدار تصريح الدخول)", "x": anchor("outbound-permit")[0], "y": anchor("outbound-permit")[1]},
             {"n": 4, "flow": "outbound", "tone": "green", "en": "Export zone entrance (2 gates)", "ar": "مدخل منطقة الصادر التشغيلية", "x": anchor("outbound-gate")[0], "y": anchor("outbound-gate")[1]},
-            {"n": 5, "flow": "outbound", "tone": "green", "en": "Export parking (~12)", "ar": "المواقف الرئيسية (حوالي 12 موقف)", "x": _r(export_mid[0]), "y": _r(export_mid[1])},
+            {"n": 5, "flow": "outbound", "tone": "green", "en": "Export parking (~12)", "ar": "المواقف الرئيسية (حوالي 12 موقف)", "x": centre(export_lane)[0], "y": centre(export_lane)[1]},
             {"n": 6, "flow": "outbound", "tone": "green", "en": "Export inspection ramps", "ar": "رمبات التفتيش", "x": _r(export_shed[0]), "y": _r(export_shed[1])},
             {"n": 7, "flow": "outbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("outbound-release")[0], "y": anchor("outbound-release")[1]},
         ]
@@ -764,7 +823,16 @@ def build_scene() -> dict:
     roads = [road for road in roads if road["c"] in ("major", "motorway") or near_port(road["p"]) or on_route(road["p"])]
     ends = {(round(road["p"][k][0]), round(road["p"][k][1])) for road in roads for k in (0, -1)}
     joints = [j for j in joints if (round(j[0]), round(j[1])) in ends]
-    buildings = [b for b in buildings if near_port(b["ring"], 60.0)]
+    (cx0, cy0), (cx1, cy1) = CIVIL_DEFENCE
+
+    def civil(ring) -> bool:
+        x, y = _centroid(ring)
+        return cx0 < x < cx1 and cy0 < y < cy1
+
+    buildings = [b for b in buildings if near_port(b["ring"], 60.0) or civil(b["ring"])]
+    for b in buildings:
+        if civil(b["ring"]):
+            b["role"] = "civil"
 
     # Trees never stand in a truck bay, under a shed roof, or on a parking lane.
     keep_clear = [b["ring"] for b in buildings + canopies] + [pad for y in yards for pad in y["pads"]]
@@ -820,14 +888,35 @@ def _parking_kind(yard: dict) -> str:
     return "main" if side > 0 else "external"
 
 
-def _export_parking(graph: Graph) -> dict:
-    """The roughly twelve export bays: one kerbside lane beside the first stretch of the export road."""
-    road = graph.way_chain(EXPORT_ROAD)[0]["xy"]
+def _export_parking(graph: Graph, shed) -> dict:
+    """The roughly twelve export bays: a kerbside lane on the export road that ends just short of
+    the export inspection shed, round the last bend before it, as on the export process map."""
+    road = [p for e in graph.way_chain(EXPORT_ROAD) for p in e["xy"]]
     line = _offset(_resample(road, 3.0), 4.6)
     cum = _cum(line)
-    start, end = 40.0, min(cum[-1] - 30.0, 40.0 + 12 * YARD_BAY + 2)
+    # Stop well short of the shed's near face, where trucks back onto its docks.
+    end = _nearest_s(line, cum, _centroid(shed)) - 46.0
+    start = max(10.0, end - (12 * YARD_BAY + 2))
     lane = [p for p, s in zip(line, cum) if start <= s <= end]
     return {"id": "export-parking", "name": "Export parking", "kind": "export", "pads": [], "lanes": [{"way": "export-parking", "p": _xy(lane)}]}
+
+
+def _export_staging(graph: Graph) -> dict:
+    """The external export parking: the large paved lot north-west of the Doha roundabout."""
+    lanes = []
+    for way in EXPORT_LOT_LANES:
+        pts = [p for e in graph.way_chain(way) for p in e["xy"]]
+        if _length(pts) >= 40:
+            lanes.append({"way": way, "p": _xy(pts)})
+    # Its aisles are too far apart to read as one block of rows, but the lot is paved edge to edge.
+    ring = [p for e in graph.way_chain(EXPORT_LOT_IN[0])[1:9] for p in e["xy"]] + [p for lane in lanes for p in lane["p"]]
+    return {"id": "export-staging", "name": "External export parking", "kind": "staging", "pads": [_xy(_soft_hull(ring, 6.0))], "lanes": lanes}
+
+
+def _spine_to(graph: Graph, aisle: int) -> list:
+    """From the lot's north corner along its spine to the head of the given aisle."""
+    node = graph.nodes[graph.way_chain(aisle)[0]["from"]]
+    return {"via": (node["x"], node["y"])}
 
 
 def _dock_bays(ring, roads: list[dict], obstacles) -> list[list[float]]:

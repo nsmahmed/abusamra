@@ -674,7 +674,7 @@ export function buildWorld(scene, data, renderer) {
     }
     walls.strip(ring, 0, bld.h + 0.9, { floor });
     roofs.poly(ring, bld.h + 0.25);
-    if (bld.role === "terminal") fascia.strip(ring, bld.h + 0.3, bld.h + 0.95, { out: 0.04 });
+    if (bld.role === "terminal" || bld.role === "civil") fascia.strip(ring, bld.h + 0.3, bld.h + 0.95, { out: 0.04 });
     const r = openRing(ring);
     const area = Math.abs(signedArea(r));
     if (area > 600) {
@@ -987,6 +987,7 @@ export function buildWorld(scene, data, renderer) {
     "inbound-gate": ["بوابات التحقق من الموعد", "APPOINTMENT CHECK"],
     "inbound-release": ["بوابة الإفراج", "RELEASE GATE"],
     "outbound-gate": ["مدخل منطقة الصادر", "OUTBOUND ENTRANCE"],
+    "outbound-permit": ["تصريح الدخول", "ENTRY PERMIT"],
     "outbound-release": ["بوابة الإفراج", "RELEASE GATE"],
   };
   const glowSpots = [];
@@ -1063,7 +1064,7 @@ export function buildWorld(scene, data, renderer) {
   };
   for (const surveyed of data.gates) {
     const gate = onRoute(surveyed);
-    const lanes = gate.lanes === 3 ? [0, 4.6, -4.6] : [0, 4.6];
+    const lanes = gate.lanes === 3 ? [0, 4.6, -4.6] : gate.lanes === 1 ? [0] : [0, 4.6];
     const g = placeGroup(new THREE.Group(), gate);
     const front = 8.6;
     const x0 = Math.min(...lanes) - 2.6;
@@ -1496,8 +1497,9 @@ export function buildWorld(scene, data, renderer) {
     const dy = Math.cos(h);
     return [-7, -3.5, 0, 3.5, 7].every((k) => !nearRoute(x + dx * k, y + dy * k, clear));
   };
-  /* Main parking is busy; the unused lot holds only a few stray trucks, as on the imagery. */
-  const FILL = { main: 0.7, export: 0.6, external: 0.025 };
+  /* Main parking is busy; the external export lot about half full; the unused lot holds only a
+     few stray trucks, as on the imagery. */
+  const FILL = { main: 0.7, export: 0.6, staging: 0.5, external: 0.025 };
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
@@ -1627,7 +1629,9 @@ export function buildFlows(scene, data) {
     if (!route) continue;
     const P = dedupe(route.p);
     const cum = cumulative(P);
-    const gate = route.stops.find((s) => s.kind === "gate" && !String(s.ref).endsWith("release"));
+    /* The ribbon turns green where the truck enters the operational zone: the flow's own entry
+       gate, not a permit gate on the way to it. */
+    const gate = route.stops.find((s) => s.ref === `${route.flow}-gate`) || route.stops.find((s) => s.kind === "gate" && !String(s.ref).endsWith("release"));
     const release = route.stops.find((s) => String(s.ref).endsWith("release"));
     const L = cum[cum.length - 1];
     let s0 = 0;
@@ -1729,6 +1733,7 @@ export function buildZones(scene, data) {
   const STYLE = {
     ops: { color: "#3fbf8a", fill: 0.06, edge: 0.7, dash: 0 },
     proposal: { color: "#c23a5e", fill: 0.08, edge: 0.85, dash: 1 },
+    outside: { color: "#c23a5e", fill: 0.1, edge: 0.8, dash: 0 },
   };
   const vertex = `
     #include <common>

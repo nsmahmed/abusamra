@@ -367,6 +367,8 @@ async function main() {
     }
     if (st.flow === "outbound") {
       if (st.n === 1) return [live.approach.outbound, "uRoute", 0];
+      if (st.n === 2) return [q("export-staging"), "uParked", 0];
+      if (st.n === 3) return queue(q("outbound-permit"));
       if (st.n === 4) return queue(q("outbound-gate"));
       if (st.n === 5) return [q("export-parking"), "uParked", 0];
       if (st.n === 6) return [q("ramp-export"), "uRamps", 0];

@@ -87,10 +87,12 @@ const STOP_LABEL = {
 const GATE_LABEL = {
   "inbound-gate": "Appointment check",
   "outbound-gate": "Outbound entrance",
+  "outbound-permit": "Entry permit gate",
   "inbound-release": "Release gate",
   "outbound-release": "Release gate",
 };
-const stopLabel = (stop) => (stop.kind === "gate" && GATE_LABEL[stop.ref]) || STOP_LABEL[stop.kind];
+const YARD_LABEL = { "export-staging": "External export parking", "export-parking": "Export parking" };
+const stopLabel = (stop) => (stop.kind === "gate" && GATE_LABEL[stop.ref]) || (stop.kind === "yard" && YARD_LABEL[stop.ref]) || STOP_LABEL[stop.kind];
 
 export class Simulation {
   constructor(data, fleet, hooks = {}) {
@@ -116,7 +118,7 @@ export class Simulation {
     };
     for (const booth of data.booths) station(booth.lane, "booth");
     for (const gate of data.gates) {
-      const lanes = gate.lanes === 3 ? [0, 4.6, -4.6] : [0, 4.6];
+      const lanes = gate.lanes === 3 ? [0, 4.6, -4.6] : gate.lanes === 1 ? [0] : [0, 4.6];
       station(gate.ref, gate.kind, { lanes, load: lanes.map(() => 0), laneBusy: lanes.map(() => 0), laneOpen: lanes.map(() => 0) });
     }
     for (const portal of data.portals) station(portal.ref, "portal", { lanes: [0, 4.6], load: [0, 0], laneBusy: [0, 0], laneOpen: [0, 0] });
@@ -404,6 +406,8 @@ export class Simulation {
       const s = stop.s + k * 19;
       if (s < v.s + 10 || s > r.length - 40 || this.nearBox(r, s)) continue;
       if (aisleOnly && (r.speedClass(s - 8) !== 0 || r.speedClass(s + 8) !== 0)) continue;
+      /* Not on a bend: a straight 17 m truck at the kerb of a curve still crowds the lane. */
+      if (this.bend(r, s) > 0.22) continue;
       const a = r.at(s - 3, this.tmp);
       const ax = a.x;
       const ay = a.y;
@@ -422,6 +426,22 @@ export class Simulation {
       return dock;
     }
     return null;
+  }
+
+  /* Heading change, in radians, over the 24 m of route centred on s. */
+  bend(r, s) {
+    const a = r.at(s - 14, this.tmp);
+    const ax = a.x;
+    const ay = a.y;
+    const b = r.at(s - 10, this.tmp2);
+    const h0 = Math.atan2(b.x - ax, b.y - ay);
+    const c = r.at(s + 10, this.tmp);
+    const cx = c.x;
+    const cy = c.y;
+    const d = r.at(s + 14, this.tmp2);
+    let turn = Math.atan2(d.x - cx, d.y - cy) - h0;
+    turn = ((turn + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    return Math.abs(turn);
   }
 
   /* A truck leaving a bay waits until its lane is clear behind and beside it. */
@@ -534,7 +554,9 @@ export class Simulation {
       this.docks = this.docks.filter((d) => d.v !== v);
       v.dock = null;
     }
-    if (stop.kind === "gate" && !ref.endsWith("release") && v.type === "truck") {
+    /* A truck is inside the operational zone once it passes its entry gate. The export permit
+       gate stands outside the zone, at the exit of the external parking. */
+    if (stop.kind === "gate" && !ref.endsWith("release") && !ref.endsWith("permit") && v.type === "truck") {
       v.phase = "in";
       v.enteredAt = this.time;
     }
@@ -878,7 +900,7 @@ export class Simulation {
       if (v.type === "truck") {
         if (v.phase === "in") trucksIn += 1;
         const stop = v.route.stops[v.stopIdx];
-        if (v.state === "dwell" && stop && stop.kind === "yard") yardDyn += 1;
+        if (v.state === "dwell" && stop && stop.kind === "yard" && v.route.flow === "inbound") yardDyn += 1;
         if (v.state === "dwell" && stop && stop.kind === "ramp") rampDyn += 1;
         if (v.state !== "dwell") trucksMoving += 1;
       } else {
