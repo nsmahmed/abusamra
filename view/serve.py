@@ -19,10 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEM_CACHE = ROOT / "data" / "cache" / "terrarium"
 DEM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
-# Satellite ground for the 3D twin. Tiles are cached on disk, so after one online run the twin
-# works without a connection. Imagery (c) Esri, Maxar, Earthstar Geographics.
-SAT_CACHE = ROOT / "data" / "cache" / "sat"
-SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 PORT = 8765
 
 
@@ -40,9 +36,6 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path.startswith("/tiles/terrarium/"):
             self.proxy_tile(path, ".png", DEM_CACHE, DEM_URL, "image/png", "MalCust-AbuSamra/1.0")
-            return
-        if path.startswith("/tiles/sat/"):
-            self.proxy_tile(path, ".jpg", SAT_CACHE, SAT_URL, "image/jpeg", "Mozilla/5.0")
             return
         super().do_GET()
 

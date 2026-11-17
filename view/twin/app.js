@@ -5,12 +5,13 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { buildWorld, buildFlows, buildZones } from "./world.js";
 import { Fleet, pick } from "./vehicles.js";
 import { Simulation } from "./sim.js";
 import { Atmosphere, PRESETS } from "./atmosphere.js";
-import { buildSatellite } from "./terrain.js";
+import { buildGround } from "./terrain.js";
 import { buildBeacons, buildRouteTrace } from "./overlays.js";
 
 const params = new URLSearchParams(location.search);
@@ -24,15 +25,13 @@ function status(text) {
 const TONES = { gold: "#e6bd74", maroon: "#e0527a", green: "#3fd193", teal: "#4ccfd0", proposal: "#f0c9c4" };
 
 /* Final colour pass, applied after tone mapping: saturation, contrast, a tint, a soft vignette
-   and a little grain to take the digital edge off flat surfaces. */
+   and a fixed sub-visible dither that keeps the sky gradient from banding. */
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uSaturation: { value: 1 },
     uContrast: { value: 1 },
     uVignette: { value: 0.3 },
-    uGrain: { value: 0.022 },
-    uTime: { value: 0 },
     uTint: { value: new THREE.Color("#ffffff") },
   },
   vertexShader: `
@@ -43,7 +42,7 @@ const GradeShader = {
     }`,
   fragmentShader: `
     uniform sampler2D tDiffuse;
-    uniform float uSaturation, uContrast, uVignette, uGrain, uTime;
+    uniform float uSaturation, uContrast, uVignette;
     uniform vec3 uTint;
     varying vec2 vUv;
     float hash(vec2 p) {
@@ -57,17 +56,14 @@ const GradeShader = {
       c *= uTint;
       vec2 q = (vUv - 0.5) * vec2(1.0, 0.82);
       c *= 1.0 - uVignette * smoothstep(0.32, 0.86, length(q));
-      c += (hash(vUv * 937.0 + fract(uTime) * 61.0) - 0.5) * uGrain;
+      c += (hash(vUv * 937.0) - 0.5) * 0.006;
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
 };
 
 async function main() {
   status("Loading port geometry");
-  const [response, manifest] = await Promise.all([
-    fetch("../../data/processed/scene.json", { cache: "no-store" }),
-    fetch("../../data/processed/manifest.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-  ]);
+  const response = await fetch("../../data/processed/scene.json", { cache: "no-store" });
   if (!response.ok) throw new Error("scene.json returned " + response.status);
   const data = await response.json();
   if (!Array.isArray(data.roads) || !Array.isArray(data.routes)) {
@@ -77,7 +73,13 @@ async function main() {
 
   const stage = $("stage");
   const renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
-  let pixelRatio = Math.min(window.devicePixelRatio, 1.75);
+  /* The picture is fill-rate bound on integrated graphics, so the default draws about a
+     1080p frame whatever the display scaling, and smooths edges in post. ?quality=high lifts
+     the cap and switches to multisampling for machines with a discrete GPU. */
+  const high = params.get("quality") === "high";
+  const budget = high ? 6.5e6 : 2.2e6;
+  const fitRatio = () => Math.min(window.devicePixelRatio, high ? 2 : 1.5, Math.sqrt(budget / Math.max(1, stage.clientWidth * stage.clientHeight)));
+  let pixelRatio = fitRatio();
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(stage.clientWidth, stage.clientHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -112,16 +114,13 @@ async function main() {
   const trace = buildRouteTrace(scene);
   const fleet = new Fleet(scene);
 
-  /* ---------- satellite ground ---------- */
-  let showSat = params.get("sat") !== "0";
-  let satellite = null;
-  const applySat = () => {
-    const on = !!(satellite && satellite.state.active && showSat);
-    if (satellite) satellite.group.visible = on;
-    world.setImagery(on);
-  };
-  if (manifest && manifest.local_origin && showSat) {
-    satellite = buildSatellite(scene, manifest.local_origin, { anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()), detail: world.noise, onReady: applySat });
+  /* ---------- desert floor and sea ---------- */
+  let ground = null;
+  try {
+    ground = await buildGround(scene, { noise: world.noise, waterNormal: world.waterNormal, anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()) });
+    world.setGround(true);
+  } catch (error) {
+    console.warn("Ground tone maps missing; using the plain painted desert.", error);
   }
 
   /* ---------- simulation ---------- */
@@ -183,7 +182,7 @@ async function main() {
   fleet.commit();
 
   /* ---------- post-processing ---------- */
-  const target = new THREE.WebGLRenderTarget(stage.clientWidth, stage.clientHeight, { type: THREE.HalfFloatType, samples: 4 });
+  const target = new THREE.WebGLRenderTarget(stage.clientWidth, stage.clientHeight, { type: THREE.HalfFloatType, samples: high ? 4 : 0 });
   const composer = new EffectComposer(renderer, target);
   composer.setPixelRatio(pixelRatio);
   composer.setSize(stage.clientWidth, stage.clientHeight);
@@ -193,9 +192,15 @@ async function main() {
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
+  if (!high) composer.addPass(new SMAAPass(stage.clientWidth * pixelRatio, stage.clientHeight * pixelRatio));
+  /* Bloom is a soft glow; computing it at half size is invisible and much cheaper. */
+  const sizeBloom = () => {
+    if (!high) bloom.setSize((stage.clientWidth * pixelRatio) / 2, (stage.clientHeight * pixelRatio) / 2);
+  };
+  sizeBloom();
 
   /* ---------- lighting ---------- */
-  let lighting = PRESETS[params.get("light")] ? params.get("light") : "sunset";
+  let lighting = PRESETS[params.get("light")] ? params.get("light") : "day";
   /* Everything outside the atmosphere that follows the time of day. */
   function pushLighting() {
     const v = atmosphere.now;
@@ -281,7 +286,7 @@ async function main() {
   const I18N = {
     en: {
       subtitle: "Digital twin · Customs operations", import: "Import", export: "Export", passengers: "Passengers",
-      layers: "Layers", labels: "Labels", paths: "Flow paths", zones: "Zones", process: "Process steps", satellite: "Satellite ground",
+      layers: "Layers", labels: "Labels", paths: "Flow paths", zones: "Zones", process: "Process steps",
       operations: "Operations", simulated: "Simulated", trucksOnSite: "Trucks on site", parking: "Main parking", bays: "bays",
       scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
       cleared: "cleared", booths: "booths active", queue: "on approach", min: "min", activity: "Live activity",
@@ -291,7 +296,7 @@ async function main() {
     },
     ar: {
       subtitle: "التوأم الرقمي · العمليات الجمركية", import: "الوارد", export: "الصادر", passengers: "المسافرون",
-      layers: "الطبقات", labels: "التسميات", paths: "مسارات الحركة", zones: "المناطق", process: "خطوات الإجراء", satellite: "صور الأقمار الصناعية",
+      layers: "الطبقات", labels: "التسميات", paths: "مسارات الحركة", zones: "المناطق", process: "خطوات الإجراء",
       operations: "العمليات", simulated: "محاكاة", trucksOnSite: "الشاحنات في المنفذ", parking: "المواقف الرئيسية", bays: "موقف",
       scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
       cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة", activity: "النشاط المباشر",
@@ -463,14 +468,12 @@ async function main() {
     input.addEventListener("change", () => {
       set(input.checked);
       applyVisibility();
-      applySat();
     });
   };
   layerSwitch("toggle-labels", () => showLabels, (v) => (showLabels = v));
   layerSwitch("toggle-flows", () => showFlows, (v) => (showFlows = v));
   layerSwitch("toggle-zones", () => showZones, (v) => (showZones = v));
   layerSwitch("toggle-rail", () => showRail, (v) => (showRail = v));
-  layerSwitch("toggle-sat", () => showSat, (v) => (showSat = v));
   $("layers-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     $("layers").classList.toggle("open");
@@ -592,7 +595,12 @@ async function main() {
     if (v) select(v);
   });
   /* The camera rides behind and above the vehicle, looking along its heading. */
-  const chaseOffset = (v, back = 50, up = 17) => new THREE.Vector3(-v.dx * back, up, v.dy * back);
+  /* A truck backed onto an inspection dock has the shed behind it, so the camera swings round
+     to the apron side and looks at it from the front instead. */
+  const chaseOffset = (v, back = 50, up = 17) => {
+    const side = v.bayT > 0 ? -0.9 : 1;
+    return new THREE.Vector3(-v.dx * back * side, v.bayT > 0 ? up + 7 : up, v.dy * back * side);
+  };
   function select(v) {
     stopTour();
     followed = v;
@@ -745,8 +753,12 @@ async function main() {
   function resize() {
     const w = stage.clientWidth;
     const h = stage.clientHeight;
+    pixelRatio = fitRatio();
+    renderer.setPixelRatio(pixelRatio);
+    composer.setPixelRatio(pixelRatio);
     renderer.setSize(w, h);
     composer.setSize(w, h);
+    sizeBloom();
     labels.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -820,8 +832,7 @@ async function main() {
     zones.uniforms.uTime.value = elapsed;
     beacons.shared.uTime.value = elapsed;
     trace.uniforms.uTime.value = elapsed;
-    grade.uniforms.uTime.value = elapsed;
-    if (satellite) satellite.update(dt);
+    if (ground) ground.uniforms.uTime.value = elapsed;
 
     marker.visible = !!followed;
     if (followed) {
@@ -866,12 +877,13 @@ async function main() {
     /* Trade resolution for smoothness on weak GPUs: sustained slow frames lower the pixel ratio. */
     frames += 1;
     if (frames === 4) reveal();
-    if (frames > 120 && pixelRatio > 1) {
+    if (frames > 120 && pixelRatio > 0.75) {
       slowFrames = raw > 1 / 30 ? slowFrames + 1 : Math.max(0, slowFrames - 2);
       if (slowFrames > 90) {
-        pixelRatio = Math.max(1, pixelRatio - 0.25);
+        pixelRatio = Math.max(0.75, pixelRatio * 0.85);
         renderer.setPixelRatio(pixelRatio);
         composer.setPixelRatio(pixelRatio);
+        sizeBloom();
         slowFrames = 0;
       }
     }
@@ -879,7 +891,7 @@ async function main() {
   }
   renderKpis();
   requestAnimationFrame(frame);
-  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, satellite, select, scene };
+  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, ground, select, scene, composer };
 }
 
 main().catch((error) => {

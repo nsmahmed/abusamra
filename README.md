@@ -34,13 +34,14 @@ python view/serve.py          # then open http://127.0.0.1:8765/view/twin/
 python view/serve.py 9000     # or pick another port
 ```
 
-Open the twin through this server, not as a file: the server also fetches the satellite ground tiles and caches them under `data/cache/sat/`. After one online run the twin works offline; with no tiles at all it falls back to a painted desert.
+Open the twin through this server, not as a file. It needs no connection beyond the first load of three.js and the fonts: the desert floor is built in the shader from two small tone maps in `view/twin/assets/`, a heavily smoothed colour reference of the real terrain, so nothing is streamed while it runs.
 
 - **Controls:** drag to pan, right-drag to orbit, wheel to zoom, click a vehicle to ride along with it.
 - **Keys:** `1` `2` `3` flows, `N` next time of day, `T` tour, `F` follow a truck, `P` presentation mode, `D` dashboard, `L` labels, `Space` pause.
-- **Deep links:** `?light=day|sunset|night`, `?view=overview|gates|yard|xray|ramps|booths`, `?flow=inbound|outbound|passenger`, `?lang=ar`, `?present=1`, `?intro=0`, `?sat=0`, `?drift=0`, `?cam=x,y,distance,polar,bearing`.
+- **Deep links:** `?light=day|sunset|night`, `?view=overview|gates|yard|xray|ramps|booths`, `?flow=inbound|outbound|passenger`, `?lang=ar`, `?present=1`, `?intro=0`, `?drift=0`, `?cam=x,y,distance,polar,bearing`.
+- **Quality:** the default targets a steady 60 fps on integrated graphics (about a 1080p frame, post-process anti-aliasing). Add `?quality=high` on a machine with a discrete GPU for native resolution and multisampling.
 
-Traffic, counts and the activity feed are simulated. Satellite imagery © Esri, Maxar, Earthstar Geographics.
+Traffic, counts and the activity feed are simulated. Terrain tones are derived from Esri World Imagery (© Esri, Maxar, Earthstar Geographics).
 
 ## What is included
 

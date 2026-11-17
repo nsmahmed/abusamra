@@ -9,7 +9,7 @@
   --ink-2: rgba(238, 240, 242, 0.78);
   --muted: rgba(238, 240, 242, 0.5);
   --faint: rgba(238, 240, 242, 0.28);
-  --glass: rgba(13, 16, 22, 0.62);
+  --glass: rgba(14, 17, 24, 0.84);
   --glass-2: rgba(255, 255, 255, 0.045);
   --line: rgba(255, 255, 255, 0.08);
   --line-2: rgba(255, 255, 255, 0.14);
@@ -32,8 +32,6 @@ svg { display: block; }
 .glass {
   background: var(--glass);
   border: 1px solid var(--line);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
   border-radius: var(--r);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -325,7 +323,7 @@ svg { display: block; }
 #intro h1 span { font-weight: 200; color: var(--gold-2); }
 .intro-kicker { font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--gold-2); text-shadow: 0 2px 14px rgba(0, 0, 0, 0.7); font-family: Inter, "IBM Plex Sans Arabic", sans-serif; }
 .intro-ar { font-family: "IBM Plex Sans Arabic", sans-serif; font-size: clamp(20px, 2.4vw, 36px); margin-top: 12px; color: var(--ink-2); text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6); }
-.intro-sub { margin: 26px auto 0; font-size: 11.5px; letter-spacing: 0.3em; text-transform: uppercase; padding: 8px 18px 8px 21px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(10, 13, 19, 0.4); backdrop-filter: blur(8px); width: max-content; }
+.intro-sub { margin: 26px auto 0; font-size: 11.5px; letter-spacing: 0.3em; text-transform: uppercase; padding: 8px 18px 8px 21px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(10, 13, 19, 0.55); width: max-content; }
 body.intro-on .topbar, body.intro-on .rail, body.intro-on .dash, body.intro-on .dock, body.intro-on .labels, body.intro-on .credit { opacity: 0; pointer-events: none; }
 .topbar, .labels { transition: opacity 0.8s; }
 
@@ -356,7 +354,7 @@ body.ar .feed { direction: rtl; text-align: right; }
 body.present .rail, body.present .dash, body.present .credit { opacity: 0; pointer-events: none; }
 body.present .dock { opacity: 0; transform: translate(-50%, 16px); pointer-events: none; }
 body.present .topbar .flows, body.present .topbar .tools > :not(#present):not(.clock) { opacity: 0; pointer-events: none; }
-body.present .topbar { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+body.present .topbar { background: transparent; border-color: transparent; box-shadow: none; }
 body.present #present { color: var(--gold); }
 body.ar .rail, body.ar .step, body.ar .dash { direction: rtl; text-align: right; }
 body.ar #steps::before { left: auto; right: 17px; }

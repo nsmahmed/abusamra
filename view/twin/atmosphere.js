@@ -18,9 +18,9 @@ export const PRESETS = {
     clock: 17.2,
     elevation: 13, azimuth: 262, disc: 1, glow: 1.15, stars: 0,
     zenith: "#27447f", horizon: "#f3a86b", below: "#c98f62",
-    sunColor: "#ffbe85", sun: 5.6, hemiSky: "#a9bdf0", hemiGround: "#c08e60", hemi: 1.1,
+    sunColor: "#ffc48f", sun: 5.8, hemiSky: "#b9c8f0", hemiGround: "#c9996c", hemi: 1.45,
     fog: "#e3a777", fogNear: 2600, fogFar: 21000,
-    exposure: 0.7, env: 0.7, bloom: 0.26, threshold: 1.0, radius: 0.6,
+    exposure: 0.8, env: 0.75, bloom: 0.26, threshold: 1.0, radius: 0.6,
     night: 0.2, saturation: 1.1, contrast: 1.06, vignette: 0.34, tint: "#fff6ea",
   },
   night: {
@@ -127,8 +127,11 @@ export class Atmosphere {
     this.to = null;
     this.t = 1;
     this.duration = 2.4;
-    this.envTimer = 0;
+    this.bakedHalf = false;
     this.shadowSize = 0;
+    this.tmpA = new THREE.Vector3();
+    this.tmpB = new THREE.Vector3();
+    this.tmpC = new THREE.Vector3();
   }
 
   resolve(preset) {
@@ -154,6 +157,7 @@ export class Atmosphere {
     turn = ((turn + 540) % 360) - 180;
     this.to.azimuth = this.from.azimuth + turn;
     this.t = 0;
+    this.bakedHalf = false;
   }
 
   apply() {
@@ -204,17 +208,25 @@ export class Atmosphere {
       }
       this.now = out;
       this.apply();
-      this.envTimer -= dt;
-      if (this.envTimer <= 0 || this.t >= 1) {
+      /* Re-baking the reflection map is the one costly step here: twice per blend is enough. */
+      if ((this.t >= 0.5 && !this.bakedHalf) || this.t >= 1) {
         this.bakeEnvironment();
-        this.envTimer = 0.3;
+        this.bakedHalf = this.t < 1;
       }
       changed = true;
     }
-    /* The shadow frustum follows the camera focus and widens with the view. */
-    const size = THREE.MathUtils.clamp(distance * 0.75, 90, 1700);
-    this.sun.target.position.copy(focus);
-    this.sun.position.copy(focus).addScaledVector(this.sunDir, 2500);
+    /* The shadow frustum follows the camera focus and widens with the view. Its size moves in
+       steps and its centre snaps to whole shadow texels, so shadow edges hold still instead of
+       crawling while the camera pans. */
+    const size = THREE.MathUtils.clamp(90 * 1.35 ** Math.round(Math.log(Math.max(1, (distance * 0.75) / 90)) / Math.log(1.35)), 90, 1700);
+    const texel = (size * 2) / this.sun.shadow.mapSize.x;
+    const right = this.tmpA.set(0, 1, 0).cross(this.sunDir).normalize();
+    const up = this.tmpB.copy(this.sunDir).cross(right);
+    const a = focus.dot(right);
+    const b = focus.dot(up);
+    const centre = this.tmpC.copy(focus).addScaledVector(right, Math.round(a / texel) * texel - a).addScaledVector(up, Math.round(b / texel) * texel - b);
+    this.sun.target.position.copy(centre);
+    this.sun.position.copy(centre).addScaledVector(this.sunDir, 2500);
     if (Math.abs(this.shadowSize - size) > 1) {
       this.shadowSize = size;
       const cam = this.sun.shadow.camera;

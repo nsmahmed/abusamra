@@ -490,13 +490,28 @@ export function buildWorld(scene, data, renderer) {
     portalBand: new THREE.MeshStandardMaterial({ color: "#1f6fb2", roughness: 0.4 }),
     stripe: new THREE.MeshStandardMaterial({ map: stripe, roughness: 0.5 }),
     cladding: new THREE.MeshStandardMaterial({ map: cladTex, roughness: 0.55, metalness: 0.25, side: THREE.DoubleSide }),
-    gravel: new THREE.MeshStandardMaterial({ map: concreteTex, color: "#9a8c78", roughness: 1, side: THREE.DoubleSide }),
+    gravel: new THREE.MeshStandardMaterial({ map: asphaltTex, color: "#b9b0a4", roughness: 1, side: THREE.DoubleSide }),
     faint: new THREE.MeshStandardMaterial({ color: "#d9d3c6", roughness: 0.9, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }),
     rubber: new THREE.MeshStandardMaterial({ color: "#1d1f22", roughness: 0.9 }),
     crate: new THREE.MeshStandardMaterial({ color: "#a98457", roughness: 0.95 }),
     skylight: new THREE.MeshStandardMaterial({ color: "#b9d3dc", roughness: 0.25, metalness: 0.1, emissive: "#fff1d2", emissiveIntensity: 0, side: THREE.DoubleSide }),
     fence: null,
   };
+  /* Thin paint lines turn into crawling sparkle once they are narrower than a pixel; fade
+     them out with distance instead. */
+  const fadeFar = (material, near, far, floor) => {
+    material.transparent = true;
+    material.depthWrite = false;
+    material.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>\ndiffuseColor.a *= mix(1.0, ${floor.toFixed(2)}, smoothstep(${near.toFixed(1)}, ${far.toFixed(1)}, length(vViewPosition)));`
+      );
+    };
+    material.customProgramCacheKey = () => `fade${near}_${far}_${floor}`;
+  };
+  fadeFar(mat.white, 350, 1500, 0.3);
+  fadeFar(mat.yellow, 350, 1500, 0.4);
   addDetail(mat.ground, noise);
   addDetail(mat.outer, noise);
   addDetail(mat.concrete, noise, [3, 37, 211]);
@@ -1091,8 +1106,11 @@ export function buildWorld(scene, data, renderer) {
   const dirtMesh = dirt.mesh(mat.dirt);
   dirtMesh.renderOrder = -1;
   scene.add(dirtMesh);
-  scene.add(white.mesh(mat.white));
-  scene.add(yellow.mesh(mat.yellow));
+  for (const [flat, material] of [[white, mat.white], [yellow, mat.yellow]]) {
+    const marks = flat.mesh(material);
+    marks.renderOrder = 1;
+    scene.add(marks);
+  }
   scene.add(concrete.mesh(mat.concrete));
   scene.add(yardPads.mesh(mat.yard));
   const gravelMesh = gravelPads.mesh(mat.gravel);
@@ -1329,7 +1347,8 @@ export function buildWorld(scene, data, renderer) {
     fx.stroke();
     const ft = new THREE.CanvasTexture(fc);
     ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
-    const fenceMat = new THREE.MeshStandardMaterial({ map: ft, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.4, color: "#b6bcc2" });
+    const fenceMat = new THREE.MeshStandardMaterial({ map: ft, transparent: true, depthWrite: false, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.4, color: "#b6bcc2" });
+    fadeFar(fenceMat, 120, 700, 0.0);
     const fence = new Walls();
     const posts = [];
     const ring = dedupe([...openRing(data.ground.port), data.ground.port[0]]);
@@ -1426,6 +1445,7 @@ export function buildWorld(scene, data, renderer) {
   return {
     roads,
     noise,
+    waterNormal: T.waterNormalTexture(),
     boothCtl,
     staticBooths,
     gateCtl,
@@ -1438,13 +1458,11 @@ export function buildWorld(scene, data, renderer) {
     water,
     lamp,
     nightMaterials,
-    /* Swap the painted desert for satellite imagery once its tiles are in. */
-    setImagery(on) {
+    /* The shader-built desert floor replaces the plain painted ground and sea slab. */
+    setGround(on) {
       if (seaMesh) seaMesh.visible = !on;
       ground.visible = !on;
-      dirtMesh.visible = !on;
-      gravelMesh.visible = !on;
-      faintMesh.visible = !on;
+      outer.visible = !on;
     },
     setNight(f) {
       mat.wall.emissiveIntensity = 1.5 * f;
