@@ -37,8 +37,9 @@ python view/serve.py 9000     # or pick another port
 Open the twin through this server, not as a file. It needs no connection beyond the first load of three.js and the fonts: the desert floor is built in the shader from two small tone maps in `view/twin/assets/`, a heavily smoothed colour reference of the real terrain, so nothing is streamed while it runs.
 
 - **Controls:** drag to pan, right-drag to orbit, wheel to zoom, click a vehicle to ride along with it.
-- **Keys:** `1` `2` `3` flows, `N` next time of day, `T` tour, `F` follow a truck, `P` presentation mode, `D` dashboard, `L` labels, `Space` pause.
-- **Deep links:** `?light=day|sunset|night`, `?view=overview|gates|yard|xray|ramps|booths`, `?flow=inbound|outbound|passenger`, `?lang=ar`, `?present=1`, `?intro=0`, `?drift=0`, `?cam=x,y,distance,polar,bearing`.
+- **Keys:** `1` `2` `3` flows, `N` next time of day, `T` tour, `F` follow a truck, `P` presentation mode, `D` dashboard, `E` executive overview, `L` labels, `Space` pause.
+- **Deep links:** `?light=day|sunset|night`, `?view=overview|gates|yard|xray|ramps|booths`, `?flow=inbound|outbound|passenger`, `?lang=ar`, `?present=1`, `?exec=1`, `?intro=0`, `?drift=0`, `?cam=x,y,distance,polar,bearing`.
+- **Executive overview:** the gold button in the top bar (or `E`) opens a full-screen board: headline figures, a two-hour trend, the status of every station, clearance times against a 40-minute target, inspection-channel split, cargo mix and the passenger hall. Clicking a station or an event returns to it in 3D. The target is illustrative; change `TARGET_MIN` in `view/twin/executive.js`.
 - **Quality:** the default targets a steady 60 fps on integrated graphics (about a 1080p frame, post-process anti-aliasing). Add `?quality=high` on a machine with a discrete GPU for native resolution and multisampling.
 
 Traffic, counts and the activity feed are simulated. Terrain tones are derived from Esri World Imagery (© Esri, Maxar, Earthstar Geographics).

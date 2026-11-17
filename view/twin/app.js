@@ -13,6 +13,7 @@ import { Simulation } from "./sim.js";
 import { Atmosphere, PRESETS } from "./atmosphere.js";
 import { buildGround } from "./terrain.js";
 import { buildBeacons, buildRouteTrace } from "./overlays.js";
+import { Executive, SAMPLE_STEP } from "./executive.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -127,14 +128,18 @@ async function main() {
   let followed = null;
   let warming = true;
   const feed = [];
+  const exec = new Executive();
   const sim = new Simulation(data, fleet, {
     onRemove(v) {
       if (followed === v) stopFollow();
     },
     onEvent(kind, v) {
       if (kind !== "release" && kind !== "xray" && kind !== "ramp" && kind !== "gate") return;
-      feed.unshift({ kind, v, plate: v.plate, flow: v.route.flow, clock: sim.clock, fresh: !warming });
+      const item = { kind, v, plate: v.plate, flow: v.route.flow, clock: sim.clock, fresh: !warming };
+      feed.unshift(item);
       if (feed.length > 4) feed.pop();
+      exec.event(item);
+      if (kind === "release") exec.release(sim.time, v);
       feedDirty = true;
     },
   });
@@ -167,15 +172,21 @@ async function main() {
   fleet.commit();
 
   status("Warming up traffic");
-  const prewarm = Number(params.get("prewarm") || 2700);
-  /* Seed the dashboard trend with the warm-up so it opens with a line, not an empty chart. */
-  const staticCount = statics.length;
+  /* Two simulated hours run before the scene opens, so traffic is in a steady state and the
+     dashboards open with real history: trends, released trucks and clearance times. */
+  const prewarm = Number(params.get("prewarm") || 7200);
+  const rampStatic = statics.filter((v) => v.where === "ramp").length;
+  const yardStatic = statics.filter((v) => v.where === "yard").length;
   const seedHistory = [];
-  for (let t = 0; t < prewarm; t += 300) {
-    sim.advance(300);
-    seedHistory.push(sim.kpis(0, 0, 0).trucksIn + staticCount);
-    $("loader-bar").style.width = `${Math.round((t / prewarm) * 100)}%`;
-    await wait();
+  for (let t = 0, n = 0; t < prewarm; t += SAMPLE_STEP, n += 1) {
+    sim.advance(SAMPLE_STEP);
+    const k = sim.kpis(yardStatic, world.yardCapacity, rampStatic);
+    seedHistory.push(k.trucksIn);
+    exec.sample(sim.time, k);
+    if (n % 3 === 2) {
+      $("loader-bar").style.width = `${Math.round((t / prewarm) * 100)}%`;
+      await wait();
+    }
   }
   warming = false;
   sim.render();
@@ -291,6 +302,17 @@ async function main() {
       scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
       cleared: "cleared", booths: "booths active", queue: "on approach", min: "min", activity: "Live activity",
       vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour",
+      exec: "Executive", xTitle: "Executive overview", xSub: "Abu Samra Land Port · figures since", xUpdated: "updated",
+      xAllGood: "All stations operating normally", xAttention1: "station needs attention", xAttentionN: "stations need attention",
+      tTrucks: "Trucks on site", tClear: "Avg clearance time", tReleased: "Trucks released", tParking: "Main parking occupancy", tScans: "X-ray scans", tPax: "Passengers cleared",
+      xVsHour: "vs 1 h ago", xPerHour: "per hour", xTarget: "Target", xWithin: "within target", xNoChange: "No change", xNow: "now",
+      mTrucks: "Trucks on site", mRate: "Releases / hr", mPark: "Parking %", mPax: "Passengers / hr",
+      uTrucks: "trucks", uTrucksHr: "trucks / hr", uPct: "% full", uPaxHr: "passengers / hr",
+      xTrend: "Trend · last 2 hours", xStations: "Process health", sNormal: "Normal", sBusy: "Busy", sCongested: "Congested", xProposed: "Proposed",
+      xClearDist: "Clearance time · gate to release", xMedian: "median", xChannel: "Inspection channel · released trucks",
+      xGreen: "Green channel", xRed: "Red channel · physical inspection", xCargo: "Cargo on site", xOther: "Other",
+      xPaxHall: "Passenger hall", xBoothsUse: "booths in use", xArrQ: "Arrivals queue", xDepQ: "Departures queue", xVehicles: "vehicles on site",
+      xCollecting: "Collecting data…",
       uQueue: "in queue", uRoute: "en route", uFull: "full", uHour: "/ hr", uRamps: "at ramps", uReleased: "released", uParked: "parked", uCleared: "cleared",
       eRelease: "Released", eXray: "X-ray scan complete", eRamp: "Inspection complete", eGate: "Gate check passed",
     },
@@ -301,6 +323,17 @@ async function main() {
       scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
       cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة", activity: "النشاط المباشر",
       vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة",
+      exec: "العرض التنفيذي", xTitle: "النظرة التنفيذية", xSub: "منفذ أبو سمرة البري · الأرقام منذ", xUpdated: "آخر تحديث",
+      xAllGood: "جميع المحطات تعمل بشكل طبيعي", xAttention1: "محطة تحتاج إلى متابعة", xAttentionN: "محطات تحتاج إلى متابعة",
+      tTrucks: "الشاحنات في المنفذ", tClear: "متوسط زمن التخليص", tReleased: "الشاحنات المفرج عنها", tParking: "إشغال المواقف الرئيسية", tScans: "المسح بالأشعة", tPax: "المسافرون المنجزون",
+      xVsHour: "مقارنة بالساعة الماضية", xPerHour: "في الساعة", xTarget: "المستهدف", xWithin: "ضمن المستهدف", xNoChange: "لا تغيير", xNow: "الآن",
+      mTrucks: "الشاحنات في المنفذ", mRate: "الإفراج / ساعة", mPark: "إشغال المواقف", mPax: "المسافرون / ساعة",
+      uTrucks: "شاحنة", uTrucksHr: "شاحنة / ساعة", uPct: "% إشغال", uPaxHr: "مسافر / ساعة",
+      xTrend: "الاتجاه · آخر ساعتين", xStations: "حالة الإجراءات", sNormal: "طبيعي", sBusy: "مزدحم", sCongested: "مكتظ", xProposed: "مقترح",
+      xClearDist: "زمن التخليص · من البوابة إلى الإفراج", xMedian: "الوسيط", xChannel: "مسار التفتيش · الشاحنات المفرج عنها",
+      xGreen: "المسار الأخضر", xRed: "المسار الأحمر · تفتيش فعلي", xCargo: "البضائع في المنفذ", xOther: "أخرى",
+      xPaxHall: "صالة المسافرين", xBoothsUse: "أكشاك عاملة", xArrQ: "انتظار القدوم", xDepQ: "انتظار المغادرة", xVehicles: "مركبة في المنفذ",
+      xCollecting: "جارٍ جمع البيانات…",
       uQueue: "في الانتظار", uRoute: "في الطريق", uFull: "إشغال", uHour: "/ ساعة", uRamps: "في الرمبات", uReleased: "أُفرج عنها", uParked: "متوقفة", uCleared: "مسافر",
       eRelease: "تم الإفراج", eXray: "اكتمل المسح بالأشعة", eRamp: "اكتمل التفتيش", eGate: "اجتياز البوابة",
     },
@@ -454,6 +487,7 @@ async function main() {
     paintPins();
     renderRail();
     feedDirty = true;
+    exec.build();
   }
   $("lang").addEventListener("click", () => {
     lang = lang === "ar" ? "en" : "ar";
@@ -496,6 +530,35 @@ async function main() {
     showDash = !showDash;
     applyDash();
   });
+  /* The executive overview covers the scene; station rows and events on it lead back into 3D. */
+  exec.mount({
+    tr,
+    lang: () => lang,
+    hhmm: (c) => hhmm(c),
+    clockOf: (t) => sim.clock0 + t,
+    flowName: (flow) => (FLOWS[flow] || FLOWS.inbound)[lang][0],
+    stations: (k, live) => stationObjects.map(({ st }, index) => ({ index, flow: st.flow, n: st.n, tone: st.tone, name: stationName(st), title: lang === "ar" ? st.ar : st.en, value: stationLive(st, k, live) })),
+    cargo: () => [...statics, ...sim.vehicles].filter((v) => v.type === "truck" && v.cargo).map((v) => v.cargo),
+    onStation(index) {
+      setExec(false);
+      focusStation(index);
+    },
+    onVehicle(v) {
+      if (!sim.vehicles.includes(v)) return;
+      setExec(false);
+      select(v);
+    },
+  });
+  function setExec(on) {
+    exec.setOpen(on);
+    document.body.classList.toggle("exec-on", on);
+    $("exec-btn").classList.toggle("on", on);
+    if (on) renderKpis();
+  }
+  $("exec-btn").addEventListener("click", () => setExec(!exec.open));
+  $("dash-more").addEventListener("click", () => setExec(true));
+  $("exec-close").addEventListener("click", () => setExec(false));
+  $("exec-back").addEventListener("click", () => setExec(false));
   const togglePresent = (on = !document.body.classList.contains("present")) => document.body.classList.toggle("present", on);
   $("present").addEventListener("click", () => togglePresent());
   if (params.get("present") === "1") togglePresent(true);
@@ -535,8 +598,10 @@ async function main() {
     if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (k === "d") $("toggle-dash").click();
+    else if (k === "e") setExec(!exec.open);
     else if (k === "p") togglePresent();
     else if (k === "escape") {
+      if (exec.open) return setExec(false);
       togglePresent(false);
       stopFollow();
     } else if (k === " ") {
@@ -683,8 +748,6 @@ async function main() {
   }
 
   /* ---------- dashboard metrics ---------- */
-  const rampStatic = statics.filter((v) => v.where === "ramp").length;
-  const yardStatic = statics.filter((v) => v.where === "yard").length;
   const history = seedHistory.slice(-24);
   let sampleTimer = 0;
   function renderSpark() {
@@ -736,6 +799,8 @@ async function main() {
       }
     }
     if (feedDirty) renderFeed();
+    if (sim.time - exec.lastT >= SAMPLE_STEP) exec.sample(sim.time, k);
+    if (exec.open) exec.render(k, live);
 
     sampleTimer -= dt;
     if (sampleTimer <= 0 || history.length === 0) {
@@ -770,7 +835,8 @@ async function main() {
   /* ?cam=x,y,distance,polar,bearing frames an exact shot (deep links, screenshots). */
   const camParam = (params.get("cam") || "").split(",").map(Number);
   const camShot = camParam.length === 5 && camParam.every(Number.isFinite) ? camPose(...camParam) : null;
-  const intro = params.get("intro") !== "0" && !startView && !camShot;
+  const execStart = params.get("exec") === "1";
+  const intro = params.get("intro") !== "0" && !startView && !camShot && !execStart;
   const initial = camShot || (startView && VIEWS[startView] ? VIEWS[startView]() : VIEWS.overview());
   /* Open high over the desert and descend into the port while the title holds. The opening is
      timed in rendered seconds and starts only once the first frames are on screen, so shader
@@ -790,6 +856,7 @@ async function main() {
   function reveal() {
     $("loader").classList.add("done");
     setTimeout(() => $("loader").remove(), 900);
+    if (execStart) setExec(true);
     if (!intro) return;
     $("intro").classList.add("show");
     flyTo(initial, 8);
@@ -871,11 +938,15 @@ async function main() {
       renderCard();
       kpiTimer = 0.4;
     }
-    composer.render();
-    labels.render(scene, camera);
+    /* Behind the executive overview the scene is barely visible, so it is drawn only now and
+       then and the board gets the whole frame budget. */
+    frames += 1;
+    if (!exec.open || frames % 6 === 0) {
+      composer.render();
+      labels.render(scene, camera);
+    }
 
     /* Trade resolution for smoothness on weak GPUs: sustained slow frames lower the pixel ratio. */
-    frames += 1;
     if (frames === 4) reveal();
     if (frames > 120 && pixelRatio > 0.75) {
       slowFrames = raw > 1 / 30 ? slowFrames + 1 : Math.max(0, slowFrames - 2);
