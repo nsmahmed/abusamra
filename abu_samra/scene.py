@@ -65,18 +65,25 @@ PARKING_DIVIDER = ((-140.0, -320.0), (-50.0, -400.0))
 # Export (reference/img01-export.jpeg): trucks from Doha leave the north-east roundabout for the
 # external export parking, the large lot north-west of it. They drive in at its south corner,
 # round its far side, park on one of its aisles, and leave by its west corner, where the permit
-# gate stands on the road. They drive back down to the roundabout, enter the export zone through
-# the two-lane gate in the canopy lot, follow the service road along the north-west edge to the
-# parking strip (~12 bays) beside the export inspection shed, and leave through the release gate.
+# gate stands on the road. On the way back down they turn right onto the export zone's own road,
+# which runs south-west between the external parking and the canopy lot and meets the export road
+# just before the export parking. The two-lane entrance gates stand near its start. They park in
+# the strip (~12 bays) in front of the export inspection shed, then leave through the release gate.
+#
+# OpenStreetMap does not map that road; it is drawn from the reference imagery
+# (reference/data/map-imagery/additional/image-2.png) and added to the road graph here.
+EXPORT_ZONE_ROAD = 9100000001
+EXPORT_ZONE_ROAD_FROM = (257998156, 8, (757.0, 1190.0))  # (way, edge, point) where it leaves Bu Samra Road
+EXPORT_ZONE_ROAD_TO = (145634746, 1, (367.0, 742.0))  # where it joins the export road
+EXPORT_ZONE_ROAD_SHAPE = ((600.0, 1092.0), (430.0, 985.0), (392.0, 940.0), (374.0, 880.0), (368.0, 800.0))
+EXPORT_GATE_AT = 70.0  # entrance gates, metres along that road from Bu Samra Road
 EXPORT_LOT_IN = (1168202683, 4)
 EXPORT_LOT_AISLES = (1168202679, 1168202681)
 EXPORT_LOT_OUT = 1168202667
 EXPORT_LOT_LANES = (1168202668, 1168202669, 1168202670, 1168202671, 1168202672, 1168202673, 1168202678, 1168202679, 1168202680, 1168202681)
 OUTBOUND_PERMIT_XY = (521.0, 1512.0)
-EXPORT_GATE_LANE = 1168202690
 EXPORT_ROAD = 145634746
 EXPORT_RAMP_SHEDS = (1485001858,)
-OUTBOUND_GATE_XY = (725.0, 926.0)
 OUTBOUND_RELEASE_XY = (52.0, 470.0)
 # Brief on-screen names: (English, Arabic, capacity or lane note).
 STATION_SHORT = {
@@ -287,11 +294,20 @@ class Graph:
     def journey(self, start: str, ways: list, end: str) -> list[dict] | None:
         """Start node, then drive each way in order, then the end node.
 
-        A way is an id (drive its full length), (id, n) to drive only its first n edges, or
-        {"via": (x, y)} to drive the shortest way to the junction at that point."""
+        A way is an id (drive its full length), (id, n) to drive only its first n edges,
+        {"via": (x, y)} to drive the shortest way to the junction at that point, or
+        {"edge": id} to drive one graph edge, in either direction, from wherever it starts."""
         edges: list[dict] = []
         node = start
         for way in ways:
+            if isinstance(way, dict) and "edge" in way:
+                edge = next(e for e in self.edges if e["id"] == way["edge"])
+                leg = self.route(node, {edge["from"]}) if node != edge["from"] else []
+                if leg is None:
+                    return None
+                edges += leg + [edge]
+                node = edge["to"]
+                continue
             if isinstance(way, dict):
                 target = self.node_at(way["via"])
                 leg = self.route(node, {target}) if node != target else []
@@ -381,6 +397,7 @@ def build_scene() -> dict:
     graph_raw = _load(PROCESSED / "road_graph.json")
     origin = LocalOrigin(**{k: graph_raw["local_origin"][k] for k in ("longitude", "latitude", "easting", "northing", "utm_zone", "epsg")})
     graph = Graph(graph_raw)
+    _add_export_zone_road(graph)
     ops = _load(PROCESSED / "operations.json")
     buildings_layer = _load(LOCAL / "buildings.json")
     natural = _load(LOCAL / "natural.json")
@@ -478,7 +495,7 @@ def build_scene() -> dict:
     infill = _main_infill(yards, roads)
     if infill:
         yards.append(infill)
-    yards.append(_export_parking(graph, by_id[EXPORT_RAMP_SHEDS[0]]))
+    yards += _export_parking(graph, by_id[EXPORT_RAMP_SHEDS[0]])
     yards.append(_export_staging(graph))
 
     # --- passenger booth lanes (cars and buses) ---
@@ -559,10 +576,14 @@ def build_scene() -> dict:
                 }
             )
     export_mid = export_lane[len(export_lane) // 2]
+    end_node = graph.way_chain(EXPORT_ROAD)[-1]["to"]
+    export_end = (graph.nodes[end_node]["x"], graph.nodes[end_node]["y"])
+    zone_road = graph.way_chain(EXPORT_ZONE_ROAD)[0]["xy"]
+    outbound_gate_xy = _point_at(zone_road, _cum(zone_road), EXPORT_GATE_AT)[:2]
     export_shed = _centroid(by_id[EXPORT_RAMP_SHEDS[0]])
     outbound_specs = [
         {
-            "ways": [EXPORT_LOT_IN, _spine_to(graph, aisle), aisle, EXPORT_LOT_OUT, EXPORT_GATE_LANE, EXPORT_ROAD],
+            "ways": [EXPORT_LOT_IN, _spine_to(graph, aisle), aisle, EXPORT_LOT_OUT, EXPORT_ZONE_ROAD, {"via": export_end}],
             "yards": [("export-staging", lane_mid(aisle)), ("export-parking", export_mid)],
             "xray": None,
             "ramp": export_shed,
@@ -642,7 +663,7 @@ def build_scene() -> dict:
         else:
             staging = next(stop["s"] for stop in lead["stops"] if stop["ref"] == "export-staging")
             s_permit = _nearest_s(lead["path"], lead["cum"], OUTBOUND_PERMIT_XY, staging + 20)
-            s_gate = _nearest_s(lead["path"], lead["cum"], OUTBOUND_GATE_XY, s_permit + 20)
+            s_gate = _nearest_s(lead["path"], lead["cum"], outbound_gate_xy, s_permit + 20)
             s_release = _nearest_s(lead["path"], lead["cum"], OUTBOUND_RELEASE_XY, last_stop + 30)
             anchors = {"outbound-permit": s_permit, gate_ref: s_gate, release_ref: s_release}
             gates.append(place(lead, s_permit, "gate", "outbound-permit", {"lanes": 1}))
@@ -888,17 +909,104 @@ def _parking_kind(yard: dict) -> str:
     return "main" if side > 0 else "external"
 
 
-def _export_parking(graph: Graph, shed) -> dict:
-    """The roughly twelve export bays: a kerbside lane on the export road that ends just short of
-    the export inspection shed, round the last bend before it, as on the export process map."""
+def _export_parking(graph: Graph, shed) -> list[dict]:
+    """The roughly twelve export bays, in front of the export inspection shed: kerbside on the
+    export road from just past the export zone road's junction to short of the shed's docks, with
+    a second row behind the first where one row is too short for twelve trucks."""
     road = [p for e in graph.way_chain(EXPORT_ROAD) for p in e["xy"]]
-    line = _offset(_resample(road, 3.0), 4.6)
+    line = _resample(road, 3.0)
     cum = _cum(line)
+    start = _nearest_s(line, cum, EXPORT_ZONE_ROAD_TO[2]) + 16.0
     # Stop well short of the shed's near face, where trucks back onto its docks.
     end = _nearest_s(line, cum, _centroid(shed)) - 46.0
-    start = max(10.0, end - (12 * YARD_BAY + 2))
-    lane = [p for p, s in zip(line, cum) if start <= s <= end]
-    return {"id": "export-parking", "name": "Export parking", "kind": "export", "pads": [], "lanes": [{"way": "export-parking", "p": _xy(lane)}]}
+    rows = []
+    for k, off in enumerate((4.6, 9.4)):
+        kerb = _offset(line, off)
+        lane = [p for p, d in zip(kerb, cum) if start <= d <= end]
+        rows.append({"way": "export-parking" if k == 0 else "export-parking-2", "p": _xy(lane)})
+        if sum(_bay_count(r["p"]) for r in rows) >= 12:
+            break
+    return [{"id": "export-parking", "name": "Export parking", "kind": "export", "pads": [], "lanes": rows}]
+
+
+def _split_edge(graph: Graph, way: int, index: int, point) -> str:
+    """Split one edge of a way (both directions, if two-way) at the point nearest `point`;
+    returns the new junction node. Later edges of the way are renumbered to stay in order."""
+    fwd = next(e for e in graph.by_way[way] if e["id"] == f"w{way}:{index}:f")
+    xy = [tuple(q) for q in fwd["xy"]]
+    best, at, cut = math.inf, 1, xy[0]
+    for i in range(1, len(xy)):
+        (ax, ay), (bx, by) = xy[i - 1], xy[i]
+        dx, dy = bx - ax, by - ay
+        t = max(0.0, min(1.0, ((point[0] - ax) * dx + (point[1] - ay) * dy) / (dx * dx + dy * dy or 1.0)))
+        q = (ax + dx * t, ay + dy * t)
+        d = math.dist(q, point)
+        if d < best:
+            best, at, cut = d, i, q
+    node = f"x{way}_{index}"
+    graph.nodes[node] = {"id": node, "x": cut[0], "y": cut[1]}
+
+    def piece(src, ident, a, b, line):
+        e = dict(src)
+        e.update({"id": ident, "from": a, "to": b, "xy": [list(q) for q in line], "length_m": _length(line)})
+        return e
+
+    head, tail = xy[:at] + [cut], [cut] + xy[at:]
+    parts = [piece(fwd, f"w{way}:{index}:f", fwd["from"], node, head), piece(fwd, f"w{way}:{index + 1}:f", node, fwd["to"], tail)]
+    rev = next((e for e in graph.by_way[way] if e["id"] == f"w{way}:{index}:r"), None)
+    if rev:
+        parts += [piece(rev, f"w{way}:{index}:r", node, fwd["from"], head[::-1]), piece(rev, f"w{way}:{index + 1}:r", fwd["to"], node, tail[::-1])]
+    kept = []
+    for e in graph.edges:
+        if e["osm_way_id"] == way:
+            _, k, d = e["id"].rsplit(":", 2)[0][1:], int(e["id"].split(":")[1]), e["id"].split(":")[2]
+            if k == index:
+                continue
+            if k > index:
+                e = dict(e, id=f"w{way}:{k + 1}:{d}")
+        kept.append(e)
+    graph.edges = kept + parts
+    _reindex(graph)
+    return node
+
+
+def _reindex(graph: Graph) -> None:
+    graph.out, graph.by_way = {}, {}
+    for e in graph.edges:
+        graph.out.setdefault(e["from"], []).append(e)
+        graph.by_way.setdefault(e["osm_way_id"], []).append(e)
+
+
+def _add_export_zone_road(graph: Graph) -> None:
+    """The export zone's own road, missing from OpenStreetMap: one way, two lanes, from Bu Samra
+    Road south-west between the external parking and the canopy lot to the export road."""
+    a = _split_edge(graph, *EXPORT_ZONE_ROAD_FROM)
+    b = _split_edge(graph, *EXPORT_ZONE_ROAD_TO)
+    ends = [(graph.nodes[n]["x"], graph.nodes[n]["y"]) for n in (a, b)]
+    # A straight run off the junction, then a smooth bend south onto the export road.
+    raw = [ends[0], *EXPORT_ZONE_ROAD_SHAPE, ends[1]]
+    line = _smooth(_resample(raw, 4.0), passes=4)
+    line[0], line[-1] = ends
+    template = graph.way_chain(EXPORT_ROAD)[0]
+    graph.edges.append(
+        dict(
+            template,
+            id=f"w{EXPORT_ZONE_ROAD}:1:f",
+            osm_way_id=EXPORT_ZONE_ROAD,
+            name=None,
+            name_en=None,
+            name_ar=None,
+            **{"from": a, "to": b},
+            xy=[[round(x, 3), round(y, 3)] for x, y in line],
+            length_m=_length(line),
+            oneway="forward",
+            highway="service",
+            service=None,
+            lanes=2,
+            lanes_tagged=True,
+        )
+    )
+    _reindex(graph)
 
 
 def _export_staging(graph: Graph) -> dict:
