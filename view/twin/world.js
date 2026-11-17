@@ -17,15 +17,14 @@ const H = {
   mark: 0.21,
 };
 const BAY = 18.5;
-/* Angled rows (main-parking infill): trucks side by side at an angle to the row, one stall every
-   STALL metres. Matches STALL and ROW_DEPTH in abu_samra/scene.py. */
-const STALL = 3.7;
+/* Angled rows (the main parking): trucks side by side at an angle to the row, one stall every
+   lane.stall metres. Row depth matches ROW_DEPTH in abu_samra/scene.py. */
 const rowDepth = (deg) => 17 * Math.sin(Math.abs(deg) * Math.PI / 180) + 2.5 * Math.cos(deg * Math.PI / 180);
-function stallCentres(L) {
-  const count = Math.floor(L / STALL) + 1;
-  const start = (L - (count - 1) * STALL) / 2;
+function stallCentres(L, stall) {
+  const count = Math.floor(L / stall) + 1;
+  const start = (L - (count - 1) * stall) / 2;
   const out = [];
-  for (let k = 0; k < count; k += 1) out.push(start + STALL * k);
+  for (let k = 0; k < count; k += 1) out.push(start + stall * k);
   return out;
 }
 
@@ -633,10 +632,10 @@ export function buildWorld(scene, data, renderer) {
         const depth = rowDepth(lane.angle);
         const turn = (lane.angle * Math.PI) / 180;
         pads.ribbon(extendLine(P, 7), depth + 2.4, H.pad);
-        const centres = stallCentres(L);
+        const centres = stallCentres(L, lane.stall);
         const along = 18 / 2;
         for (let k = 0; k <= centres.length; k += 1) {
-          const at = k < centres.length ? centres[k] - STALL / 2 : centres[k - 1] + STALL / 2;
+          const at = k < centres.length ? centres[k] - lane.stall / 2 : centres[k - 1] + lane.stall / 2;
           const [x, y, h] = pointAt(P, cum, at);
           bay.rect({ x, y, h: h + turn }, -0.07, 0.07, -along, along, H.mark);
         }
@@ -1527,7 +1526,7 @@ export function buildWorld(scene, data, renderer) {
   };
   /* Main parking is busy; the external export lot about half full; the unused lot holds only a
      few stray trucks, as on the imagery. */
-  const FILL = { main: 0.7, export: 0.6, staging: 0.5, external: 0.025 };
+  const FILL = { main: 0.62, export: 0.6, staging: 0.5, external: 0.025 };
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
@@ -1536,7 +1535,7 @@ export function buildWorld(scene, data, renderer) {
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
       const turn = lane.angle ? (lane.angle * Math.PI) / 180 : 0;
-      for (const c of lane.angle ? stallCentres(L) : bayCentres(L).centres) {
+      for (const c of lane.angle ? stallCentres(L, lane.stall) : bayCentres(L).centres) {
         if (yard.kind === "main") yardCapacity += 1;
         if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
         if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
