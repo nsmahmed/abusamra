@@ -17,6 +17,17 @@ const H = {
   mark: 0.21,
 };
 const BAY = 18.5;
+/* Angled rows (main-parking infill): trucks side by side at an angle to the row, one stall every
+   STALL metres. Matches STALL and ROW_DEPTH in abu_samra/scene.py. */
+const STALL = 3.7;
+const rowDepth = (deg) => 17 * Math.sin(Math.abs(deg) * Math.PI / 180) + 2.5 * Math.cos(deg * Math.PI / 180);
+function stallCentres(L) {
+  const count = Math.floor(L / STALL) + 1;
+  const start = (L - (count - 1) * STALL) / 2;
+  const out = [];
+  for (let k = 0; k < count; k += 1) out.push(start + STALL * k);
+  return out;
+}
 
 /* Bay centres along a parking lane of length L: trucks fill whole bays between the lane ends. */
 function bayCentres(L) {
@@ -610,10 +621,27 @@ export function buildWorld(scene, data, renderer) {
       pads.poly(pad, H.pad);
       if (!unused) concrete.ribbon([...pad, pad[0]], 0.6, H.curb);
     }
+    /* Paving between blocks of rows: no kerb, so the blocks read as one lot. */
+    for (const pad of yard.fill || []) pads.poly(pad, H.pad);
     for (const lane of yard.lanes) {
       const P = dedupe(lane.p);
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
+      if (lane.angle) {
+        /* Angled row: paving as deep as the parked trucks, a divider between stalls laid along
+           the trucks, and a line along the aisle side. */
+        const depth = rowDepth(lane.angle);
+        const turn = (lane.angle * Math.PI) / 180;
+        pads.ribbon(extendLine(P, 7), depth + 2.4, H.pad);
+        const centres = stallCentres(L);
+        const along = 18 / 2;
+        for (let k = 0; k <= centres.length; k += 1) {
+          const at = k < centres.length ? centres[k] - STALL / 2 : centres[k - 1] + STALL / 2;
+          const [x, y, h] = pointAt(P, cum, at);
+          bay.rect({ x, y, h: h + turn }, -0.07, 0.07, -along, along, H.mark);
+        }
+        continue;
+      }
       const { start, count } = bayCentres(L);
       const ext = extendLine(P, 4);
       pads.ribbon(ext, 9.4, H.pad);
@@ -1507,13 +1535,16 @@ export function buildWorld(scene, data, renderer) {
       const P = dedupe(lane.p);
       const cum = cumulative(P);
       const L = cum[cum.length - 1];
-      for (const c of bayCentres(L).centres) {
+      const turn = lane.angle ? (lane.angle * Math.PI) / 180 : 0;
+      for (const c of lane.angle ? stallCentres(L) : bayCentres(L).centres) {
         if (yard.kind === "main") yardCapacity += 1;
         if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
         if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
-        const [x0, y0, h] = pointAt(P, cum, c);
-        const x = x0 - Math.sin(h) * 0.25;
-        const y = y0 - Math.cos(h) * 0.25;
+        const [x0, y0, h0] = pointAt(P, cum, c);
+        /* A truck in an angled stall stands across the row line, centred on it. */
+        const h = h0 + turn;
+        const x = x0 + Math.sin(h) * (lane.angle ? 1.0 : -0.25);
+        const y = y0 + Math.cos(h) * (lane.angle ? 1.0 : -0.25);
         if (slotFree(x, y, h)) yardSlots.push({ x, y, h });
       }
     }

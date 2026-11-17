@@ -492,7 +492,7 @@ def build_scene() -> dict:
         yard["kind"] = _parking_kind(yard)
         yard["name"] = "Main truck parking" if yard["kind"] == "main" else "Unused lot (proposed external parking)"
         yard.pop("extra", None)
-    infill = _main_infill(yards, roads)
+    infill = _main_infill(yards, roads, [b["ring"] for b in buildings])
     if infill:
         yards.append(infill)
     yards += _export_parking(graph, by_id[EXPORT_RAMP_SHEDS[0]])
@@ -738,7 +738,7 @@ def build_scene() -> dict:
         y = sum(_centroid(r + [r[0]])[1] * abs(_shoelace(r)) for r in rings) / total
         return _r(x), _r(y)
 
-    main_capacity = sum(_bay_count(lane["p"]) for y in yards if y["kind"] == "main" for lane in y["lanes"])
+    main_capacity = sum(_lane_bays(lane) for y in yards if y["kind"] == "main" for lane in y["lanes"])
     import_bays = len(ramps["inbound"]["bays"])
     if inbound:
         lead = next(r for r in truck_routes if r["flow"] == "inbound")
@@ -1061,12 +1061,33 @@ def _dock_bays(ring, roads: list[dict], obstacles) -> list[list[float]]:
     return bays
 
 
-def _main_infill(yards: list[dict], roads: list[dict]) -> dict | None:
+MAIN_TARGET = 700  # main parking capacity on the GAC import process map ("about 700 bays")
+ROW_PITCH = 7.8  # centre to centre of two nose-to-tail truck rows; matches the mapped aisles
+# The infill between the mapped aisles is angled parking, as on the satellite imagery: trucks
+# stand at 60 degrees to the row, a stall every 3.7 m along it (0.7 m between neighbours), in
+# herringbone pairs of rows that share one 7 m driving aisle. That packs about twice as many
+# trucks into the same paving as nose-to-tail rows.
+ANGLE = math.radians(60.0)
+STALL = 3.7
+ROW_DEPTH = 17.0 * math.sin(ANGLE) + 2.5 * math.cos(ANGLE)
+AISLE = 7.0
+ANGLED_PITCH = ROW_DEPTH + AISLE / 2
+
+
+def _lane_bays(lane: dict) -> int:
+    """Trucks one yard lane holds: nose to tail, or side by side at an angle."""
+    if lane.get("angle"):
+        return int(_length(lane["p"]) // STALL) + 1
+    return _bay_count(lane["p"])
+
+
+def _main_infill(yards: list[dict], roads: list[dict], obstacles) -> dict | None:
     """Rows across the paved block between the mapped main-parking aisles.
 
     OpenStreetMap maps aisles in only parts of the main lot; the imagery shows one continuous
-    fan of rows. Rows run parallel to the mapped aisles, 11 m apart, wherever the block is free
-    of roads, aisles and existing pads."""
+    fan of rows. Rows of angled stalls run parallel to the mapped aisles wherever the lot is free
+    of roads, aisles, buildings and existing pads, until the lot holds about 700 trucks. The
+    strips of sand left between blocks are then paved over."""
     main = [y for y in yards if y["kind"] == "main" and y["pads"]]
     if not main:
         return None
@@ -1078,6 +1099,7 @@ def _main_infill(yards: list[dict], roads: list[dict]) -> dict | None:
     hull = _soft_hull([p for y in main for ring in y["pads"] for p in ring], 0.0)
     hull_edges = list(zip(hull, hull[1:] + hull[:1]))
     pads = [_soft_hull(ring, 4.0) for y in yards for ring in y["pads"]]
+    blocked = [_soft_hull(ring, 6.0) for ring in obstacles]
     boxes = []
     for road in roads:
         if road["c"] == "dirt":
@@ -1093,28 +1115,103 @@ def _main_infill(yards: list[dict], roads: list[dict]) -> dict | None:
         for x0, x1, y0, y1, need, pts in boxes:
             if x0 <= p[0] <= x1 and y0 <= p[1] <= y1 and any(_segment_distance(p, a, b) < need for a, b in zip(pts, pts[1:])):
                 return False
+        if any(point_in_ring(p[0], p[1], ring) for ring in blocked):
+            return False
         return not any(point_in_ring(p[0], p[1], ring) for ring in pads)
+
+    # An angled row is deep: both of its long edges must be clear, not just its centre line. The
+    # clearances above are sized for a 2.5 m truck on the line; at the row's edges they only need
+    # to keep the truck's corner off the kerb, so the sample points sit 3 m further out.
+    reach = ROW_DEPTH / 2 - 3.0
+    deep = lambda p: free(p) and free((p[0] + vx * reach, p[1] + vy * reach)) and free((p[0] - vx * reach, p[1] - vy * reach))
 
     along = [p[0] * ux + p[1] * uy for p in hull]
     across = [p[0] * vx + p[1] * vy for p in hull]
     lanes = []
     c = min(across) + 8
+    pair = 0
     while c < max(across) - 8:
         run = []
         a = min(along)
         while a <= max(along) + 2:
             p = (a * ux + c * vx, a * uy + c * vy)
-            if a <= max(along) and free(p):
+            if a <= max(along) and deep(p):
                 run.append(p)
             else:
-                if len(run) > 1 and math.dist(run[0], run[-1]) >= 40:
-                    lanes.append({"way": f"infill-{len(lanes)}", "p": _xy([run[1], run[-2]])})
+                # Trim the ends: a truck at 60 degrees reaches about 5.3 m past its stall along the row.
+                if len(run) > 8 and math.dist(run[0], run[-1]) >= 40:
+                    # Herringbone: the two rows of a pair lean opposite ways toward their shared aisle.
+                    side = 1 if pair % 2 == 0 else -1
+                    lanes.append({"way": f"infill-{len(lanes)}", "p": _xy([run[3], run[-4]]), "angle": side * round(math.degrees(ANGLE))})
                 run = []
             a += 2.0
-        c += 11.0
+        # Across the aisle to the pair's second row, then back to back with the next pair.
+        c += ROW_DEPTH + AISLE if pair % 2 == 0 else ROW_DEPTH + 0.6
+        pair += 1
+    # Trim the shortest rows until the lot holds about the published capacity.
+    have = sum(_lane_bays(lane) for y in main for lane in y["lanes"])
+    total = have + sum(_lane_bays(lane) for lane in lanes)
+    print(f"  main parking: {have} mapped + {total - have} angled infill bays")
+    for lane in sorted(lanes, key=_lane_bays):
+        if total - _lane_bays(lane) < MAIN_TARGET:
+            break
+        lanes.remove(lane)
+        total -= _lane_bays(lane)
     if not lanes:
         return None
-    return {"id": "main-infill", "name": "Main truck parking", "kind": "main", "pads": _yard_pads(lanes), "lanes": lanes}
+    infill_pads = _row_pads(lanes, ux, uy)
+    gaps = _gap_pads([r for y in main for r in y["pads"]] + infill_pads, ux, uy)
+    return {"id": "main-infill", "name": "Main truck parking", "kind": "main", "pads": infill_pads, "fill": gaps, "lanes": lanes}
+
+
+def _row_pads(lanes: list[dict], ux: float, uy: float) -> list[list[list[float]]]:
+    """Paving that follows a block of parallel rows: its edges step with the rows' ragged ends,
+    so it never spills over a road or building that cut a row short."""
+    vx, vy = uy, -ux
+    rows = []
+    for lane in lanes:
+        al = [p[0] * ux + p[1] * uy for p in lane["p"]]
+        ac = sum(p[0] * vx + p[1] * vy for p in lane["p"]) / len(lane["p"])
+        rows.append((ac, min(al) - 8, max(al) + 8))
+    rows.sort()
+    blocks: list[list[tuple]] = []
+    for row in rows:
+        last = blocks[-1][-1] if blocks else None
+        if last and row[0] - last[0] < ANGLED_PITCH * 1.3 and min(row[2], last[2]) - max(row[1], last[1]) > 20:
+            blocks[-1].append(row)
+        else:
+            blocks.append([row])
+    half = ANGLED_PITCH / 2
+    pads = []
+    for block in blocks:
+        pt = lambda a, c: [_r(a * ux + c * vx), _r(a * uy + c * vy)]
+        ring = [pt(block[0][1], block[0][0] - half)] + [pt(r[1], r[0]) for r in block] + [pt(block[-1][1], block[-1][0] + half)]
+        ring += [pt(block[-1][2], block[-1][0] + half)] + [pt(r[2], r[0]) for r in reversed(block)] + [pt(block[0][2], block[0][0] - half)]
+        pads.append(ring)
+    return pads
+
+
+def _gap_pads(rings, ux: float, uy: float) -> list[list[list[float]]]:
+    """Paving across the strips of sand between neighbouring blocks of rows, so the main parking
+    reads as one lot. Blocks sit side by side across the rows; each gap under 75 m between two
+    blocks is closed over the stretch where both run."""
+    vx, vy = uy, -ux
+    spans = []
+    for ring in rings:
+        al = [p[0] * ux + p[1] * uy for p in ring]
+        ac = [p[0] * vx + p[1] * vy for p in ring]
+        spans.append((min(ac), max(ac), min(al), max(al)))
+    spans.sort()
+    out = []
+    for i, (c0, c1, a0, a1) in enumerate(spans):
+        # Every block beyond this one across the rows, within reach, that overlaps it along them.
+        for d0, d1, b0, b1 in spans[i + 1 :]:
+            if d0 <= c1 + 0.5 or d0 - c1 > 75 or min(a1, b1) - max(a0, b0) < 30:
+                continue
+            lo, hi = max(a0, b0), min(a1, b1)
+            cs, ce = c1 - 1, d0 + 1
+            out.append([[_r(a * ux + c * vx), _r(a * uy + c * vy)] for a, c in ((lo, cs), (hi, cs), (hi, ce), (lo, ce))])
+    return out
 
 
 def _bay_ring(bay) -> list[tuple[float, float]]:
