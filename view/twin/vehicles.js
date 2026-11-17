@@ -318,7 +318,7 @@ export class Fleet {
 
   /* 0 by day, 1 at night: lamps brighten and headlight beams appear on the road. */
   setNight(f) {
-    this.lightMaterial.color.setScalar(1 + f * 3.2);
+    this.lightMaterial.color.setScalar(1 + f * 0.9);
     this.beamMaterial.opacity = 0.5 * Math.max(0, (f - 0.15) / 0.85);
     const on = f > 0.16;
     for (const pool of [this.truckBeam, this.carBeam, this.busBeam]) pool.mesh.visible = on;

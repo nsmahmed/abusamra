@@ -511,6 +511,10 @@ export function buildWorld(scene, data, renderer) {
     material.customProgramCacheKey = () => `fade${near}_${far}_${floor}`;
   };
   fadeFar(mat.white, 350, 1500, 0.3);
+  /* Hundreds of bay outlines in bright white read as noise from any height. They are painted
+     a soft grey instead and dissolve as the camera pulls back, leaving clean dark paving. */
+  mat.bay = new THREE.MeshStandardMaterial({ color: "#a3a9b0", roughness: 0.8, opacity: 0.6, side: THREE.DoubleSide });
+  fadeFar(mat.bay, 130, 620, 0.0);
   fadeFar(mat.yellow, 350, 1500, 0.4);
   addDetail(mat.ground, noise);
   addDetail(mat.outer, noise);
@@ -560,6 +564,7 @@ export function buildWorld(scene, data, renderer) {
   const yardPads = new Flat(8);
   const gravelPads = new Flat(8);
   const faint = new Flat(1);
+  const bay = new Flat(1);
   for (const road of data.roads) {
     if (road.c === "dirt") dirt.ribbon(road.p, road.w, H.dirt);
     else if (road.c === "aisle") yardPads.ribbon(road.p, road.w, H.aisle);
@@ -600,7 +605,7 @@ export function buildWorld(scene, data, renderer) {
   for (const yard of data.yards) {
     const unused = yard.kind === "external";
     const pads = unused ? gravelPads : yardPads;
-    const marks = unused ? faint : white;
+    const marks = unused ? faint : bay;
     for (const pad of yard.pads) {
       pads.poly(pad, H.pad);
       if (!unused) concrete.ribbon([...pad, pad[0]], 0.6, H.curb);
@@ -618,7 +623,7 @@ export function buildWorld(scene, data, renderer) {
       if (unused) continue;
       for (let k = 0; k <= count; k += 1) {
         const [x, y, h] = pointAt(P, cum, start + k * BAY);
-        white.rect({ x, y, h }, -3.9, 3.9, -0.08, 0.08, H.mark);
+        bay.rect({ x, y, h }, -3.9, 3.9, -0.07, 0.07, H.mark);
       }
     }
   }
@@ -645,10 +650,18 @@ export function buildWorld(scene, data, renderer) {
   const rooftop = [];
   const sheds = [];
   const xrayHalls = [];
+  /* A few mapped footprints sit across a road the trucks drive along: in reality those are
+     roofed checkpoints, not solid blocks, so they are built as open canopies to drive under. */
+  const canopies = [...data.canopies];
+  const acrossRoute = (ring) => data.routes.some((route) => route.p.some((p) => inside(p[0], p[1], ring)));
   for (const bld of data.buildings) {
     const ring = bld.ring;
     if (bld.role === "ramp_shed") {
       sheds.push(bld);
+      continue;
+    }
+    if (bld.role !== "xray_hall" && acrossRoute(openRing(ring))) {
+      canopies.push({ id: bld.id, role: "drive", h: Math.max(bld.h, 6.2), ring });
       continue;
     }
     const floors = Math.max(1, Math.round(bld.h / 3.6));
@@ -702,7 +715,7 @@ export function buildWorld(scene, data, renderer) {
   const canopyFascia = new Walls();
   const canopyUnder = new Flat(4);
   const docks = [];
-  for (const cp of data.canopies) {
+  for (const cp of canopies) {
     const shape = shapeFrom(cp.ring);
     const slab = new THREE.ExtrudeGeometry(shape, { depth: 0.45, bevelEnabled: false });
     slab.rotateX(-Math.PI / 2);
@@ -890,9 +903,9 @@ export function buildWorld(scene, data, renderer) {
     post: new THREE.BoxGeometry(0.34, 1.05, 0.34),
   };
   const signal = {
-    green: new THREE.MeshBasicMaterial({ color: new THREE.Color("#2ecc71").multiplyScalar(2.2), toneMapped: false }),
-    red: new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff3b30").multiplyScalar(2.2), toneMapped: false }),
-    amber: new THREE.MeshBasicMaterial({ color: new THREE.Color("#ffb020").multiplyScalar(2.4), toneMapped: false }),
+    green: new THREE.MeshBasicMaterial({ color: new THREE.Color("#2ecc71").multiplyScalar(1.3), toneMapped: false }),
+    red: new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff3b30").multiplyScalar(1.3), toneMapped: false }),
+    amber: new THREE.MeshBasicMaterial({ color: new THREE.Color("#ffb020").multiplyScalar(1.4), toneMapped: false }),
   };
 
   function mesh(geo, material, x, y, z, shadow = true) {
@@ -1003,13 +1016,59 @@ export function buildWorld(scene, data, renderer) {
     lightPlane.position.set((x0 + x1) / 2, h - 0.26, (z0 + z1) / 2);
     g.add(lightPlane);
   }
-  for (const gate of data.gates) {
+  /* Gates and portals stand where the trucks actually stop: on the route and square to it,
+     whatever heading the survey point carried. */
+  const onRoute = (item) => {
+    for (const route of data.routes) {
+      const stop = route.stops.find((s) => String(s.ref) === item.ref);
+      if (!stop) continue;
+      const P = route.p;
+      const cum = cumulative(P);
+      const [x, y] = pointAt(P, cum, stop.s);
+      const a = pointAt(P, cum, stop.s - 3);
+      const b = pointAt(P, cum, stop.s + 9);
+      return { ...item, x, y, h: Math.atan2(b[0] - a[0], b[1] - a[1]), route: { P, cum, s: stop.s } };
+    }
+    return item;
+  };
+  /* Paving for the extra lanes at a gate: it follows the road through its bends, widening on
+     the approach and tapering back after the barrier, exactly where the trucks fan out. */
+  const ease = (e0, e1, v) => {
+    const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+  const lanePad = (item, x0, x1) => {
+    if (!item.route) {
+      asphalt.rect(item, x0, x1, -8, 14, H.pad);
+      return;
+    }
+    const { P, cum, s } = item.route;
+    const end = cum[cum.length - 1];
+    let prev = null;
+    for (let d = -134; d <= 62; d += 4) {
+      const at = Math.min(end - 4, Math.max(4, s + d));
+      const [x, y] = pointAt(P, cum, at);
+      const a = pointAt(P, cum, at - 3);
+      const b = pointAt(P, cum, at + 3);
+      const n = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const lx = -(b[1] - a[1]) / n;
+      const ly = (b[0] - a[0]) / n;
+      const w = ease(-134, -64, d) * (1 - ease(20, 62, d));
+      const left = 3 + w * (x1 - 3);
+      const right = -3 + w * (x0 + 3);
+      const row = [[x + lx * left, y + ly * left], [x + lx * right, y + ly * right]];
+      if (prev) asphalt.quad(prev[0], row[0], row[1], prev[1], H.pad);
+      prev = row;
+    }
+  };
+  for (const surveyed of data.gates) {
+    const gate = onRoute(surveyed);
     const lanes = gate.lanes === 3 ? [0, 4.6, -4.6] : [0, 4.6];
     const g = placeGroup(new THREE.Group(), gate);
     const front = 8.6;
     const x0 = Math.min(...lanes) - 2.6;
     const x1 = Math.max(...lanes) + 3.4;
-    asphalt.rect(gate, x0, x1, -16, 16, H.pad);
+    lanePad(gate, x0, x1);
     const ctl = lanes.map((cx) => {
       stopLine(gate, cx, 1.8, front);
       return booth(g, cx, 1.8, front);
@@ -1026,10 +1085,11 @@ export function buildWorld(scene, data, renderer) {
 
   /* ---------- radiation portal monitors ---------- */
   const portalCtl = new Map();
-  for (const portal of data.portals) {
+  for (const surveyed of data.portals) {
+    const portal = onRoute(surveyed);
     const g = placeGroup(new THREE.Group(), portal);
     const lanes = [0, 4.6];
-    asphalt.rect(portal, -3.4, 8.2, -14, 14, H.pad);
+    lanePad(portal, -3.4, 8.2);
     const pillar = new THREE.BoxGeometry(0.7, 4.6, 0.55);
     const band = new THREE.BoxGeometry(0.72, 0.5, 0.57);
     const lights = [];
@@ -1106,7 +1166,7 @@ export function buildWorld(scene, data, renderer) {
   const dirtMesh = dirt.mesh(mat.dirt);
   dirtMesh.renderOrder = -1;
   scene.add(dirtMesh);
-  for (const [flat, material] of [[white, mat.white], [yellow, mat.yellow]]) {
+  for (const [flat, material] of [[white, mat.white], [yellow, mat.yellow], [bay, mat.bay]]) {
     const marks = flat.mesh(material);
     marks.renderOrder = 1;
     scene.add(marks);
@@ -1120,7 +1180,7 @@ export function buildWorld(scene, data, renderer) {
   scene.add(faintMesh);
 
   /* ---------- warm light spilling from canopies and halls after dark ---------- */
-  for (const cp of data.canopies) {
+  for (const cp of canopies) {
     const r = openRing(cp.ring);
     const box = orientedBox(r);
     const steps = Math.max(1, Math.round((box.a1 - box.a0) / 40));
@@ -1195,6 +1255,34 @@ export function buildWorld(scene, data, renderer) {
     spill.mesh.visible = false;
     spill.mesh.renderOrder = 2;
     scene.add(spill.mesh);
+  }
+
+  /* ---------- lamp halos ----------
+     One round, soft sprite per lamp. Unlike bloom on a small hot pixel it holds its shape and
+     does not flicker as the lamp shrinks with distance. */
+  const halo = { group: new THREE.Group(), lamps: null, masts: null };
+  {
+    const sprite = (points, size, color) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+      const material = new THREE.PointsMaterial({ map: glow, color, size, sizeAttenuation: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      const mesh = new THREE.Points(g, material);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 3;
+      halo.group.add(mesh);
+      return material;
+    };
+    const lampPoints = [];
+    for (const [x, y, h] of data.lights) {
+      const [hx, hy] = local({ x, y, h }, 2.25, 0);
+      lampPoints.push(hx, 10.7, -hy);
+    }
+    const mastPoints = [];
+    for (const [x, y] of masts) mastPoints.push(x, 26.7, -y);
+    halo.lamps = sprite(lampPoints, 15, "#ffffff");
+    halo.masts = sprite(mastPoints, 34, "#fff6e6");
+    halo.group.visible = false;
+    scene.add(halo.group);
   }
 
   /* ---------- Qatar flags on the gate canopies ---------- */
@@ -1472,10 +1560,15 @@ export function buildWorld(scene, data, renderer) {
       const lit = Math.min(1, Math.max(0, (f - 0.1) / 0.6));
       spill.mat.opacity = 0.42 * lit;
       spill.mesh.visible = lit > 0.01;
-      mastHeadMat.color.set(f > 0.05 ? "#f4f1e6" : "#cfd3d6").multiplyScalar(1 + 5 * f);
+      /* Lamp heads stay at plain brightness: a tiny over-bright box turns into a flickering
+         square once the glow pass gets hold of it. The halo sprites carry the light instead. */
+      mastHeadMat.color.set(f > 0.05 ? "#f4f1e6" : "#cfd3d6");
+      halo.lamps.opacity = 0.85 * lit;
+      halo.masts.opacity = 0.9 * lit;
+      halo.group.visible = lit > 0.01;
       if (lamp.heads) {
-        lamp.headMat.color.set(f > 0.05 ? "#ffd9a0" : "#cfd3d6").multiplyScalar(1 + 6 * f);
-        lamp.poolMat.opacity = 0.42 * lit;
+        lamp.headMat.color.set(f > 0.05 ? "#ffe2b4" : "#cfd3d6");
+        lamp.poolMat.opacity = 0.5 * lit;
         lamp.pools.visible = lit > 0.01;
       }
     },

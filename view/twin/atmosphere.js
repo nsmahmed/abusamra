@@ -27,9 +27,9 @@ export const PRESETS = {
     clock: 21.7,
     elevation: 52, azimuth: 150, disc: 0.5, glow: 0.2, stars: 1,
     zenith: "#02050c", horizon: "#16264a", below: "#070b14",
-    sunColor: "#9db7ee", sun: 0.62, hemiSky: "#3c5391", hemiGround: "#1a1a26", hemi: 0.55,
+    sunColor: "#a9c0f2", sun: 0.95, hemiSky: "#4a63a6", hemiGround: "#262b3d", hemi: 0.95,
     fog: "#0c1528", fogNear: 2200, fogFar: 17000,
-    exposure: 0.95, env: 0.2, bloom: 0.78, threshold: 0.6, radius: 0.72,
+    exposure: 1.05, env: 0.25, bloom: 0.42, threshold: 0.82, radius: 0.6,
     night: 1, saturation: 1.12, contrast: 1.1, vignette: 0.48, tint: "#eef3ff",
   },
 };
