@@ -165,6 +165,11 @@ export class Planner {
     return this.lang() === "ar" ? c.ar : c.short || c.en;
   }
 
+  catTag(id) {
+    const c = this.cat(id);
+    return this.lang() === "ar" ? c.ar : c.tag || c.short || c.en;
+  }
+
   mount(root) {
     this.root = root;
     this.build();
@@ -257,7 +262,7 @@ export class Planner {
       min: 2,
       values: Object.fromEntries(CATS.map((c) => [c, Math.round(this.state.mix[c] * 100)])),
       color: (c) => this.cat(c).color,
-      label: (c, v) => `${this.catName(c)} ${v}%`,
+      label: (c, v) => `${this.catTag(c)} ${v}%`,
       onInput: (v) => {
         for (const c of CATS) this.state.mix[c] = v[c] / 100;
         this.update(true);
@@ -269,7 +274,7 @@ export class Planner {
       min: 2,
       values: { ...this.state.alloc },
       color: (c) => this.cat(c).color,
-      label: (c, v) => `${this.catName(c)} ${v}`,
+      label: (c, v) => `${this.catTag(c)} ${v}`,
       onInput: (v) => {
         this.state.alloc = { ...v };
         this.update(true);

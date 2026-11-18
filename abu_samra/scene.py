@@ -92,19 +92,19 @@ OUTBOUND_RELEASE_XY = (52.0, 470.0)
 # Brief on-screen names: (English, Arabic, capacity or lane note).
 STATION_SHORT = {
     ("inbound", 1): ("Saudi road", "طريق السعودية", ""),
-    ("inbound", 2): ("Radiation portals", "كشف الإشعاع", ""),
-    ("inbound", 3): ("Appointment gates", "بوابات الموعد", "3 lanes"),
-    ("inbound", "+"): ("Proposed parking", "مواقف مقترحة", "unused"),
+    ("inbound", 2): ("Radiation", "الإشعاع", ""),
+    ("inbound", 3): ("Appointment", "الموعد", "3 lanes"),
+    ("inbound", "+"): ("Proposed lot", "أرض مقترحة", "unused"),
     ("inbound", 4): ("Main parking", "المواقف الرئيسية", "~700"),
     ("inbound", 5): ("X-ray", "المسح بالأشعة", "2 lanes"),
-    ("inbound", 6): ("Inspection ramps", "رمبات التفتيش", "~130"),
+    ("inbound", 6): ("Inspection", "التفتيش", "~130"),
     ("inbound", 7): ("Release", "الإفراج", ""),
     ("outbound", 1): ("Doha road", "طريق الدوحة", ""),
-    ("outbound", 2): ("External parking", "المواقف الخارجية", "~150"),
-    ("outbound", 3): ("Permit gate", "مخرج المواقف", "1 lane"),
-    ("outbound", 4): ("Entrance gates", "بوابات الدخول", "2 lanes"),
-    ("outbound", 5): ("Export parking", "مواقف الصادر", "~12"),
-    ("outbound", 6): ("Inspection ramps", "رمبات التفتيش", "10"),
+    ("outbound", 2): ("External lot", "المواقف الخارجية", "~150"),
+    ("outbound", 3): ("Permit", "التصريح", "1 lane"),
+    ("outbound", 4): ("Entry gates", "بوابات الدخول", "2 lanes"),
+    ("outbound", 5): ("Export bays", "مواقف الصادر", "~12"),
+    ("outbound", 6): ("Inspection", "التفتيش", "10"),
     ("outbound", 7): ("Release", "الإفراج", ""),
 }
 RAMP_PITCH = 4.6  # bay width along a dock face, before closing up to reach the counts below

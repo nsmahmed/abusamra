@@ -637,19 +637,29 @@ body.ar .pl-range-wrap, body.ar .pl-ends, body.ar .pl-range { direction: ltr; }
 /* scenario pins in the 3D view */
 .ppin { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 11px; white-space: nowrap; pointer-events: none; margin-bottom: 3px; background: rgba(8, 20, 22, 0.82); border: 1px dashed rgba(95, 224, 216, 0.8); color: #c9fbf6; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
 .ppin b { font-weight: 600; color: #fff; }
-.ppin em { font-style: normal; color: #8ff0e8; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.ppin em { font-style: normal; color: #8ff0e8; font-size: 10.5px; padding-left: 7px; margin-left: 1px; border-left: 1px solid rgba(95, 224, 216, 0.35); }
 .ppin.closed { border-color: rgba(255, 93, 108, 0.85); background: rgba(30, 10, 14, 0.82); color: #ffd0d5; }
-.ppin.closed em { color: #ff8e99; }
+.ppin.closed em { color: #ff8e99; border-left-color: rgba(255, 93, 108, 0.35); }
 .ppin.shed { border: 1px solid var(--c); background: rgba(12, 15, 21, 0.86); color: var(--ink); padding: 4px 10px 4px 6px; }
-.ppin.shed i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.ppin.shed svg { width: 15px; height: 15px; fill: none; stroke: var(--c); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
 .ppin.shed .nm { font-weight: 600; }
 .ppin.shed .lvv { color: var(--muted); padding-left: 7px; border-left: 1px solid var(--line-2); }
 .ppin.shed .lvv b { color: var(--ink); }
 .ppin.shed .mixbar { display: inline-flex; width: 46px; height: 6px; gap: 1px; border-radius: 3px; overflow: hidden; }
 .ppin.shed .mixbar u { display: block; height: 100%; }
-.labels.far .ppin.shed .lvv, .labels.far .ppin.shed .mixbar { display: none; }
+.labels.far .ppin.shed .lvv, .labels.far .ppin.shed .mixbar, .labels.far .ppin.shed .nm { display: none; }
+.labels.far .ppin.shed { padding: 5px; }
+.labels.mid .ppin.shed, .labels.mid .ppin.xr { display: none; }
+.labels:not(.mid) .ppin.xr-all { display: none; }
 .vc-cat { display: inline-flex; align-items: center; gap: 6px; }
 .vc-cat::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+
+/* ---------- icon buttons with a label that slides out on hover ---------- */
+.pill.icon-pill { gap: 0; padding: 0 9px; }
+.pill.icon-pill span { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; transition: max-width 0.25s ease, opacity 0.2s, margin 0.25s; }
+.pill.icon-pill:hover span, .pill.icon-pill:focus-visible span { max-width: 110px; opacity: 1; margin-left: 7px; }
+body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
+.pill.icon-pill svg { width: 15px; height: 15px; }
 
 /* ---------- loader ---------- */
 #loader {

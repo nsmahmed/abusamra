@@ -322,7 +322,7 @@ async function main() {
       xGreen: "Green channel", xRed: "Red channel · physical inspection", xCargo: "Cargo on site", xOther: "Other",
       xPaxHall: "Passenger hall", xBoothsUse: "booths in use", xArrQ: "Arrivals queue", xDepQ: "Departures queue", xVehicles: "vehicles on site",
       xCollecting: "Collecting data…",
-      uQueue: "in queue", uRoute: "en route", uFull: "full", uHour: "/ hr", uRamps: "at ramps", uReleased: "released", uParked: "parked", uCleared: "cleared",
+      uQueue: "queued", uRoute: "en route", uFull: "", uHour: "/ h", uRamps: "in use", uReleased: "cleared", uParked: "trucks", uCleared: "travellers",
       eRelease: "Released", eXray: "X-ray scan complete", eRamp: "Inspection complete", eGate: "Gate check passed",
     },
     ar: {
@@ -343,7 +343,7 @@ async function main() {
       xGreen: "المسار الأخضر", xRed: "المسار الأحمر · تفتيش فعلي", xCargo: "البضائع في المنفذ", xOther: "أخرى",
       xPaxHall: "صالة المسافرين", xBoothsUse: "أكشاك عاملة", xArrQ: "انتظار القدوم", xDepQ: "انتظار المغادرة", xVehicles: "مركبة في المنفذ",
       xCollecting: "جارٍ جمع البيانات…",
-      uQueue: "في الانتظار", uRoute: "في الطريق", uFull: "إشغال", uHour: "/ ساعة", uRamps: "في الرمبات", uReleased: "أُفرج عنها", uParked: "متوقفة", uCleared: "مسافر",
+      uQueue: "بالانتظار", uRoute: "في الطريق", uFull: "", uHour: "/ س", uRamps: "قيد الاستخدام", uReleased: "خُلّصت", uParked: "شاحنة", uCleared: "مسافر",
       eRelease: "تم الإفراج", eXray: "اكتمل المسح بالأشعة", eRamp: "اكتمل التفتيش", eGate: "اجتياز البوابة",
     },
   };
@@ -388,7 +388,7 @@ async function main() {
     const side = /arrival/i.test(st.en) ? "arrival" : "departure";
     return queue(q(`${side}-1`, `${side}-2`, `${side}-3`, `${side}-4`));
   }
-  const liveHtml = (value) => (value ? `<i></i><b>${value[0]}</b><em>${tr(value[1])}</em>` : "");
+  const liveHtml = (value) => (value ? `<i></i><b>${value[0]}</b>${tr(value[1]) ? `<em>${tr(value[1])}</em>` : ""}` : "");
 
   /* ---------- station pins ---------- */
   const stationObjects = [];
@@ -551,6 +551,12 @@ async function main() {
   const axis = rampInfo ? [rampInfo.categories[2].x - rampInfo.categories[0].x, rampInfo.categories[2].y - rampInfo.categories[0].y] : [1, 0];
   const dockOrder = world.importBays.map((b, i) => [i, b.home, b.x * axis[0] + b.y * axis[1]]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([i]) => i);
   const CAT_IDS = ["chem", "oga", "health"];
+  /* Line icons on a 24-unit grid: a flask, a government portico, a shield with a cross. */
+  const CAT_ICON = {
+    chem: "M9 3h6M10 3v6.5L4.6 18.4A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.4-2.6L14 9.5V3M6.8 15h10.4",
+    oga: "M3 20.5h18M4.5 9.5h15M12 3.5 3.5 8.5h17zM6.5 9.5v8.5M10 9.5v8.5M14 9.5v8.5M17.5 9.5v8.5M4.5 18h15",
+    health: "M12 3l7 3v5.2c0 4.6-3 8.3-7 9.8-4-1.5-7-5.2-7-9.8V6zM12 8.5v7M8.5 12h7",
+  };
 
   const pin = (x, y, h, cls) => {
     const el = document.createElement("div");
@@ -565,9 +571,47 @@ async function main() {
   };
   const parkPin = pin(0, 0, 8, "prop");
   const closedPin = pin(0, 0, 8, "closed");
-  const xrayPins = world.proposedXrays.map((g) => Object.assign(pin(g.x, g.y, 14, "prop"), { g }));
+  const xrayPins = world.proposedXrays.map((g) => Object.assign(pin(g.x, g.y, 14, "prop xr"), { g }));
+  /* From a distance the proposed scanners share one pin, above the x-ray station's own. */
+  const xrayAll = world.proposedXrays.length ? pin(world.proposedXrays.reduce((s2, g) => s2 + g.x, 0) / world.proposedXrays.length, world.proposedXrays.reduce((s2, g) => s2 + g.y, 0) / world.proposedXrays.length, 85, "prop xr-all") : null;
   const xrayOffPin = data.xrays[1] ? pin(data.xrays[1].x, data.xrays[1].y, 13, "closed") : null;
-  const shedPins = rampInfo ? rampInfo.categories.map((c) => Object.assign(pin(c.x, c.y, 15, "shed"), { c })) : [];
+  const shedPins = rampInfo ? rampInfo.categories.map((c) => Object.assign(pin(c.x, c.y, 13, "shed"), { c })) : [];
+  /* A roof marking on each import shed: the category's line icon in a ring of its colour,
+     painted flat on the roof like a helipad marking, so it reads from any height. */
+  if (rampInfo) {
+    const roofH = Math.max(...data.buildings.filter((b) => b.role === "ramp_shed").map((b) => b.h)) + 0.68;
+    for (const c of rampInfo.categories) {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 256;
+      const g = cv.getContext("2d");
+      g.fillStyle = "rgba(24, 28, 34, 0.92)";
+      g.beginPath();
+      g.arc(128, 128, 120, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = plan.cats[c.id].color;
+      g.lineWidth = 12;
+      g.beginPath();
+      g.arc(128, 128, 110, 0, Math.PI * 2);
+      g.stroke();
+      g.save();
+      g.translate(128 - 72, 128 - 72);
+      g.scale(6, 6);
+      g.strokeStyle = "#f2efe8";
+      g.lineWidth = 1.5;
+      g.lineCap = g.lineJoin = "round";
+      g.stroke(new Path2D(CAT_ICON[c.id]));
+      g.restore();
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      const size = c.bays > 40 ? 17 : 14;
+      const emblem = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+      emblem.rotation.x = -Math.PI / 2;
+      emblem.position.copy(v3(c.x, c.y, roofH));
+      emblem.renderOrder = 4;
+      scene.add(emblem);
+    }
+  }
   const centroid = (list) => [list.reduce((s, q) => s + q.x, 0) / list.length, list.reduce((s, q) => s + q.y, 0) / list.length];
   const catName = (id) => (lang === "ar" ? plan.cats[id].ar : plan.cats[id].short || plan.cats[id].en);
 
@@ -598,13 +642,13 @@ async function main() {
     if (open > 0) {
       const [x, y] = centroid(world.proposedStalls.slice(0, open));
       parkPin.obj.position.copy(v3(x, y, 8));
-      parkPin.el.innerHTML = `<b>+${open}</b> ${P("bays", "موقف")} <em>${P("Proposed parking", "مواقف مقترحة")}</em>`;
+      parkPin.el.innerHTML = `<b>+${open}</b> ${P("bays", "موقف")}<em>${P("proposed", "مقترح")}</em>`;
     }
     closedPin.shown = closed.size > 0;
     if (closed.size) {
       const [x, y] = centroid([...closed].map((i) => world.mainStalls[i]));
       closedPin.obj.position.copy(v3(x, y, 8));
-      closedPin.el.innerHTML = `<b>−${closed.size}</b> ${P("bays", "موقف")} <em>${P("Closed in scenario", "مغلقة في السيناريو")}</em>`;
+      closedPin.el.innerHTML = `<b>−${closed.size}</b> ${P("bays", "موقف")}<em>${P("closed", "مغلق")}</em>`;
     }
     /* x-ray */
     const extra = st.xray - cfg.xray.default;
@@ -612,11 +656,15 @@ async function main() {
       const on = i < extra;
       p.g.group.visible = on;
       p.shown = on;
-      p.el.innerHTML = `<b>${P("X-ray", "أشعة")} ${cfg.xray.default + i + 1}</b> <em>${P("Proposed scanner", "جهاز مقترح")}</em>`;
+      p.el.innerHTML = `<b>${P("X-ray", "أشعة")} ${cfg.xray.default + i + 1}</b><em>${P("proposed", "مقترح")}</em>`;
     });
+    if (xrayAll) {
+      xrayAll.shown = extra > 0;
+      xrayAll.el.innerHTML = `<b>+${extra}</b> ${P(extra === 1 ? "scanner" : "scanners", "أجهزة")}<em>${P("proposed", "مقترح")}</em>`;
+    }
     if (xrayOffPin) {
       xrayOffPin.shown = st.xray < cfg.xray.default;
-      xrayOffPin.el.innerHTML = `<b>${P("X-ray 2", "أشعة 2")}</b> <em>${P("Out of service", "خارج الخدمة")}</em>`;
+      xrayOffPin.el.innerHTML = `<b>${P("X-ray 2", "أشعة 2")}</b><em>${P("offline", "متوقف")}</em>`;
     }
     /* docks: contiguous blocks in allocation order */
     let k = 0;
@@ -633,7 +681,7 @@ async function main() {
       const parts = CAT_IDS.map((c) => [c, mine.filter((b) => b.cat === c).length]).filter(([, n]) => n);
       p.shown = true;
       p.el.style.setProperty("--c", plan.cats[p.c.id].color);
-      p.el.innerHTML = `<i></i><span class="nm">${catName(p.c.id)}</span><span class="lvv"><b>${mine.length}</b> ${P("docks", "رصيف")}</span>${
+      p.el.innerHTML = `<svg viewBox="0 0 24 24"><path d="${CAT_ICON[p.c.id]}"/></svg><span class="nm">${catName(p.c.id)}</span><span class="lvv"><b>${mine.length}</b></span>${
         parts.length > 1 ? `<span class="mixbar">${parts.map(([c, n]) => `<u style="flex:${n};background:${plan.cats[c].color}" title="${catName(c)} ${n}"></u>`).join("")}</span>` : ""
       }`;
     }
@@ -1085,6 +1133,7 @@ async function main() {
     const distance = camera.position.distanceTo(controls.target);
     if (atmosphere.update(dt, elapsed, camera, controls.target, distance)) pushLighting();
     labels.domElement.classList.toggle("far", distance > 2400);
+    labels.domElement.classList.toggle("mid", distance > 750);
 
     kpiTimer -= dt;
     if (kpiTimer <= 0) {
