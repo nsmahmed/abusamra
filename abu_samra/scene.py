@@ -48,6 +48,10 @@ INBOUND_APPROACH = (1168194979, 7)
 XRAY_HALLS = (1485001841, 1485001842)
 XRAY_LANES = (1409965497, 1328553508)
 IMPORT_RAMP_SHEDS = (295856199, 295856216, 295856190)
+# What each import shed inspects, left to right as seen from the x-ray area: the small shed
+# handles chemicals and everything else, the middle one goods that need another government
+# authority's approval (OGA), and the far one health and food.
+IMPORT_RAMP_CATEGORIES = ((295856190, "chem"), (295856216, "oga"), (295856199, "health"))
 # Lanes past the sheds: (way, edges to drive). Trucks circle the compound clockwise: up the
 # north-west side, down past the sheds (between the long sheds, or the outer lane), back along the
 # south-east side, and out through the release gate on the exit road, which curves away south.
@@ -534,6 +538,8 @@ def build_scene() -> dict:
             out = {}
             for shed in sheds:
                 for bay in _dock_bays(by_id[shed], roads, other_rings + [r for r in shed_rings if r is not by_id[shed]], pitch):
+                    if flow == "inbound":
+                        bay = bay + [next(i for i, (sid, _) in enumerate(IMPORT_RAMP_CATEGORIES) if sid == shed)]
                     out.setdefault((shed, bay[2]), []).append(bay)
             return out
 
@@ -548,6 +554,12 @@ def build_scene() -> dict:
             near = lambda g: min(min(math.dist(b[:2], q) for q in export_road) for b in g)
             groups = dict([min(groups.items(), key=lambda kv: near(kv[1]))])
         ramps[flow] = {"id": ramp_id, "flow": flow, "sheds": list(sheds), "bays": _trim_faces(groups, target)}
+        if flow == "inbound":
+            # The sheds in category order, with where to hang each one's label.
+            ramps[flow]["categories"] = [
+                {"id": cat, "shed": sid, "x": _r(_centroid(by_id[sid])[0]), "y": _r(_centroid(by_id[sid])[1]), "bays": sum(1 for b in ramps[flow]["bays"] if b[3] == i)}
+                for i, (sid, cat) in enumerate(IMPORT_RAMP_CATEGORIES)
+            ]
         print(f"  {ramp_id}: {len(ramps[flow]['bays'])} bays at {pitch:.2f} m")
 
     # --- truck journeys over the road graph ---
@@ -643,6 +655,11 @@ def build_scene() -> dict:
     chain = lambda ways: [[p for e in graph.way_chain(a) for p in e["xy"]] for a in ways]
     _angled_lot(yards, "main", roads, rings, chain(routed), MAIN_TARGET, "main-rows", "Main truck parking")
     _angled_lot(yards, "staging", roads, rings, chain(EXPORT_LOT_AISLES), STAGING_TARGET, "export-staging-rows", "External export parking")
+    # The unused lot is laid out the same way, every row kept: these are the bays a proposed
+    # expansion of the main parking would add, nearest the main parking first.
+    main_rows = next(y for y in yards if y["id"] == "main-rows")
+    main_centre = area_centre_of([p for lane in main_rows["lanes"] for p in lane["p"]])
+    _angled_lot(yards, "external", roads, rings, [], None, "proposed-rows", "Unused lot (proposed external parking)", stall=main_rows["lanes"][0]["stall"], toward=main_centre)
 
     stations = []
     portals = []
@@ -1056,6 +1073,10 @@ def _spine_to(graph: Graph, aisle: int) -> list:
     return {"via": (node["x"], node["y"])}
 
 
+def area_centre_of(points) -> tuple[float, float]:
+    return sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
+
+
 def _trim_faces(groups: dict, target: int) -> list[list[float]]:
     """Drop bays from the ends of the longest dock faces until exactly `target` remain."""
     faces = [list(g) for g in groups.values()]
@@ -1123,7 +1144,7 @@ def _lane_bays(lane: dict) -> int:
     return _bay_count(lane["p"])
 
 
-def _angled_lot(yards: list[dict], kind: str, roads: list[dict], obstacles, routed, target: int, ident: str, name: str) -> None:
+def _angled_lot(yards: list[dict], kind: str, roads: list[dict], obstacles, routed, target, ident: str, name: str, stall=None, toward=None) -> None:
     """Re-lay every lot of one kind as angled rows, in place of the mapped nose-to-tail aisles.
 
     Rows run parallel to the mapped aisles across every block and the strips between them, clear
@@ -1189,15 +1210,20 @@ def _angled_lot(yards: list[dict], kind: str, roads: list[dict], obstacles, rout
     # Where the first row starts decides how many rows fit; try every offset across one pitch.
     starts = [min(across) + reach + 2.5 + k for k in range(int(ANGLED_PITCH))]
     rows = max((lay(c) for c in starts), key=lambda rs: sum(int(_length(r) // STALL_RANGE[0]) + 1 for r in rs))
-    # The widest stall that still holds the published capacity.
     count = lambda stall: sum(int(_length(r) // stall) + 1 for r in rows)
-    stall = STALL_RANGE[0]
-    while stall + 0.05 <= STALL_RANGE[1] and count(stall + 0.05) >= target:
-        stall += 0.05
-    stall = round(stall, 2)
-    # Cut the shortest rows back (or drop them) until the lot holds exactly the target.
-    excess = count(stall) - target
-    rows.sort(key=_length)
+    if stall is None:
+        # The widest stall that still holds the published capacity.
+        stall = STALL_RANGE[0]
+        while stall + 0.05 <= STALL_RANGE[1] and count(stall + 0.05) >= target:
+            stall += 0.05
+        stall = round(stall, 2)
+    # Cut the shortest rows back (or drop them) until the lot holds exactly the target. A lot
+    # laid out without a target keeps every row, ordered nearest `toward` first.
+    excess = count(stall) - target if target is not None else 0
+    if toward is not None:
+        rows.sort(key=lambda r: math.dist(((r[0][0] + r[-1][0]) / 2, (r[0][1] + r[-1][1]) / 2), toward))
+    else:
+        rows.sort(key=_length)
     kept = []
     for r in rows:
         n = int(_length(r) // stall) + 1
@@ -1273,7 +1299,7 @@ def _row_pads(lanes: list[dict], ux: float, uy: float) -> list[list[list[float]]
 
 
 def _bay_ring(bay) -> list[tuple[float, float]]:
-    x, y, h = bay
+    x, y, h = bay[:3]
     fx, fy = math.sin(h), math.cos(h)
     lx, ly = -fy, fx
     return [(x + fx * a + lx * b, y + fy * a + ly * b) for a, b in ((-10.5, -2.4), (9.5, -2.4), (9.5, 2.4), (-10.5, 2.4))]

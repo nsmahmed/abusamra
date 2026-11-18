@@ -75,6 +75,12 @@ class Route {
 }
 
 const KSA_LETTERS = ["أ ب ج", "ر س ط", "ك ل م", "ن هـ و", "د ص ع", "ب ح ي"];
+/* Import inspection categories and the cargo each one covers. */
+export const CATEGORY_CARGO = {
+  chem: ["Construction steel", "Cement", "Building materials", "Furniture", "Household goods"],
+  oga: ["Electronics", "Machinery", "Auto parts", "Textiles"],
+  health: ["Foodstuffs", "Fresh produce", "Animal feed"],
+};
 const CARGO = ["Foodstuffs", "Construction steel", "Electronics", "Animal feed", "Auto parts", "Furniture", "Textiles", "Cement", "Fresh produce", "Machinery", "Building materials", "Household goods"];
 const STOP_LABEL = {
   portal: "Radiation scan",
@@ -104,7 +110,9 @@ export class Simulation {
     this.vehicles = [];
     this.nextId = 1;
     this.stations = new Map();
-    this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0, releasedBy: { inbound: 0, outbound: 0 } };
+    this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0, releasedBy: { inbound: 0, outbound: 0 }, inspected: { chem: 0, oga: 0, health: 0 }, waved: { chem: 0, oga: 0, health: 0 } };
+    /* Share of inspected import trucks in each category; the planner can change it. */
+    this.mix = { chem: 0.25, oga: 0.45, health: 0.3 };
     this.tmp = {};
     this.tmp2 = {};
     this.bays = [];
@@ -178,6 +186,25 @@ export class Simulation {
       vehicle.origin = inbound ? "Saudi Arabia → Qatar" : "Qatar → Saudi Arabia";
       vehicle.declaration = `QA-${inbound ? "IM" : "EX"}-2026-${Math.floor(100000 + Math.random() * 899999)}`;
       vehicle.cargo = pick(CARGO);
+      if (inbound) {
+        let r = Math.random();
+        vehicle.cat = "health";
+        for (const cat of ["chem", "oga", "health"]) {
+          r -= this.mix[cat] || 0;
+          if (r <= 0) {
+            vehicle.cat = cat;
+            break;
+          }
+        }
+        vehicle.tanker = vehicle.cat === "chem" && Math.random() < 0.3;
+        vehicle.cargo = pick(CATEGORY_CARGO[vehicle.cat]);
+        /* A red-channel truck takes a lane that passes docks of its category. */
+        const serves = (r) => r.dockReach && r.dockReach.some((e) => e.bay.cat === vehicle.cat);
+        if (route.dockReach && !serves(route)) {
+          const alt = this.routes.filter((r) => r.flow === route.flow && serves(r));
+          if (alt.length) vehicle.route = pick(alt);
+        }
+      }
     } else {
       vehicle.plate = `${Math.floor(10000 + Math.random() * 899999)}`;
       vehicle.origin = route.flow === "arrival" ? "Arriving in Qatar" : "Departing Qatar";
@@ -224,6 +251,8 @@ export class Simulation {
         if (!cell) continue;
         for (const o of cell) {
           if (o === v || (o === v.ignore && v.ignoreFor > 0)) continue;
+          /* A truck parked aside at the kerb is in the way only if its body reaches the lane. */
+          if (o.state === "dwell" && o.dock && !o.dock.bay && Math.abs(o.side) > 3 && this.clearOfLane(o, v.route, v.s + Math.hypot(o.x - v.x, o.y - v.y), 2.9)) continue;
           const dot = o.dx * v.dx + o.dy * v.dy;
           if (dot < -0.5) continue;
           const rx = o.x - v.x;
@@ -313,6 +342,34 @@ export class Simulation {
      parked truck already fills the bay. */
   setBays(bays) {
     this.bays = bays;
+    /* For every route with a ramp stop, the docks a truck can back onto from it: those whose
+       mouth the lane passes within 32 m, anywhere between the ramp stop and the release gate,
+       with the point on the lane closest to each. */
+    for (const route of this.routes) {
+      const stop = route.stops.find((st) => st.kind === "ramp");
+      if (!stop) continue;
+      const after = route.stops.find((st) => st.s > stop.s && st.kind === "gate");
+      const lo = stop.s - 60;
+      const hi = after ? after.s - 30 : stop.s + 220;
+      route.dockReach = [];
+      for (const bay of bays) {
+        if (bay.ref !== String(stop.ref)) continue;
+        const mx = bay.x + Math.sin(bay.h) * 10;
+        const my = bay.y + Math.cos(bay.h) * 10;
+        let near = Infinity;
+        let at = lo;
+        for (let t = lo; t < hi; t += 3) {
+          const p = route.at(t, this.tmp);
+          const d = Math.hypot(p.x - mx, p.y - my);
+          if (d < near) {
+            near = d;
+            at = t;
+          }
+        }
+        if (near < 32) route.dockReach.push({ bay, s: at });
+      }
+      route.dockReach.sort((a, b) => a.s - b.s);
+    }
   }
 
   /* Static parked trucks in the yards, as { x, y, h }; yard bays must not overlap them. */
@@ -421,11 +478,25 @@ export class Simulation {
       if (this.docks.some((d) => Math.hypot(d.x - spot.x, d.y - spot.y) < 18)) continue;
       if (this.parked.some((p) => Math.abs(p.x - spot.x) < 20 && Math.abs(p.y - spot.y) < 20 && footprintDepth(spot, spec, p, spec) > 0)) continue;
       if (this.spotOnTraffic(spot, r, s)) continue;
+      /* The whole parked truck must stand clear of the lane: on a bend its ends swing in. */
+      if (!this.clearOfLane(spot, r, s)) continue;
       const dock = { x: spot.x, y: spot.y, v, s, shift: -4.5 };
       this.docks.push(dock);
       return dock;
     }
     return null;
+  }
+
+  clearOfLane(spot, r, s, gap = 3.6) {
+    for (const k of [-8.5, -4, 0, 4, 8.5]) {
+      const bx = spot.x + spot.dx * k;
+      const by = spot.y + spot.dy * k;
+      for (let t = s - 30; t <= s + 30; t += 2) {
+        const p = r.at(t, this.tmp);
+        if (Math.hypot(p.x - bx, p.y - by) < gap) return false;
+      }
+    }
+    return true;
   }
 
   /* Heading change, in radians, over the 24 m of route centred on s. */
@@ -453,35 +524,17 @@ export class Simulation {
   /* Inspection trucks take the free bay nearest their stop and reverse onto the dock from the
      point of the lane closest to the bay mouth. */
   chooseDock(v, stop) {
-    const r = v.route;
-    const c = r.at(stop.s, this.tmp);
-    const cx = c.x;
-    const cy = c.y;
-    let best = null;
-    let bestD = Infinity;
-    for (const bay of this.bays) {
-      if (bay.v || bay.ref !== String(stop.ref)) continue;
-      const d = Math.hypot(bay.x - cx, bay.y - cy);
-      if (d < bestD) {
-        bestD = d;
-        best = bay;
-      }
+    /* The first free dock of the truck's category that the lane passes from here on. */
+    const reach = v.route.dockReach;
+    if (!reach) return null;
+    for (const { bay, s } of reach) {
+      if (s < v.s + 12 || bay.v) continue;
+      if (v.cat && bay.cat && bay.cat !== v.cat) continue;
+      bay.v = v;
+      if (v.cat) this.stats.inspected[v.cat] += 1;
+      return { bay, s, x: bay.x, y: bay.y, v, shift: 0 };
     }
-    if (!best || bestD > 110) return null;
-    const mx = best.x + Math.sin(best.h) * 10;
-    const my = best.y + Math.cos(best.h) * 10;
-    let s = stop.s;
-    let near = Infinity;
-    for (let t = Math.max(v.s + 12, stop.s - 90); t < Math.min(r.length - 30, stop.s + 120); t += 2) {
-      const p = r.at(t, this.tmp);
-      const d = Math.hypot(p.x - mx, p.y - my);
-      if (d < near) {
-        near = d;
-        s = t;
-      }
-    }
-    best.v = v;
-    return { bay: best, s, x: best.x, y: best.y, v, shift: 0 };
+    return null;
   }
 
   /* Pose while reversing between the lane and a ramp bay: t = 0 on the lane, 1 on the dock. */
@@ -728,6 +781,7 @@ export class Simulation {
           target = Math.min(target, Math.sqrt(2 * 1.8 * Math.max(0, distance - 0.2)) + (distance > 0.3 ? 0.25 : 0));
           if (distance <= 0.4 && stop.kind === "ramp" && !v.dock) {
             /* Every bay is taken: this truck is waved through without a physical check. */
+            if (v.cat) this.stats.waved[v.cat] += 1;
             v.stopIdx += 1;
             continue;
           } else if (distance <= 0.4) {

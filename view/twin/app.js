@@ -14,6 +14,7 @@ import { Atmosphere, PRESETS } from "./atmosphere.js";
 import { buildGround } from "./terrain.js";
 import { buildBeacons, buildRouteTrace } from "./overlays.js";
 import { Executive, SAMPLE_STEP } from "./executive.js";
+import { Planner } from "./planner.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -70,6 +71,9 @@ async function main() {
   if (!Array.isArray(data.roads) || !Array.isArray(data.routes)) {
     throw new Error("scene.json is outdated; run python -m abu_samra.scene and reload");
   }
+  /* Planner defaults and limits: parking bays, x-ray scanners, inspection categories, model. */
+  const cfg = await (await fetch("config.json", { cache: "no-store" })).json();
+  const plan = { pins: [], open: false };
   await wait();
 
   const stage = $("stage");
@@ -151,6 +155,8 @@ async function main() {
       type: "truck",
       static: true,
       where,
+      kind: slot.kind,
+      stall: slot.stall ?? -1,
       plate: Math.random() < 0.6 ? `${Math.floor(1000 + Math.random() * 8999)} ${pick(["أ ب ج", "ر س ط", "ك ل م", "ن هـ و"])}` : `${Math.floor(100000 + Math.random() * 899999)}`,
       cargo: pick(["Foodstuffs", "Construction steel", "Electronics", "Animal feed", "Auto parts", "Furniture", "Textiles", "Machinery"]),
     };
@@ -162,7 +168,8 @@ async function main() {
     v.y = slot.y;
     v.dx = dx;
     v.dy = dy;
-    fleet.place(v, { cx: slot.x + dx * 5.5, cz: -(slot.y + dy * 5.5), cyaw: yaw, tx: slot.x - dx * 2.05, tz: -(slot.y - dy * 2.05), tyaw: yaw });
+    v.pose = { cx: slot.x + dx * 5.5, cz: -(slot.y + dy * 5.5), cyaw: yaw, tx: slot.x - dx * 2.05, tz: -(slot.y - dy * 2.05), tyaw: yaw };
+    fleet.place(v, v.pose);
     statics.push(v);
   };
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
@@ -176,11 +183,13 @@ async function main() {
      dashboards open with real history: trends, released trucks and clearance times. */
   const prewarm = Number(params.get("prewarm") || 7200);
   const rampStatic = statics.filter((v) => v.where === "ramp").length;
-  const yardStatic = statics.filter((v) => v.where === "yard").length;
+  /* Trucks parked in the main parking (the other lots have their own counts), minus any in
+     stalls a planner scenario has closed. */
+  const mainParked = () => statics.reduce((n, v) => n + (v.where === "yard" && v.kind === "main" && !v.hidden ? 1 : 0), 0);
   const seedHistory = [];
   for (let t = 0, n = 0; t < prewarm; t += SAMPLE_STEP, n += 1) {
     sim.advance(SAMPLE_STEP);
-    const k = sim.kpis(yardStatic, world.yardCapacity, rampStatic);
+    const k = sim.kpis(mainParked(), world.yardCapacity, rampStatic);
     seedHistory.push(k.trucksIn);
     exec.sample(sim.time, k);
     if (n % 3 === 2) {
@@ -302,7 +311,7 @@ async function main() {
       scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
       cleared: "cleared", booths: "booths active", queue: "on approach", min: "min", activity: "Live activity",
       vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour",
-      exec: "Executive", xTitle: "Executive overview", xSub: "Abu Samra Land Port · figures since", xUpdated: "updated",
+      exec: "Executive", planner: "Planner", xTitle: "Executive overview", xSub: "Abu Samra Land Port · figures since", xUpdated: "updated",
       xAllGood: "All stations operating normally", xAttention1: "station needs attention", xAttentionN: "stations need attention",
       tTrucks: "Trucks on site", tClear: "Avg clearance time", tReleased: "Trucks released", tParking: "Main parking occupancy", tScans: "X-ray scans", tPax: "Passengers cleared",
       xVsHour: "vs 1 h ago", xPerHour: "per hour", xTarget: "Target", xWithin: "within target", xNoChange: "No change", xNow: "now",
@@ -323,7 +332,7 @@ async function main() {
       scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
       cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة", activity: "النشاط المباشر",
       vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة",
-      exec: "العرض التنفيذي", xTitle: "النظرة التنفيذية", xSub: "منفذ أبو سمرة البري · الأرقام منذ", xUpdated: "آخر تحديث",
+      exec: "العرض التنفيذي", planner: "المخطط", xTitle: "النظرة التنفيذية", xSub: "منفذ أبو سمرة البري · الأرقام منذ", xUpdated: "آخر تحديث",
       xAllGood: "جميع المحطات تعمل بشكل طبيعي", xAttention1: "محطة تحتاج إلى متابعة", xAttentionN: "محطات تحتاج إلى متابعة",
       tTrucks: "الشاحنات في المنفذ", tClear: "متوسط زمن التخليص", tReleased: "الشاحنات المفرج عنها", tParking: "إشغال المواقف الرئيسية", tScans: "المسح بالأشعة", tPax: "المسافرون المنجزون",
       xVsHour: "مقارنة بالساعة الماضية", xPerHour: "في الساعة", xTarget: "المستهدف", xWithin: "ضمن المستهدف", xNoChange: "لا تغيير", xNow: "الآن",
@@ -455,6 +464,7 @@ async function main() {
       zones.setVisible(flow, flow === activeFlow && showZones);
     }
     $("rail").classList.toggle("hidden", !showRail);
+    for (const pin of plan.pins) pin.obj.visible = showLabels && pin.shown && (activeFlow === "inbound" || plan.open);
   }
   function setFlow(flow) {
     activeFlow = flow;
@@ -490,6 +500,10 @@ async function main() {
     renderRail();
     feedDirty = true;
     exec.build();
+    if (plan.planner) {
+      plan.planner.build();
+      plan.paint();
+    }
   }
   $("lang").addEventListener("click", () => {
     lang = lang === "ar" ? "en" : "ar";
@@ -521,6 +535,138 @@ async function main() {
       $("layers-btn").classList.remove("on");
     }
   });
+
+  /* ---------- capacity planner ----------
+     What-if settings drawn into the scene: proposed parking bays light up in the unused lot (or
+     main-lot stalls close), proposed x-ray gantries appear as blueprints on the x-ray lanes, and
+     the import docks take the colour of the inspection category they are allocated to. */
+  plan.cats = Object.fromEntries(cfg.ramps.categories.map((c) => [c.id, c]));
+  const rampInfo = (data.ramps || []).find((r) => r.categories);
+  const shedDocks = Object.fromEntries((rampInfo ? rampInfo.categories : []).map((c) => [c.id, c.bays]));
+  /* Main stalls close from the north-east end of the lot; proposed bays open nearest first. */
+  const closeOrder = world.mainStalls.map((st, i) => [i, st.x * 0.76 + st.y * 0.65]).sort((a, b) => b[1] - a[1]).map(([i]) => i);
+  /* Docks in allocation order: by home shed, then along the line of sheds, so a category that
+     outgrows its shed takes the neighbouring shed's nearest docks. */
+  const shedAt = Object.fromEntries((rampInfo ? rampInfo.categories : []).map((c, i) => [i, c]));
+  const axis = rampInfo ? [rampInfo.categories[2].x - rampInfo.categories[0].x, rampInfo.categories[2].y - rampInfo.categories[0].y] : [1, 0];
+  const dockOrder = world.importBays.map((b, i) => [i, b.home, b.x * axis[0] + b.y * axis[1]]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([i]) => i);
+  const CAT_IDS = ["chem", "oga", "health"];
+
+  const pin = (x, y, h, cls) => {
+    const el = document.createElement("div");
+    el.className = `ppin ${cls}`;
+    const obj = new CSS2DObject(el);
+    obj.position.copy(v3(x, y, h));
+    obj.center.set(0.5, 1);
+    scene.add(obj);
+    const item = { el, obj, shown: false };
+    plan.pins.push(item);
+    return item;
+  };
+  const parkPin = pin(0, 0, 8, "prop");
+  const closedPin = pin(0, 0, 8, "closed");
+  const xrayPins = world.proposedXrays.map((g) => Object.assign(pin(g.x, g.y, 14, "prop"), { g }));
+  const xrayOffPin = data.xrays[1] ? pin(data.xrays[1].x, data.xrays[1].y, 13, "closed") : null;
+  const shedPins = rampInfo ? rampInfo.categories.map((c) => Object.assign(pin(c.x, c.y, 15, "shed"), { c })) : [];
+  const centroid = (list) => [list.reduce((s, q) => s + q.x, 0) / list.length, list.reduce((s, q) => s + q.y, 0) / list.length];
+  const catName = (id) => (lang === "ar" ? plan.cats[id].ar : plan.cats[id].short || plan.cats[id].en);
+
+  plan.state = null;
+  plan.paint = () => {
+    const st = plan.state;
+    if (!st) return;
+    const P = (en, ar) => (lang === "ar" ? ar : en);
+    /* parking */
+    const today = cfg.parking.default;
+    const closed = new Set(st.parking < today ? closeOrder.slice(0, today - st.parking) : []);
+    world.mainStalls.forEach((_, i) => world.stallOverlays.main.set(i, closed.has(i) ? "#ff5d6c" : null));
+    const open = Math.max(0, st.parking - today);
+    world.proposedStalls.forEach((_, i) => world.stallOverlays.proposed.set(i, i < open ? "#5fe0d8" : null));
+    for (const v of statics) {
+      if (v.stall < 0 || v.kind !== "main") continue;
+      const shut = closed.has(v.stall);
+      if (shut && !v.hidden) {
+        fleet.release(v);
+        v.hidden = true;
+      } else if (!shut && v.hidden && fleet.allocate(v)) {
+        v.hidden = false;
+        fleet.place(v, v.pose);
+      }
+    }
+    world.yardCapacity = st.parking;
+    parkPin.shown = open > 0;
+    if (open > 0) {
+      const [x, y] = centroid(world.proposedStalls.slice(0, open));
+      parkPin.obj.position.copy(v3(x, y, 8));
+      parkPin.el.innerHTML = `<b>+${open}</b> ${P("bays", "موقف")} <em>${P("Proposed parking", "مواقف مقترحة")}</em>`;
+    }
+    closedPin.shown = closed.size > 0;
+    if (closed.size) {
+      const [x, y] = centroid([...closed].map((i) => world.mainStalls[i]));
+      closedPin.obj.position.copy(v3(x, y, 8));
+      closedPin.el.innerHTML = `<b>−${closed.size}</b> ${P("bays", "موقف")} <em>${P("Closed in scenario", "مغلقة في السيناريو")}</em>`;
+    }
+    /* x-ray */
+    const extra = st.xray - cfg.xray.default;
+    xrayPins.forEach((p, i) => {
+      const on = i < extra;
+      p.g.group.visible = on;
+      p.shown = on;
+      p.el.innerHTML = `<b>${P("X-ray", "أشعة")} ${cfg.xray.default + i + 1}</b> <em>${P("Proposed scanner", "جهاز مقترح")}</em>`;
+    });
+    if (xrayOffPin) {
+      xrayOffPin.shown = st.xray < cfg.xray.default;
+      xrayOffPin.el.innerHTML = `<b>${P("X-ray 2", "أشعة 2")}</b> <em>${P("Out of service", "خارج الخدمة")}</em>`;
+    }
+    /* docks: contiguous blocks in allocation order */
+    let k = 0;
+    for (const cat of CAT_IDS) {
+      for (let n = 0; n < st.alloc[cat] && k < dockOrder.length; n += 1, k += 1) {
+        const i = dockOrder[k];
+        world.importBays[i].cat = cat;
+        world.dockOverlay.set(i, plan.cats[cat].color);
+      }
+    }
+    for (const p of shedPins) {
+      const home = CAT_IDS.indexOf(p.c.id);
+      const mine = world.importBays.filter((b) => b.home === home);
+      const parts = CAT_IDS.map((c) => [c, mine.filter((b) => b.cat === c).length]).filter(([, n]) => n);
+      p.shown = true;
+      p.el.style.setProperty("--c", plan.cats[p.c.id].color);
+      p.el.innerHTML = `<i></i><span class="nm">${catName(p.c.id)}</span><span class="lvv"><b>${mine.length}</b> ${P("docks", "رصيف")}</span>${
+        parts.length > 1 ? `<span class="mixbar">${parts.map(([c, n]) => `<u style="flex:${n};background:${plan.cats[c].color}" title="${catName(c)} ${n}"></u>`).join("")}</span>` : ""
+      }`;
+    }
+    sim.mix = { ...st.mix };
+    applyVisibility();
+  };
+  plan.planner = new Planner(cfg, { shedDocks, proposedMax: world.proposedStalls.length }, {
+    lang: () => lang,
+    onChange(state) {
+      plan.state = state;
+      if (!plan.ready) return;
+      plan.paint();
+      renderKpis();
+    },
+  });
+  plan.state = plan.planner.state;
+  plan.planner.mount($("planner"));
+  function setPlanner(on) {
+    plan.open = on;
+    plan.planner.open = on;
+    $("planner").classList.toggle("open", on);
+    $("plan-btn").classList.toggle("on", on);
+    document.body.classList.toggle("planner-on", on);
+    if (on) {
+      setExec(false);
+      stopTour();
+      stopFollow();
+      if (activeFlow !== "inbound") setFlow("inbound");
+      flyTo(camPose(-120, -150, 1450, 54, 150));
+    }
+    applyVisibility();
+  }
+  $("plan-btn").addEventListener("click", () => setPlanner(!plan.open));
 
   /* ---------- dashboard and presentation mode ---------- */
   let showDash = params.get("dash") !== "0";
@@ -601,9 +747,11 @@ async function main() {
     const k = e.key.toLowerCase();
     if (k === "d") $("toggle-dash").click();
     else if (k === "e") setExec(!exec.open);
+    else if (k === "c") setPlanner(!plan.open);
     else if (k === "p") togglePresent();
     else if (k === "escape") {
       if (exec.open) return setExec(false);
+      if (plan.open) return setPlanner(false);
       togglePresent(false);
       stopFollow();
     } else if (k === " ") {
@@ -723,6 +871,7 @@ async function main() {
         <dt>Route</dt><dd>${d.origin}</dd>
         ${d.declaration ? `<dt>Declaration</dt><dd>${d.declaration}</dd>` : ""}
         ${d.cargo ? `<dt>Cargo</dt><dd>${d.cargo}</dd>` : ""}
+        ${v.cat && inspect ? `<dt>Inspection</dt><dd><span class="vc-cat" style="--c:${plan.cats[v.cat].color}">${plan.cats[v.cat].en}</span></dd>` : ""}
         <dt>Status</dt><dd>${d.status}</dd>
         <dt>On site</dt><dd>${d.minutes} min</dd>
       </dl>
@@ -767,7 +916,7 @@ async function main() {
     el.className = `delta ${diff > 0 ? "up" : diff < 0 ? "down" : ""}`;
   }
   function renderKpis(dt = 0) {
-    const k = sim.kpis(yardStatic, world.yardCapacity, rampStatic);
+    const k = sim.kpis(mainParked(), world.yardCapacity, rampStatic);
     $("k-trucks").textContent = k.trucksIn;
     const pct = k.yard / Math.max(1, k.yardCapacity);
     $("k-yard").textContent = k.yard;
@@ -803,6 +952,7 @@ async function main() {
     if (feedDirty) renderFeed();
     if (sim.time - exec.lastT >= SAMPLE_STEP) exec.sample(sim.time, k);
     if (exec.open) exec.render(k, live);
+    if (plan.open) plan.planner.live(sim.stats);
 
     sampleTimer -= dt;
     if (sampleTimer <= 0 || history.length === 0) {
@@ -815,6 +965,8 @@ async function main() {
   applyLanguage();
   setFlow(activeFlow);
   applyDash();
+  plan.ready = true;
+  plan.paint();
 
   /* ---------- resize and loop ---------- */
   function resize() {
@@ -964,7 +1116,7 @@ async function main() {
   }
   renderKpis();
   requestAnimationFrame(frame);
-  window.__twin = { sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, ground, select, scene, composer };
+  window.__twin = { plan, sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, ground, select, scene, composer };
 }
 
 main().catch((error) => {

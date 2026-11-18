@@ -1,0 +1,23 @@
+{
+  "_note": "Capacity planner defaults and limits. 'default' is today's port; the planner panel moves within min..max. Model figures are planning assumptions, not measurements: adjust them to the authority's own data.",
+  "parking": { "default": 700, "min": 450, "max": 1100, "step": 10 },
+  "xray": { "default": 2, "min": 1, "max": 4 },
+  "ramps": {
+    "categories": [
+      { "id": "chem", "en": "Chemical & Others", "ar": "الكيماويات وأخرى", "color": "#ff8f4a" },
+      { "id": "oga", "en": "Other Gov. Authorities", "short": "OGA", "ar": "الجهات الحكومية الأخرى", "color": "#a08bff" },
+      { "id": "health", "en": "Health & Food", "ar": "الصحة والغذاء", "color": "#38c9a4" }
+    ],
+    "volumeMix": { "chem": 0.25, "oga": 0.45, "health": 0.3 }
+  },
+  "model": {
+    "demandPerDay": 720,
+    "demandMin": 300,
+    "demandMax": 1500,
+    "gateHours": 0.75,
+    "yardHours": 14,
+    "scansPerHourPerScanner": 20,
+    "inspectRate": 0.65,
+    "inspectionHours": 3
+  }
+}

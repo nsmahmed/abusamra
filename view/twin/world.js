@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import * as T from "./textures.js";
+import { stallOverlay, ghostify } from "./proposals.js";
 
 /* Local frame from the dataset: x east, y north (meters). Three.js: X = x, Y = up, Z = -y.
    Headings h are clockwise from north; a group with rotation.y = PI - h faces along h,
@@ -637,7 +638,7 @@ export function buildWorld(scene, data, renderer) {
         for (let k = 0; k <= centres.length; k += 1) {
           const at = k < centres.length ? centres[k] - lane.stall / 2 : centres[k - 1] + lane.stall / 2;
           const [x, y, h] = pointAt(P, cum, at);
-          bay.rect({ x, y, h: h + turn }, -0.07, 0.07, -along, along, H.mark);
+          (unused ? marks : bay).rect({ x, y, h: h + turn }, -0.07, 0.07, -along, along, H.mark);
         }
         continue;
       }
@@ -1145,14 +1146,16 @@ export function buildWorld(scene, data, renderer) {
       const r = openRing(b.ring);
       return [r.reduce((s, p) => s + p[0], 0) / r.length, r.reduce((s, p) => s + p[1], 0) / r.length];
     });
-  for (const xr of data.xrays) {
+  const buildGantry = (xr, proposed = false) => {
     const g = placeGroup(new THREE.Group(), xr);
-    asphalt.rect(xr, -6, 6, -40, 40, H.pad);
-    yellow.rect(xr, -5.6, -5.3, -30, 30, H.mark);
-    yellow.rect(xr, 5.3, 5.6, -30, 30, H.mark);
-    yellow.rect(xr, -5.6, 5.6, -30, -29.7, H.mark);
-    yellow.rect(xr, -5.6, 5.6, 29.7, 30, H.mark);
-    for (let z = -27; z < 28; z += 4) yellow.rect(xr, -5.3, -4.2, z, z + 0.3, H.mark);
+    if (!proposed) {
+      asphalt.rect(xr, -6, 6, -40, 40, H.pad);
+      yellow.rect(xr, -5.6, -5.3, -30, 30, H.mark);
+      yellow.rect(xr, 5.3, 5.6, -30, 30, H.mark);
+      yellow.rect(xr, -5.6, 5.6, -30, -29.7, H.mark);
+      yellow.rect(xr, -5.6, 5.6, 29.7, 30, H.mark);
+      for (let z = -27; z < 28; z += 4) yellow.rect(xr, -5.3, -4.2, z, z + 0.3, H.mark);
+    }
     for (const side of [-1, 1]) {
       g.add(mesh(new THREE.BoxGeometry(1.2, 7.2, 2.0), mat.gantry, side * 3.5, 3.6, 0));
       g.add(mesh(new THREE.BoxGeometry(1.22, 1.3, 2.02), mat.hazard, side * 3.5, 0.65, 0));
@@ -1184,8 +1187,38 @@ export function buildWorld(scene, data, renderer) {
     g.add(mesh(new THREE.BoxGeometry(2.62, 0.9, 4.5), mat.glass, cab, 1.8, -4, false));
     g.add(mesh(new THREE.BoxGeometry(2.9, 0.25, 6.6), mat.maroon, cab, 2.82, -4));
     scene.add(g);
+    if (proposed) {
+      g.remove(beam);
+      ghostify(g);
+      /* A faint footprint of the scanning lane it would add. */
+      const pad = new THREE.Mesh(new THREE.PlaneGeometry(11, 60), new THREE.MeshBasicMaterial({ color: "#5fe0d8", transparent: true, opacity: 0.1, depthWrite: false, toneMapped: false }));
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.y = 0.4;
+      g.add(pad);
+      return g;
+    }
     glowSpots.push([xr.x, xr.y, 46]);
     xrayCtl.set(xr.id, { beam, beacons, active: 0 });
+    return g;
+  };
+  for (const xr of data.xrays) buildGantry(xr);
+  /* Proposed scanners: a second gantry on each existing x-ray lane, 55 m before the first, so
+     two trucks can be scanned in tandem. There is no room for a new hall. */
+  const proposedXrays = [];
+  for (const xr of data.xrays) {
+    const route = data.routes.find((r) => r.stops.some((st) => st.ref === xr.id));
+    if (!route) continue;
+    const stop = route.stops.find((st) => st.ref === xr.id);
+    const P = dedupe(route.p);
+    const cum = cumulative(P);
+    const at = stop.s - 55;
+    const [x, y] = pointAt(P, cum, at);
+    const a = pointAt(P, cum, at - 4);
+    const b = pointAt(P, cum, at + 4);
+    const spot = { x, y, h: Math.atan2(b[0] - a[0], b[1] - a[1]), id: `${xr.id}-proposed` };
+    const g = buildGantry(spot, true);
+    g.visible = false;
+    proposedXrays.push({ ...spot, group: g });
   }
 
   /* ---------- finalize flat layers ---------- */
@@ -1526,7 +1559,11 @@ export function buildWorld(scene, data, renderer) {
   };
   /* Main parking is busy; the external export lot about half full; the unused lot holds only a
      few stray trucks, as on the imagery. */
-  const FILL = { main: 0.58, export: 0.6, staging: 0.5, external: 0.025 };
+  const FILL = { main: 0.58, export: 0.6, staging: 0.5, external: 0 };
+  /* Every stall of the main parking and of the proposed lot, in layout order, so a scenario can
+     open or close them one by one. */
+  const mainStalls = [];
+  const proposedStalls = [];
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
@@ -1537,14 +1574,17 @@ export function buildWorld(scene, data, renderer) {
       const turn = lane.angle ? (lane.angle * Math.PI) / 180 : 0;
       for (const c of lane.angle ? stallCentres(L, lane.stall) : bayCentres(L).centres) {
         if (yard.kind === "main") yardCapacity += 1;
-        if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
-        if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
         const [x0, y0, h0] = pointAt(P, cum, c);
         /* A truck in an angled stall stands across the row line, centred on it. */
         const h = h0 + turn;
         const x = x0 + Math.sin(h) * (lane.angle ? 1.0 : -0.25);
         const y = y0 + Math.cos(h) * (lane.angle ? 1.0 : -0.25);
-        if (slotFree(x, y, h)) yardSlots.push({ x, y, h });
+        let stall = -1;
+        if (yard.kind === "main" && lane.angle) stall = mainStalls.push({ x: x - Math.sin(h) * 1.0, y: y - Math.cos(h) * 1.0, h }) - 1;
+        if (yard.kind === "external" && lane.angle) proposedStalls.push({ x: x - Math.sin(h) * 1.0, y: y - Math.cos(h) * 1.0, h });
+        if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
+        if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
+        if (slotFree(x, y, h)) yardSlots.push({ x, y, h, kind: yard.kind, stall });
       }
     }
   }
@@ -1552,8 +1592,8 @@ export function buildWorld(scene, data, renderer) {
   const rampBays = [];
   const rampSlots = [];
   for (const ramp of data.ramps || []) {
-    for (const [x, y, h] of ramp.bays) {
-      const bay = { x, y, h, ref: ramp.id, v: null };
+    for (const [x, y, h, cat] of ramp.bays) {
+      const bay = { x, y, h, ref: ramp.id, v: null, home: cat ?? null, cat: cat == null ? null : ["chem", "oga", "health"][cat] };
       if (Math.random() < 0.58 && slotFree(x, y, h, 3.2)) {
         bay.v = "static";
         rampSlots.push({ x, y, h });
@@ -1562,9 +1602,22 @@ export function buildWorld(scene, data, renderer) {
     }
   }
 
+  const stallOverlays = {
+    main: stallOverlay(scene, mainStalls),
+    proposed: stallOverlay(scene, proposedStalls),
+  };
+  const importBays = rampBays.filter((b) => b.home !== null);
+  const dockOverlay = stallOverlay(scene, importBays, { width: 3.6, length: 19.5, height: 0.38, opacity: 0.55, fill: true });
+
   return {
     roads,
     noise,
+    mainStalls,
+    proposedStalls,
+    stallOverlays,
+    proposedXrays,
+    importBays,
+    dockOverlay,
     waterNormal: T.waterNormalTexture(),
     boothCtl,
     staticBooths,
