@@ -96,14 +96,18 @@ STATION_SHORT = {
     ("inbound", 6): ("Inspection ramps", "رمبات التفتيش", "~130"),
     ("inbound", 7): ("Release", "الإفراج", ""),
     ("outbound", 1): ("Doha road", "طريق الدوحة", ""),
-    ("outbound", 2): ("External parking", "المواقف الخارجية", ""),
+    ("outbound", 2): ("External parking", "المواقف الخارجية", "~150"),
     ("outbound", 3): ("Permit gate", "مخرج المواقف", "1 lane"),
     ("outbound", 4): ("Entrance gates", "بوابات الدخول", "2 lanes"),
     ("outbound", 5): ("Export parking", "مواقف الصادر", "~12"),
-    ("outbound", 6): ("Inspection ramps", "رمبات التفتيش", ""),
+    ("outbound", 6): ("Inspection ramps", "رمبات التفتيش", "10"),
     ("outbound", 7): ("Release", "الإفراج", ""),
 }
-RAMP_PITCH = 4.6  # bay width along a dock face
+RAMP_PITCH = 4.6  # bay width along a dock face, before closing up to reach the counts below
+# Published capacities (GAC process maps and site figures).
+RAMP_BAYS = {"inbound": 130, "outbound": 10}
+STAGING_TARGET = 150  # export external parking
+EXPORT_PARKING_BAYS = 12
 TRUCK_REACH = 10.2  # bay centre from the dock face: dock apron plus half a 17 m truck
 
 MAJOR = {"motorway", "trunk", "primary", "secondary"}
@@ -522,11 +526,29 @@ def build_scene() -> dict:
     shed_rings = [by_id[i] for i in IMPORT_RAMP_SHEDS + EXPORT_RAMP_SHEDS]
     other_rings = [b["ring"] for b in buildings if b["role"] != "ramp_shed"]
     ramps = {}
+    export_road = [p for e in graph.way_chain(EXPORT_ROAD) for p in e["xy"]]
     for flow, sheds, ramp_id in (("inbound", IMPORT_RAMP_SHEDS, "ramp-import"), ("outbound", EXPORT_RAMP_SHEDS, "ramp-export")):
-        bays = []
-        for shed in sheds:
-            bays += _dock_bays(by_id[shed], roads, other_rings + [r for r in shed_rings if r is not by_id[shed]])
-        ramps[flow] = {"id": ramp_id, "flow": flow, "sheds": list(sheds), "bays": bays}
+        target = RAMP_BAYS[flow]
+
+        def faces(pitch):
+            out = {}
+            for shed in sheds:
+                for bay in _dock_bays(by_id[shed], roads, other_rings + [r for r in shed_rings if r is not by_id[shed]], pitch):
+                    out.setdefault((shed, bay[2]), []).append(bay)
+            return out
+
+        # Close the docks up, no tighter than 3.8 m, until the sheds hold the published count.
+        pitch = RAMP_PITCH
+        groups = faces(pitch)
+        while sum(map(len, groups.values())) < target and pitch > 3.85:
+            pitch -= 0.05
+            groups = faces(pitch)
+        if flow == "outbound":
+            # The export shed works one face only: the one toward the export road.
+            near = lambda g: min(min(math.dist(b[:2], q) for q in export_road) for b in g)
+            groups = dict([min(groups.items(), key=lambda kv: near(kv[1]))])
+        ramps[flow] = {"id": ramp_id, "flow": flow, "sheds": list(sheds), "bays": _trim_faces(groups, target)}
+        print(f"  {ramp_id}: {len(ramps[flow]['bays'])} bays at {pitch:.2f} m")
 
     # --- truck journeys over the road graph ---
     yard_ways = {
@@ -617,7 +639,10 @@ def build_scene() -> dict:
     outbound = plan("outbound", NE_ENTRY, SW_EXIT, outbound_specs)
     # Lay the main parking out as angled rows now that the routes say which aisles trucks drive.
     routed = {spec["yards"][0][0] for spec in inbound_specs}
-    _angled_main(yards, roads, [b["ring"] for b in buildings], [[p for e in graph.way_chain(a) for p in e["xy"]] for a in routed])
+    rings = [b["ring"] for b in buildings]
+    chain = lambda ways: [[p for e in graph.way_chain(a) for p in e["xy"]] for a in ways]
+    _angled_lot(yards, "main", roads, rings, chain(routed), MAIN_TARGET, "main-rows", "Main truck parking")
+    _angled_lot(yards, "staging", roads, rings, chain(EXPORT_LOT_AISLES), STAGING_TARGET, "export-staging-rows", "External export parking")
 
     stations = []
     portals = []
@@ -763,11 +788,11 @@ def build_scene() -> dict:
         staging_c = area_centre([ring for y in yards if y["kind"] == "staging" for ring in y["pads"]])
         stations += [
             {"n": 1, "flow": "outbound", "tone": "gold", "en": "Truck road from Doha", "ar": "طريق الشاحنات القادمة من الدوحة", "x": _r(x0), "y": _r(y0)},
-            {"n": 2, "flow": "outbound", "tone": "maroon", "en": "External export parking", "ar": "المواقف الخارجية لمنطقة الصادر", "x": staging_c[0], "y": staging_c[1]},
+            {"n": 2, "flow": "outbound", "tone": "maroon", "en": "External export parking (~150)", "ar": "المواقف الخارجية لمنطقة الصادر (حوالي 150 موقف)", "x": staging_c[0], "y": staging_c[1]},
             {"n": 3, "flow": "outbound", "tone": "maroon", "en": "External parking exit (entry-permit gate)", "ar": "مخرج المواقف الخارجية (بوابة لإصدار تصريح الدخول)", "x": anchor("outbound-permit")[0], "y": anchor("outbound-permit")[1]},
             {"n": 4, "flow": "outbound", "tone": "green", "en": "Export zone entrance (2 gates)", "ar": "مدخل منطقة الصادر التشغيلية", "x": anchor("outbound-gate")[0], "y": anchor("outbound-gate")[1]},
             {"n": 5, "flow": "outbound", "tone": "green", "en": "Export parking (~12)", "ar": "المواقف الرئيسية (حوالي 12 موقف)", "x": centre(export_lane)[0], "y": centre(export_lane)[1]},
-            {"n": 6, "flow": "outbound", "tone": "green", "en": "Export inspection ramps", "ar": "رمبات التفتيش", "x": _r(export_shed[0]), "y": _r(export_shed[1])},
+            {"n": 6, "flow": "outbound", "tone": "green", "en": "Export inspection ramps (10)", "ar": "رمبات التفتيش (10 مواقف)", "x": _r(export_shed[0]), "y": _r(export_shed[1])},
             {"n": 7, "flow": "outbound", "tone": "green", "en": "Release gate", "ar": "بوابة الإفراج", "x": anchor("outbound-release")[0], "y": anchor("outbound-release")[1]},
         ]
     for st in stations:
@@ -920,11 +945,15 @@ def _export_parking(graph: Graph, shed) -> list[dict]:
     # Stop well short of the shed's near face, where trucks back onto its docks.
     end = _nearest_s(line, cum, _centroid(shed)) - 46.0
     rows = []
+    left = EXPORT_PARKING_BAYS
     for k, off in enumerate((4.6, 9.4)):
         kerb = _offset(line, off)
-        lane = [p for p, d in zip(kerb, cum) if start <= d <= end]
+        # Each row is cut to the bays still needed, so the strip holds exactly twelve.
+        stop = min(end, start + left * YARD_BAY + 2 + YARD_BAY / 2)
+        lane = [p for p, d in zip(kerb, cum) if start <= d <= stop]
         rows.append({"way": "export-parking" if k == 0 else "export-parking-2", "p": _xy(lane)})
-        if sum(_bay_count(r["p"]) for r in rows) >= 12:
+        left -= _bay_count(lane)
+        if left <= 0:
             break
     return [{"id": "export-parking", "name": "Export parking", "kind": "export", "pads": [], "lanes": rows}]
 
@@ -1027,7 +1056,20 @@ def _spine_to(graph: Graph, aisle: int) -> list:
     return {"via": (node["x"], node["y"])}
 
 
-def _dock_bays(ring, roads: list[dict], obstacles) -> list[list[float]]:
+def _trim_faces(groups: dict, target: int) -> list[list[float]]:
+    """Drop bays from the ends of the longest dock faces until exactly `target` remain."""
+    faces = [list(g) for g in groups.values()]
+    excess = sum(map(len, faces)) - target
+    flip = False
+    while excess > 0:
+        face = max(faces, key=len)
+        face.pop(-1 if flip else 0)
+        flip = not flip
+        excess -= 1
+    return [bay for face in faces for bay in face]
+
+
+def _dock_bays(ring, roads: list[dict], obstacles, pitch: float = RAMP_PITCH) -> list[list[float]]:
     """Truck bays square to both long faces of a shed: [x, y, heading], trucks backed in, nose out."""
     pts = ring[:-1] if ring[0] == ring[-1] else list(ring)
     cx = sum(p[0] for p in pts) / len(pts)
@@ -1041,15 +1083,15 @@ def _dock_bays(ring, roads: list[dict], obstacles) -> list[list[float]]:
     along = [(p[0] - cx) * ux + (p[1] - cy) * uy for p in pts]
     across = [(p[0] - cx) * vx + (p[1] - cy) * vy for p in pts]
     a0, a1 = min(along) + 2.0, max(along) - 2.0
-    count = int((a1 - a0) // RAMP_PITCH)
-    first = (a0 + a1) / 2 - (count - 1) * RAMP_PITCH / 2
+    count = int((a1 - a0) // pitch)
+    first = (a0 + a1) / 2 - (count - 1) * pitch / 2
     bays = []
     for side in (-1, 1):
         face = max(across) if side > 0 else min(across)
         ox, oy = vx * side, vy * side
         heading = math.atan2(ox, oy)
         for k in range(count):
-            a = first + k * RAMP_PITCH
+            a = first + k * pitch
             x = cx + ux * a + vx * face + ox * TRUCK_REACH
             y = cy + uy * a + vy * face + oy * TRUCK_REACH
             body = [(x + ox * t, y + oy * t) for t in (-8.0, 0.0, 8.0)]
@@ -1081,14 +1123,15 @@ def _lane_bays(lane: dict) -> int:
     return _bay_count(lane["p"])
 
 
-def _angled_main(yards: list[dict], roads: list[dict], obstacles, routed) -> None:
-    """Re-lay the whole main parking as angled rows, in place of the mapped nose-to-tail aisles.
+def _angled_lot(yards: list[dict], kind: str, roads: list[dict], obstacles, routed, target: int, ident: str, name: str) -> None:
+    """Re-lay every lot of one kind as angled rows, in place of the mapped nose-to-tail aisles.
 
-    Rows run parallel to the mapped aisles across every main block and the strips between them,
-    clear of roads, buildings, other lots and the aisles the simulated trucks drive through. All
-    trucks lean the same way. The stall spacing is then opened up as far as the published ~700
-    bays allow. The mapped aisles stay in the road network as driving lanes."""
-    main = [y for y in yards if y["kind"] == "main" and y["pads"]]
+    Rows run parallel to the mapped aisles across every block and the strips between them, clear
+    of roads, buildings, other lots and the aisles the simulated trucks drive through. All trucks
+    lean the same way. The stall spacing is opened up as far as the published capacity allows,
+    then the shortest rows are cut back so the lot holds exactly that many. The mapped aisles stay
+    in the road network as driving lanes."""
+    main = [y for y in yards if y["kind"] == kind and y["pads"]]
     if not main:
         return
     biggest = max(main, key=lambda y: len(y["lanes"]))
@@ -1099,7 +1142,7 @@ def _angled_main(yards: list[dict], roads: list[dict], obstacles, routed) -> Non
     rings = [ring for y in main for ring in y["pads"]]
     hull = _soft_hull([p for ring in rings for p in ring], 0.0)
     hull_edges = list(zip(hull, hull[1:] + hull[:1]))
-    others = [_soft_hull(ring, 3.0) for y in yards if y["kind"] != "main" for ring in y["pads"]]
+    others = [_soft_hull(ring, 3.0) for y in yards if y["kind"] != kind for ring in y["pads"]]
     blocked = [_soft_hull(ring, 6.0) for ring in obstacles] + others
     lines = [(road["p"], road["w"] / 2 + 3.0) for road in roads if road["c"] not in ("dirt", "aisle")]
     lines += [(pts, 3.25 + 3.5) for pts in routed]
@@ -1149,16 +1192,34 @@ def _angled_main(yards: list[dict], roads: list[dict], obstacles, routed) -> Non
     # The widest stall that still holds the published capacity.
     count = lambda stall: sum(int(_length(r) // stall) + 1 for r in rows)
     stall = STALL_RANGE[0]
-    while stall + 0.05 <= STALL_RANGE[1] and count(stall + 0.05) >= MAIN_TARGET:
+    while stall + 0.05 <= STALL_RANGE[1] and count(stall + 0.05) >= target:
         stall += 0.05
     stall = round(stall, 2)
-    print(f"  main parking: {len(rows)} angled rows, stall {stall} m, {count(stall)} bays")
-    lanes = [{"way": f"row-{i}", "p": _xy(r), "angle": round(math.degrees(ANGLE)), "stall": stall} for i, r in enumerate(rows)]
+    # Cut the shortest rows back (or drop them) until the lot holds exactly the target.
+    excess = count(stall) - target
+    rows.sort(key=_length)
+    kept = []
+    for r in rows:
+        n = int(_length(r) // stall) + 1
+        if excess > 0 and n <= excess:
+            excess -= n
+            continue
+        keep = n - max(0, excess)
+        excess = 0
+        # Every row ends half a stall past its last stall, so rounding never changes its count.
+        half = ((keep - 1) * stall + stall * 0.5) / 2
+        (ax, ay), (bx, by) = r[0], r[-1]
+        mx, my, d = (ax + bx) / 2, (ay + by) / 2, math.dist(r[0], r[-1])
+        dx, dy = (bx - ax) / d, (by - ay) / d
+        kept.append([(mx - dx * half, my - dy * half), (mx + dx * half, my + dy * half)])
+    rows = kept
+    print(f"  {ident}: {len(rows)} angled rows, stall {stall} m, {count(stall)} bays")
+    lanes = [{"way": f"{ident}-row-{i}", "p": _xy(r), "angle": round(math.degrees(ANGLE)), "stall": stall} for i, r in enumerate(rows)]
     row_pads = _row_pads(lanes, ux, uy)
     fill = _gap_pads(rings + row_pads, ux, uy) + row_pads
     for y in main:
         y["lanes"] = []
-    yards.append({"id": "main-rows", "name": "Main truck parking", "kind": "main", "pads": [], "fill": fill, "lanes": lanes})
+    yards.append({"id": ident, "name": name, "kind": kind, "pads": [], "fill": fill, "lanes": lanes})
 
 
 def _gap_pads(rings, ux: float, uy: float) -> list[list[list[float]]]:

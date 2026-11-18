@@ -1526,7 +1526,7 @@ export function buildWorld(scene, data, renderer) {
   };
   /* Main parking is busy; the external export lot about half full; the unused lot holds only a
      few stray trucks, as on the imagery. */
-  const FILL = { main: 0.62, export: 0.6, staging: 0.5, external: 0.025 };
+  const FILL = { main: 0.58, export: 0.6, staging: 0.5, external: 0.025 };
   const yardSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
