@@ -107,6 +107,22 @@ export class Simulation {
     this.time = 0;
     this.clock0 = 7 * 3600 + 30 * 60;
     this.routes = data.routes.map((raw) => new Route(raw));
+    /* Each route through an x-ray lane has a twin that is scanned at the proposed second gantry,
+       55 m before the first. Twins never spawn on their own: a truck is switched onto one when
+       the scenario runs that gantry. */
+    for (const raw of data.routes) {
+      const xs = raw.stops.find((st) => st.kind === "xray");
+      if (!xs) continue;
+      const twin = new Route({ ...raw, id: `${raw.id}-b`, stops: raw.stops.map((st) => (st === xs ? { ...st, s: st.s - 55, ref: `${st.ref}-b` } : st)) });
+      twin.isTwin = true;
+      const base = this.routes.find((r) => r.id === raw.id);
+      base.twin = twin;
+      this.routes.push(twin);
+    }
+    /* Scenario controls: import arrivals per hour, x-ray lanes in service, lanes scanned in tandem. */
+    this.inboundPerHour = 30;
+    this.xrayOff = new Set();
+    this.tandem = new Set();
     this.vehicles = [];
     this.nextId = 1;
     this.stations = new Map();
@@ -198,12 +214,18 @@ export class Simulation {
         }
         vehicle.tanker = vehicle.cat === "chem" && Math.random() < 0.3;
         vehicle.cargo = pick(CATEGORY_CARGO[vehicle.cat]);
-        /* A red-channel truck takes a lane that passes docks of its category. */
+        /* A red-channel truck takes a lane that passes docks of its category, and every truck
+           avoids an x-ray lane that is out of service. */
+        const xrayRef = (r) => (r.stops.find((st) => st.kind === "xray") || {}).ref;
         const serves = (r) => r.dockReach && r.dockReach.some((e) => e.bay.cat === vehicle.cat);
-        if (route.dockReach && !serves(route)) {
-          const alt = this.routes.filter((r) => r.flow === route.flow && serves(r));
+        const fits = (r) => !r.isTwin && r.flow === route.flow && !!r.dockReach === !!route.dockReach && (!r.dockReach || serves(r)) && !this.xrayOff.has(xrayRef(r));
+        if (!fits(route)) {
+          const alt = this.routes.filter(fits);
           if (alt.length) vehicle.route = pick(alt);
         }
+        /* Where the lane has a second scanner, every other truck is scanned there. */
+        const lane = vehicle.route;
+        if (lane.twin && this.tandem.has(xrayRef(lane)) && Math.random() < 0.5) vehicle.route = lane.twin;
       }
     } else {
       vehicle.plate = `${Math.floor(10000 + Math.random() * 899999)}`;
@@ -715,16 +737,31 @@ export class Simulation {
     return null;
   }
 
+  /* Time to the next import truck on one route, so all import routes together carry the
+     scenario's arrivals per hour. */
+  inboundGap() {
+    const routes = this.routes.filter((r) => r.flow === "inbound" && !r.isTwin).length || 1;
+    const mean = (routes * 3600) / Math.max(1, this.inboundPerHour);
+    return mean * rnd(0.75, 1.25);
+  }
+
+  /* Re-time pending import spawns after the arrival rate changes. */
+  setInbound(perHour) {
+    if (Math.abs(perHour - this.inboundPerHour) < 1e-6) return;
+    this.inboundPerHour = perHour;
+    for (const r of this.routes) if (r.flow === "inbound" && !r.isTwin) r.nextSpawn = Math.min(r.nextSpawn, this.time + this.inboundGap());
+  }
+
   step(dt) {
     this.time += dt;
     for (const route of this.routes) {
-      if (this.time < route.nextSpawn) continue;
+      if (route.isTwin || this.time < route.nextSpawn) continue;
       if (!this.startClear(route)) {
         route.nextSpawn = this.time + 4;
         continue;
       }
       this.spawn(route);
-      route.nextSpawn = this.time + (route.kind === "car" ? rnd(45, 110) : route.flow === "inbound" ? rnd(1050, 1650) : rnd(1250, 1950));
+      route.nextSpawn = this.time + (route.kind === "car" ? rnd(45, 110) : route.flow === "inbound" ? this.inboundGap() : rnd(1250, 1950));
     }
 
     const grid = this.buildGrid();

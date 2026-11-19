@@ -201,7 +201,7 @@ class Pool {
 }
 
 export class Fleet {
-  constructor(scene, { trucks = 1100, cars = 360, buses = 40 } = {}) {
+  constructor(scene, { trucks = 1700, cars = 360, buses = 40 } = {}) {
     this.scene = scene;
     const tex = containerTexture();
     tex.repeat.set(4, 1);
@@ -270,7 +270,11 @@ export class Fleet {
     const pools = type === "truck" ? [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights, this.truckBeam] : type === "car" ? [this.car, this.carLights, this.carBeam] : [this.bus, this.busLights, this.busBeam];
     for (const pool of pools) pool.mesh.setMatrixAt(slot, this.zero);
     this.owner[type][slot] = undefined;
-    this.free[type].push(slot);
+    const free = this.free[type];
+    /* Keep the list descending so pop() always returns the lowest free slot. */
+    let i = free.length;
+    while (i > 0 && free[i - 1] < slot) i -= 1;
+    free.splice(i, 0, slot);
     vehicle.slot = undefined;
   }
 
@@ -310,6 +314,21 @@ export class Fleet {
   }
 
   commit() {
+    /* Draw only up to the highest slot in use: free slots are handed out lowest first, so a
+       large pool costs nothing until it is needed. */
+    const used = {};
+    for (const type of ["truck", "car", "bus"]) {
+      const owners = this.owner[type];
+      let top = owners.length;
+      while (top > 0 && owners[top - 1] === undefined) top -= 1;
+      used[type] = top;
+    }
+    const groups = [
+      [used.truck, [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights, this.truckBeam]],
+      [used.car, [this.car, this.carLights, this.carBeam]],
+      [used.bus, [this.bus, this.busLights, this.busBeam]],
+    ];
+    for (const [n, pools] of groups) for (const pool of pools) pool.mesh.count = n;
     for (const pool of [this.tractor, this.tractorLights, this.chassis, this.container, this.tank, this.trailerLights, this.car, this.carLights, this.bus, this.busLights]) {
       pool.mesh.instanceMatrix.needsUpdate = true;
     }

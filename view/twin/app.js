@@ -14,7 +14,7 @@ import { Atmosphere, PRESETS } from "./atmosphere.js";
 import { buildGround } from "./terrain.js";
 import { buildBeacons, buildRouteTrace } from "./overlays.js";
 import { Executive, SAMPLE_STEP } from "./executive.js";
-import { Planner } from "./planner.js";
+import { Planner, model } from "./planner.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -175,21 +175,123 @@ async function main() {
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
   world.rampSlots.forEach((slot) => placeStatic(slot, "ramp"));
   sim.setBays(world.rampBays);
-  sim.reserveParked(world.yardSlots);
+  sim.reserveParked([...world.yardSlots, ...world.parkSlots]);
+
+  /* ---------- trucks the capacity model sets ----------
+     How full the main parking (and any proposed bays) looks, how many import docks are busy in
+     each category, and how long the queue beside the x-ray lanes is, all come from the same
+     model as the planner's figures, so the picture and the numbers tell one story. Each set is
+     filled in a fixed shuffled order, so a small change adds or removes a few trucks rather
+     than reshuffling the lot. */
+  const props = new Map();
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const shuffled = (n) => {
+    const a = [...Array(n).keys()];
+    for (let i = n - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const parkOrder = shuffled(world.parkSlots.length);
+  const bayOrder = shuffled(world.rampBays.length);
+  const showProp = (key, slot, where, kind) => {
+    if (props.has(key)) return;
+    const before = statics.length;
+    placeStatic({ ...slot, kind }, where);
+    if (statics.length > before) props.set(key, statics.pop());
+  };
+  const hideProp = (key) => {
+    const v = props.get(key);
+    if (!v) return;
+    if (followed === v) stopFollow();
+    fleet.release(v);
+    props.delete(key);
+  };
+  const scenarioOf = (s) => ({ ...s, alloc: s.alloc || Object.fromEntries((data.ramps.find((r) => r.categories) || { categories: [] }).categories.map((c) => [c.id, c.bays])) });
+  function syncProps(state, res) {
+    const m = cfg.model;
+    const today = cfg.parking.default;
+    /* parking: open stalls are main stalls not closed by the scenario, plus opened proposals */
+    const closed = new Set(state.parking < today ? closeOrderOf(today - state.parking) : []);
+    const opened = Math.max(0, state.parking - today);
+    const want = Math.round(Math.min(res.inYard, state.parking));
+    let n = 0;
+    for (const i of parkOrder) {
+      const slot = world.parkSlots[i];
+      const open = slot.kind === "main" ? !closed.has(slot.stall) : slot.stall < opened;
+      const key = `p${i}`;
+      if (open && n < want) {
+        showProp(key, slot, "yard", "main");
+        n += 1;
+      } else hideProp(key);
+    }
+    /* import docks: busy docks per category, counting trucks the simulation already has there */
+    for (const cat of ["chem", "oga", "health"]) {
+      const busy = Math.min(state.alloc[cat] || 0, res.lam * m.inspectRate * (state.mix[cat] || 0) * m.inspectionHours);
+      const live = world.rampBays.filter((b) => b.cat === cat && b.v && b.v !== "static").length;
+      let need = Math.max(0, Math.round(busy) - live);
+      for (const i of bayOrder) {
+        const bay = world.rampBays[i];
+        if (bay.home === null) continue;
+        const key = `r${i}`;
+        if (bay.cat !== cat) {
+          if (bay.cat && !["chem", "oga", "health"].includes(bay.cat)) continue;
+          continue;
+        }
+        if (bay.v && bay.v !== "static") continue;
+        if (need > 0 && bay.free) {
+          showProp(key, bay, "ramp", "ramp");
+          bay.v = "static";
+          need -= 1;
+        } else {
+          hideProp(key);
+          bay.v = null;
+        }
+      }
+    }
+    /* x-ray holding lines: the model's queue, shared by the lanes in service */
+    const lanes = world.holdLines.filter((l) => !sim.xrayOff.has(l.ref));
+    const queued = Number.isFinite(res.xray.wait) ? res.lam * res.xray.wait : Infinity;
+    for (const line of world.holdLines) {
+      const on = lanes.includes(line);
+      const count = on ? Math.min(line.slots.length, Math.round(queued / Math.max(1, lanes.length))) : 0;
+      line.slots.forEach((slot, k) => (k < count ? showProp(`q${line.ref}${k}`, slot, "queue", "queue") : hideProp(`q${line.ref}${k}`)));
+    }
+    fleet.commit();
+  }
+  const rampStaticCount = () => statics.filter((v) => v.where === "ramp").length + [...props.values()].filter((v) => v.where === "ramp").length;
+  /* Main stalls close from the north-east end of the lot. */
+  const closeRank = world.mainStalls.map((st, i) => [i, st.x * 0.76 + st.y * 0.65]).sort((a, b) => b[1] - a[1]).map(([i]) => i);
+  const closeOrderOf = (k) => closeRank.slice(0, k);
+  /* The scenario runs in the simulation too: arrivals, scanner lanes, inspection mix. */
+  function syncSim(state) {
+    sim.setInbound(state.demand / 24);
+    sim.mix = { ...state.mix };
+    const lanes = data.xrays.map((x) => x.id);
+    sim.xrayOff = new Set(state.xray < lanes.length ? lanes.slice(state.xray) : []);
+    sim.tandem = new Set(lanes.slice(0, Math.max(0, state.xray - lanes.length)));
+  }
+  {
+    const s0 = scenarioOf({ demand: cfg.model.demandPerDay, parking: cfg.parking.default, xray: cfg.xray.default, mix: { ...cfg.ramps.volumeMix } });
+    plan.result = model(cfg, s0);
+    syncSim(s0);
+    syncProps(s0, plan.result);
+  }
   fleet.commit();
 
   status("Warming up traffic");
-  /* Two simulated hours run before the scene opens, so traffic is in a steady state and the
+  /* Ninety simulated minutes run before the scene opens, so traffic is in a steady state and the
      dashboards open with real history: trends, released trucks and clearance times. */
-  const prewarm = Number(params.get("prewarm") || 7200);
-  const rampStatic = statics.filter((v) => v.where === "ramp").length;
-  /* Trucks parked in the main parking (the other lots have their own counts), minus any in
-     stalls a planner scenario has closed. */
-  const mainParked = () => statics.reduce((n, v) => n + (v.where === "yard" && v.kind === "main" && !v.hidden ? 1 : 0), 0);
+  const prewarm = Number(params.get("prewarm") || 5400);
+  /* Trucks parked in the main parking, including any proposed bays (the other lots have their
+     own counts). */
+  const mainParked = () => [...props.values()].reduce((n, v) => n + (v.where === "yard" ? 1 : 0), 0);
   const seedHistory = [];
   for (let t = 0, n = 0; t < prewarm; t += SAMPLE_STEP, n += 1) {
     sim.advance(SAMPLE_STEP);
-    const k = sim.kpis(mainParked(), world.yardCapacity, rampStatic);
+    const k = sim.kpis(mainParked(), world.yardCapacity, rampStaticCount());
     seedHistory.push(k.trucksIn);
     exec.sample(sim.time, k);
     if (n % 3 === 2) {
@@ -369,8 +471,9 @@ async function main() {
         const pct = k.yard / Math.max(1, k.yardCapacity);
         return [`${Math.round(pct * 100)}%`, "uFull", pct >= 0.9 ? 2 : pct >= 0.75 ? 1 : 0];
       }
-      if (st.n === 5) return [k.scansPerHour, "uHour", 0];
-      if (st.n === 6) return [k.inspections, "uRamps", 0];
+      const lv = (rho) => (!Number.isFinite(rho) || rho >= 0.9 ? 2 : rho >= 0.75 ? 1 : 0);
+      if (st.n === 5) return [k.scansPerHour, "uHour", plan.result ? lv(plan.result.xray.rho) : 0];
+      if (st.n === 6) return [k.inspections, "uRamps", plan.result ? Math.max(...Object.values(plan.result.cats).map((c) => lv(c.rho))) : 0];
       if (st.n === 7) return [sim.stats.releasedBy.inbound, "uReleased", 0];
       return null;
     }
@@ -544,7 +647,6 @@ async function main() {
   const rampInfo = (data.ramps || []).find((r) => r.categories);
   const shedDocks = Object.fromEntries((rampInfo ? rampInfo.categories : []).map((c) => [c.id, c.bays]));
   /* Main stalls close from the north-east end of the lot; proposed bays open nearest first. */
-  const closeOrder = world.mainStalls.map((st, i) => [i, st.x * 0.76 + st.y * 0.65]).sort((a, b) => b[1] - a[1]).map(([i]) => i);
   /* Docks in allocation order: by home shed, then along the line of sheds, so a category that
      outgrows its shed takes the neighbouring shed's nearest docks. */
   const shedAt = Object.fromEntries((rampInfo ? rampInfo.categories : []).map((c, i) => [i, c]));
@@ -622,21 +724,10 @@ async function main() {
     const P = (en, ar) => (lang === "ar" ? ar : en);
     /* parking */
     const today = cfg.parking.default;
-    const closed = new Set(st.parking < today ? closeOrder.slice(0, today - st.parking) : []);
+    const closed = new Set(st.parking < today ? closeOrderOf(today - st.parking) : []);
     world.mainStalls.forEach((_, i) => world.stallOverlays.main.set(i, closed.has(i) ? "#ff5d6c" : null));
     const open = Math.max(0, st.parking - today);
     world.proposedStalls.forEach((_, i) => world.stallOverlays.proposed.set(i, i < open ? "#5fe0d8" : null));
-    for (const v of statics) {
-      if (v.stall < 0 || v.kind !== "main") continue;
-      const shut = closed.has(v.stall);
-      if (shut && !v.hidden) {
-        fleet.release(v);
-        v.hidden = true;
-      } else if (!shut && v.hidden && fleet.allocate(v)) {
-        v.hidden = false;
-        fleet.place(v, v.pose);
-      }
-    }
     world.yardCapacity = st.parking;
     parkPin.shown = open > 0;
     if (open > 0) {
@@ -685,20 +776,57 @@ async function main() {
         parts.length > 1 ? `<span class="mixbar">${parts.map(([c, n]) => `<u style="flex:${n};background:${plan.cats[c].color}" title="${catName(c)} ${n}"></u>`).join("")}</span>` : ""
       }`;
     }
-    sim.mix = { ...st.mix };
+    plan.result = plan.planner ? plan.planner.result : model(cfg, st);
+    syncSim(st);
+    syncProps(st, plan.result);
+    /* Waiting trucks per category, from the model, on each shed's tag. */
+    for (const p of shedPins) {
+      const q = plan.result.cats[p.c.id];
+      const waiting = Number.isFinite(q.wait) ? res0(q) : Infinity;
+      const tag = p.el.querySelector(".lvv");
+      if (waiting >= 1) tag.insertAdjacentHTML("afterend", `<span class="wait">${Number.isFinite(waiting) ? `${Math.round(waiting)} ${P("waiting", "بالانتظار")}` : P("overloaded", "فوق الطاقة")}</span>`);
+    }
     applyVisibility();
   };
+  const res0 = (q) => plan.result.lam * cfg.model.inspectRate * q.share * q.wait;
   plan.planner = new Planner(cfg, { shedDocks, proposedMax: world.proposedStalls.length }, {
     lang: () => lang,
     onChange(state) {
       plan.state = state;
       if (!plan.ready) return;
       plan.paint();
+      plan.syncHash();
       renderKpis();
     },
   });
   plan.state = plan.planner.state;
   plan.planner.mount($("planner"));
+  /* A scenario lives in the address (#plan=…), so it can be shared or reopened as a link. */
+  const encodePlan = (s) => `d${s.demand}.p${s.parking}.x${s.xray}.m${["chem", "oga", "health"].map((c) => Math.round(s.mix[c] * 100)).join("-")}.a${["chem", "oga", "health"].map((c) => s.alloc[c]).join("-")}`;
+  const decodePlan = (text) => {
+    const out = {};
+    for (const part of text.split(".")) {
+      const k = part[0];
+      const v = part.slice(1);
+      if (k === "d") out.demand = Number(v);
+      if (k === "p") out.parking = Number(v);
+      if (k === "x") out.xray = Number(v);
+      if (k === "m") {
+        const [a, b, c] = v.split("-").map(Number);
+        out.mix = { chem: a / 100, oga: b / 100, health: c / 100 };
+      }
+      if (k === "a") {
+        const [a, b, c] = v.split("-").map(Number);
+        out.alloc = { chem: a, oga: b, health: c };
+      }
+    }
+    return out;
+  };
+  plan.planner.onShare = () => location.href;
+  plan.syncHash = () => {
+    const url = plan.planner.changed() || plan.state.demand !== cfg.model.demandPerDay ? `#plan=${encodePlan(plan.state)}` : " ";
+    window.history.replaceState(null, "", url === " " ? location.pathname + location.search : url);
+  };
   function setPlanner(on) {
     plan.open = on;
     plan.planner.open = on;
@@ -734,7 +862,7 @@ async function main() {
     clockOf: (t) => sim.clock0 + t,
     flowName: (flow) => (FLOWS[flow] || FLOWS.inbound)[lang][0],
     stations: (k, live) => stationObjects.map(({ st }, index) => ({ index, flow: st.flow, n: st.n, tone: st.tone, name: stationName(st), title: lang === "ar" ? st.ar : st.en, value: stationLive(st, k, live) })),
-    cargo: () => [...statics, ...sim.vehicles].filter((v) => v.type === "truck" && v.cargo).map((v) => v.cargo),
+    cargo: () => [...statics, ...props.values(), ...sim.vehicles].filter((v) => v.type === "truck" && v.cargo).map((v) => v.cargo),
     onStation(index) {
       setExec(false);
       focusStation(index);
@@ -964,7 +1092,7 @@ async function main() {
     el.className = `delta ${diff > 0 ? "up" : diff < 0 ? "down" : ""}`;
   }
   function renderKpis(dt = 0) {
-    const k = sim.kpis(mainParked(), world.yardCapacity, rampStatic);
+    const k = sim.kpis(mainParked(), world.yardCapacity, rampStaticCount());
     $("k-trucks").textContent = k.trucksIn;
     const pct = k.yard / Math.max(1, k.yardCapacity);
     $("k-yard").textContent = k.yard;
@@ -1014,6 +1142,13 @@ async function main() {
   setFlow(activeFlow);
   applyDash();
   plan.ready = true;
+  {
+    const m = /#plan=([^&]+)/.exec(location.hash);
+    if (m) {
+      plan.planner.load(decodePlan(decodeURIComponent(m[1])));
+      setPlanner(true);
+    }
+  }
   plan.paint();
 
   /* ---------- resize and loop ---------- */

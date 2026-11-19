@@ -80,8 +80,8 @@ export function model(cfg, s) {
 
 const T = {
   en: {
-    title: "Capacity planner", proposal: "Proposal", today: "Today", reset: "Reset",
-    note: "What-if settings. The 3D view shows proposals in outline; the figures come from a queueing model of the port using the assumptions in config.json.",
+    title: "Capacity planner", proposal: "Proposal", today: "Today", reset: "Reset", share: "Copy link", copied: "Link copied", copyFail: "Copy the address bar",
+    note: "What-if settings. The scene follows the scenario: arrivals, scanners and dock allocation run in the simulation, and how full each area looks comes from the planning model behind these figures (assumptions in config.json).",
     demand: "Truck arrivals", perDay: "/ day", mix: "Inspection volume mix",
     parking: "Main parking", bays: "bays", proposed: "proposed", closed: "closed",
     xray: "X-ray scanners", scanners: "scanners", outOfService: "out of service",
@@ -91,8 +91,8 @@ const T = {
     bn: { xray: "x-ray", ramps: "inspection ramps", parking: "parking" }, live: "Live", inspected: "inspected", waved: "waved through",
   },
   ar: {
-    title: "مخطط الطاقة الاستيعابية", proposal: "مقترح", today: "الحالي", reset: "إعادة",
-    note: "إعدادات افتراضية. يعرض النموذج ثلاثي الأبعاد المقترحات كمخطط؛ والأرقام من نموذج طوابير للمنفذ وفق افتراضات config.json.",
+    title: "مخطط الطاقة الاستيعابية", proposal: "مقترح", today: "الحالي", reset: "إعادة", share: "نسخ الرابط", copied: "تم النسخ", copyFail: "انسخ شريط العنوان",
+    note: "إعدادات افتراضية. يتبع المشهد السيناريو: الشاحنات القادمة وأجهزة الأشعة وتوزيع الأرصفة تعمل في المحاكاة، ومستوى الإشغال من نموذج التخطيط وفق افتراضات config.json.",
     demand: "الشاحنات القادمة", perDay: "/ يوم", mix: "توزيع حجم التفتيش",
     parking: "المواقف الرئيسية", bays: "موقف", proposed: "مقترح", closed: "مغلق",
     xray: "أجهزة الأشعة", scanners: "أجهزة", outOfService: "خارج الخدمة",
@@ -170,6 +170,22 @@ export class Planner {
     return this.lang() === "ar" ? c.ar : c.tag || c.short || c.en;
   }
 
+  /* Apply a saved or shared scenario, within the configured limits. */
+  load(s) {
+    const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
+    const st = this.initial();
+    if (Number.isFinite(s.demand)) st.demand = clamp(s.demand, this.limits.demand);
+    if (Number.isFinite(s.parking)) st.parking = clamp(s.parking, this.limits.parking);
+    if (Number.isFinite(s.xray)) st.xray = clamp(s.xray, this.limits.xray);
+    if (s.mix && CATS.every((c) => Number.isFinite(s.mix[c]))) {
+      const sum = CATS.reduce((n, c) => n + s.mix[c], 0) || 1;
+      st.mix = Object.fromEntries(CATS.map((c) => [c, s.mix[c] / sum]));
+    }
+    if (s.alloc && CATS.every((c) => Number.isFinite(s.alloc[c])) && CATS.reduce((n, c) => n + s.alloc[c], 0) === this.totalDocks) st.alloc = { ...s.alloc };
+    this.state = st;
+    if (this.root) this.build();
+  }
+
   mount(root) {
     this.root = root;
     this.build();
@@ -183,7 +199,7 @@ export class Planner {
     this.root.innerHTML = `
       <div class="pl-head">
         <div><h2>${t("title")}</h2><span class="pl-tag" id="pl-tag">${t("proposal")}</span></div>
-        <button type="button" class="pl-reset" id="pl-reset">${t("reset")}</button>
+        <div class="pl-acts"><button type="button" class="pl-reset pl-icon" id="pl-share" title="${t("share")}"><svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></button><button type="button" class="pl-reset" id="pl-reset">${t("reset")}</button></div>
       </div>
       <p class="pl-note">${t("note")}</p>
       <section class="pl-sec pl-impact">
@@ -239,6 +255,20 @@ export class Planner {
         this.update(true);
       })
     );
+    $("pl-share").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(location.href);
+        btn.title = t("copied");
+        btn.classList.add("ok");
+      } catch {
+        btn.title = t("copyFail");
+      }
+      setTimeout(() => {
+        btn.title = t("share");
+        btn.classList.remove("ok");
+      }, 1600);
+    });
     $("pl-reset").addEventListener("click", () => {
       this.state = this.initial();
       demand.value = this.state.demand;
