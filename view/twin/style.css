@@ -902,7 +902,7 @@ body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
 #demo { position: fixed; left: 50%; top: 84px; transform: translateX(-50%); z-index: 40; display: none; pointer-events: none; width: min(640px, calc(100vw - 32px)); }
 #demo.on { display: block; }
 .dm-card { pointer-events: auto; text-align: center; padding: 16px 22px 12px; border-radius: 18px; background: rgba(10, 13, 18, 0.82); border: 1px solid rgba(95, 224, 216, 0.28); backdrop-filter: blur(14px); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
-.dm-card.pop { animation: dm-pop 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.dm-card.dm-in { animation: dm-pop 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
 @keyframes dm-pop { from { opacity: 0; transform: translateY(-10px) scale(0.96); } to { opacity: 1; transform: none; } }
 .dm-kick { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
 .dm-letter { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: #5fe0d8; color: #08201e; font-size: 12px; letter-spacing: 0; }
@@ -928,6 +928,10 @@ body.demo-on .vehicle-hint, body.demo-on #intro { display: none; }
 /* what changed: tag over the changed place, pins flash */
 .chg-tag { pointer-events: none; left: 0; top: 0; }
 .chg-in { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 12px; background: rgba(8, 20, 22, 0.9); border: 1.5px solid #5fe0d8; color: #e8fffd; box-shadow: 0 0 0 4px rgba(95, 224, 216, 0.16), 0 10px 30px rgba(0, 0, 0, 0.45); white-space: nowrap; }
+/* in the demo the story card fills the top of the screen: hang the change tag below it */
+body.demo-on .chg-in { position: relative; top: 190px; }
+body.mobile.demo-on .chg-in { top: 120px; }
+.chg-in small { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; }
 .chg-in b { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #9fe9e3; }
 .chg-in span { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .chg-in i { font-style: normal; margin: 0 8px; opacity: 0.6; }

@@ -91,9 +91,7 @@ const STOP_LABEL = {
   booth: "Passport and customs booth",
 };
 const GATE_LABEL = {
-  "inbound-gate": "Appointment check",
   "outbound-gate": "Outbound entrance",
-  "outbound-permit": "Entry permit gate",
   "inbound-release": "Release gate",
   "outbound-release": "Release gate",
 };
@@ -658,9 +656,9 @@ export class Simulation {
       this.docks = this.docks.filter((d) => d.v !== v);
       v.dock = null;
     }
-    /* A truck is inside the operational zone once it passes its entry gate. The export permit
-       gate stands outside the zone, at the exit of the external parking. */
-    if (stop.kind === "gate" && !ref.endsWith("release") && !ref.endsWith("permit") && v.type === "truck") {
+    /* A truck is inside the operational zone once it passes its entry point: the radiation
+       portal for imports, the entry gate for exports. */
+    if (v.type === "truck" && v.enteredAt === undefined && (stop.kind === "portal" || (stop.kind === "gate" && !ref.endsWith("release")))) {
       v.phase = "in";
       v.enteredAt = this.time;
     }

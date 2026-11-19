@@ -74,6 +74,18 @@ async function main() {
   if (!Array.isArray(data.roads) || !Array.isArray(data.routes)) {
     throw new Error("scene.json is outdated; run python -m abu_samra.scene and reload");
   }
+  /* The appointment check (import) and the entry-permit gate (export) are not part of the
+     operation we model: drop their gates, the stops at them and their stations, then number
+     the remaining stations 1, 2, 3 ... for display. st.n stays the survey number for logic. */
+  const DROP_GATES = new Set(["inbound-gate", "outbound-permit"]);
+  data.gates = data.gates.filter((g) => !DROP_GATES.has(g.ref));
+  for (const r of data.routes) r.stops = r.stops.filter((s) => !DROP_GATES.has(String(s.ref)));
+  data.stations = data.stations.filter((st) => !((st.flow === "inbound" || st.flow === "outbound") && st.n === 3));
+  for (const flow of ["inbound", "outbound"]) {
+    let i = 0;
+    for (const st of data.stations) if (st.flow === flow && typeof st.n === "number") st.shown = ++i;
+  }
+  for (const st of data.stations) if (st.shown === undefined) st.shown = st.n;
   /* Planner defaults and limits: parking bays, x-ray scanners, inspection categories, model. */
   const cfg = await (await fetch("config.json", { cache: "no-store" })).json();
   /* The learned port model (ml/learn.py → learned.json): synthetic trucks, calibrated queues,
@@ -421,7 +433,7 @@ async function main() {
     },
     gates: () => {
       const p = data.portals[0] || data.gates[0];
-      const g = data.gates.find((item) => item.ref === "inbound-gate") || p;
+      const g = data.gates.find((item) => item.ref === "outbound-gate") || p;
       return camPose(g.x, g.y, 150, 73, 96);
     },
     booths: () => {
@@ -496,7 +508,6 @@ async function main() {
     if (st.flow === "inbound") {
       if (st.n === 1) return [live.approach.inbound, "uRoute", 0];
       if (st.n === 2) return queue(q("inbound-portal"));
-      if (st.n === 3) return queue(q("inbound-gate"));
       if (st.n === 4) {
         const pct = k.yard / Math.max(1, k.yardCapacity);
         return [`${Math.round(pct * 100)}%`, "uFull", pct >= 0.9 ? 2 : pct >= 0.75 ? 1 : 0];
@@ -510,7 +521,6 @@ async function main() {
     if (st.flow === "outbound") {
       if (st.n === 1) return [live.approach.outbound, "uRoute", 0];
       if (st.n === 2) return [q("export-staging"), "uParked", 0];
-      if (st.n === 3) return queue(q("outbound-permit"));
       if (st.n === 4) return queue(q("outbound-gate"));
       if (st.n === 5) return [q("export-parking"), "uParked", 0];
       if (st.n === 6) return [q("ramp-export"), "uRamps", 0];
@@ -541,7 +551,7 @@ async function main() {
   });
   function paintPins() {
     for (const s of stationObjects) {
-      s.el.innerHTML = `<span class="dotn">${s.st.n}</span><span class="nm">${stationName(s.st)}</span><span class="lv"></span>`;
+      s.el.innerHTML = `<span class="dotn">${s.st.shown}</span><span class="nm">${stationName(s.st)}</span><span class="lv"></span>`;
       s.lv = s.el.querySelector(".lv");
       s.shown = null;
     }
@@ -579,7 +589,7 @@ async function main() {
       const st = s.st;
       if (st.flow !== activeFlow) return;
       const li = document.createElement("li");
-      li.innerHTML = `<button type="button" class="step tone-${st.tone}" data-index="${index}" title="${st.en}"><span class="dotn">${st.n}</span><span class="nm">${stationName(st)}</span><span class="lv"></span></button>`;
+      li.innerHTML = `<button type="button" class="step tone-${st.tone}" data-index="${index}" title="${st.en}"><span class="dotn">${st.shown}</span><span class="nm">${stationName(st)}</span><span class="lv"></span></button>`;
       li.firstChild.addEventListener("click", () => focusStation(index));
       host.appendChild(li);
       s.railLv = li.querySelector(".lv");
@@ -890,26 +900,29 @@ async function main() {
   chgObj.visible = false;
   scene.add(chgObj);
   let chgHide = 0;
-  function flashSpot(s) {
+  /* how long the camera rests on each change, and how long the flight to it takes */
+  const CHG_DWELL = 7;
+  const CHG_FLY = 3.6;
+  function flashSpot(s, step) {
     const color = s.process ? "#f2c14e" : s.up ? "#5fe0d8" : "#ff5d6c";
     for (let k = 0; k < 3; k += 1) {
       const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
       m.position.copy(v3(s.x, s.y, 1.5));
       m.renderOrder = 7;
       scene.add(m);
-      rings.push({ m, r: s.r, t: -k * 0.55, life: 5.5 });
+      rings.push({ m, r: s.r, t: -k * 0.55, life: CHG_DWELL });
     }
-    chgEl.innerHTML = `<div class="chg-in ${s.process ? "proc" : s.up ? "up" : "down"}"><b>${s.title}</b><span>${s.from}<i>→</i><em>${s.to}</em></span></div>`;
+    chgEl.innerHTML = `<div class="chg-in ${s.process ? "proc" : s.up ? "up" : "down"}">${step ? `<small>${step}</small>` : ""}<b>${s.title}</b><span>${s.from}<i>→</i><em>${s.to}</em></span></div>`;
     chgObj.position.copy(v3(s.x, s.y, s.r * 0.35 + 12));
     chgObj.visible = true;
     clearTimeout(chgHide);
-    chgHide = setTimeout(() => (chgObj.visible = false), 4200);
+    chgHide = setTimeout(() => (chgObj.visible = false), CHG_DWELL * 1000);
     for (const p of s.pins || []) {
       if (!p || !p.el) continue;
       p.el.classList.remove("flash");
       void p.el.offsetWidth;
       p.el.classList.add("flash");
-      setTimeout(() => p.el.classList.remove("flash"), 4200);
+      setTimeout(() => p.el.classList.remove("flash"), CHG_DWELL * 1000);
     }
   }
   function stepRings(dt) {
@@ -946,11 +959,11 @@ async function main() {
       changeTour = null;
       return;
     }
-    flyTo(camPose(s.x, s.y, s.dist, 57, 128 + ct.i * 22), 2.2);
+    flyTo(camPose(s.x, s.y, s.dist, 57, 128 + ct.i * 22), CHG_FLY);
     flight.then = () => {
       if (changeTour !== ct) return;
-      flashSpot(s);
-      ct.timer = setTimeout(nextChange, 3400);
+      flashSpot(s, ct.spots.length > 1 ? `Change ${ct.i + 1} of ${ct.spots.length}` : "");
+      ct.timer = setTimeout(nextChange, CHG_DWELL * 1000);
     };
   }
   function cancelChanges() {
@@ -973,7 +986,7 @@ async function main() {
     }, 600);
   }
   /* seconds the camera needs to visit every change from the last one shown to state s */
-  plan.changeTime = (s) => changeSpots(plan.seen || pm.today, s).length * 5.6;
+  plan.changeTime = (s) => changeSpots(plan.seen || pm.today, s).length * (CHG_DWELL + CHG_FLY + 0.4);
   /* A scenario lives in the address (#plan=…), so it can be shared or reopened as a link. */
   const encodePlan = (s) => `s${s.surge}.p${s.parking}.x${s.xray}.d${s.docks}.a${CATS.map((c) => s.alloc[c]).join("-")}.f${s.prefile}.g${s.green}.o${s.overlap}`;
   const decodePlan = (text) => {
@@ -1031,7 +1044,7 @@ async function main() {
     hhmm: (c) => hhmm(c),
     clockOf: (t) => sim.clock0 + t,
     flowName: (flow) => (FLOWS[flow] || FLOWS.inbound)[lang][0],
-    stations: (k, live) => stationObjects.map(({ st }, index) => ({ index, flow: st.flow, n: st.n, tone: st.tone, name: stationName(st), title: lang === "ar" ? st.ar : st.en, value: stationLive(st, k, live) })),
+    stations: (k, live) => stationObjects.map(({ st }, index) => ({ index, flow: st.flow, n: st.shown, tone: st.tone, name: stationName(st), title: lang === "ar" ? st.ar : st.en, value: stationLive(st, k, live) })),
     learned,
     cats: plan.cats,
     scenarioChanged: () => plan.planner.changed(),
@@ -1151,8 +1164,11 @@ async function main() {
   $("tour").addEventListener("click", () => (tour ? stopTour() : startTour()));
 
   /* ---------- demo: the WASL story played with the twin's own features ---------- */
+  let demoSpeed = 0;
   const demo = createDemo({
     pm,
+    /* true while the camera is still moving, so the story waits before counting down */
+    moving: () => !!flight,
     prepare() {
       stopTour();
       stopFollow();
@@ -1163,9 +1179,14 @@ async function main() {
       $("dash").classList.remove("tucked");
       $("planner").classList.remove("tucked");
       $("demo-btn").classList.add("on");
+      /* the story plays the simulation at 5x so trucks can be followed by eye */
+      demoSpeed = speed;
+      document.querySelector('[data-speed="5"]')?.click();
     },
     finish() {
       setExec(false);
+      if (demoSpeed) document.querySelector(`[data-speed="${demoSpeed}"]`)?.click();
+      demoSpeed = 0;
       $("demo-btn").classList.remove("on");
     },
     reset() {
@@ -1176,7 +1197,7 @@ async function main() {
     view(name) {
       stopFollow();
       cancelChanges();
-      flyTo(VIEWS[name](), 3.2);
+      flyTo(VIEWS[name](), 4.5);
       document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
     },
     followTruck() {

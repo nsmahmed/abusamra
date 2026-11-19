@@ -1009,13 +1009,11 @@ export function buildWorld(scene, data, renderer) {
     }
   }
 
-  /* ---------- truck gates (appointment, entrance, release) ---------- */
+  /* ---------- truck gates (entrance, release) ---------- */
   const gateCtl = new Map();
   const signs = {
-    "inbound-gate": ["بوابات التحقق من الموعد", "APPOINTMENT CHECK"],
     "inbound-release": ["بوابة الإفراج", "RELEASE GATE"],
     "outbound-gate": ["مدخل منطقة الصادر", "OUTBOUND ENTRANCE"],
-    "outbound-permit": ["تصريح الدخول", "ENTRY PERMIT"],
     "outbound-release": ["بوابة الإفراج", "RELEASE GATE"],
   };
   const glowSpots = [];
@@ -1759,8 +1757,8 @@ export function buildFlows(scene, data) {
     const P = dedupe(route.p);
     const cum = cumulative(P);
     /* The ribbon turns green where the truck enters the operational zone: the flow's own entry
-       gate, not a permit gate on the way to it. */
-    const gate = route.stops.find((s) => s.ref === `${route.flow}-gate`) || route.stops.find((s) => s.kind === "gate" && !String(s.ref).endsWith("release"));
+       gate (exports) or the radiation portal (imports). */
+    const gate = route.stops.find((s) => s.ref === `${route.flow}-gate`) || route.stops.find((s) => s.kind === "portal") || route.stops.find((s) => s.kind === "gate" && !String(s.ref).endsWith("release"));
     const release = route.stops.find((s) => String(s.ref).endsWith("release"));
     const L = cum[cum.length - 1];
     let s0 = 0;
