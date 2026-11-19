@@ -1190,6 +1190,9 @@ export function buildWorld(scene, data, renderer) {
     if (proposed) {
       g.remove(beam);
       ghostify(g);
+      /* It still scans when the scenario runs it: the beam lights as trucks pass through. */
+      g.add(beam);
+      xrayCtl.set(xr.id, { beam, beacons, active: 0 });
       /* A faint footprint of the scanning lane it would add. */
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(11, 60), new THREE.MeshBasicMaterial({ color: "#5fe0d8", transparent: true, opacity: 0.1, depthWrite: false, toneMapped: false }));
       pad.rotation.x = -Math.PI / 2;
@@ -1215,7 +1218,7 @@ export function buildWorld(scene, data, renderer) {
     const [x, y] = pointAt(P, cum, at);
     const a = pointAt(P, cum, at - 4);
     const b = pointAt(P, cum, at + 4);
-    const spot = { x, y, h: Math.atan2(b[0] - a[0], b[1] - a[1]), id: `${xr.id}-proposed` };
+    const spot = { x, y, h: Math.atan2(b[0] - a[0], b[1] - a[1]), id: `${xr.id}-b`, lane: xr.id };
     const g = buildGantry(spot, true);
     g.visible = false;
     proposedXrays.push({ ...spot, group: g });
@@ -1565,6 +1568,7 @@ export function buildWorld(scene, data, renderer) {
   const mainStalls = [];
   const proposedStalls = [];
   const yardSlots = [];
+  const parkSlots = [];
   let yardCapacity = 0;
   for (const yard of data.yards) {
     for (const lane of yard.lanes) {
@@ -1583,6 +1587,12 @@ export function buildWorld(scene, data, renderer) {
         if (yard.kind === "main" && lane.angle) stall = mainStalls.push({ x: x - Math.sin(h) * 1.0, y: y - Math.cos(h) * 1.0, h }) - 1;
         if (yard.kind === "external" && lane.angle) proposedStalls.push({ x: x - Math.sin(h) * 1.0, y: y - Math.cos(h) * 1.0, h });
         if (yard.kind === "main" && activeAisles.has(String(lane.way))) continue;
+        if (lane.angle && (yard.kind === "main" || yard.kind === "external")) {
+          /* How full the main parking and the proposed lot look is set by the capacity model. */
+          const idx = yard.kind === "main" ? stall : proposedStalls.length - 1;
+          if (slotFree(x, y, h)) parkSlots.push({ x, y, h, kind: yard.kind === "main" ? "main" : "proposed", stall: idx });
+          continue;
+        }
         if (Math.random() > (FILL[yard.kind] ?? 0.5)) continue;
         if (slotFree(x, y, h)) yardSlots.push({ x, y, h, kind: yard.kind, stall });
       }
@@ -1594,12 +1604,46 @@ export function buildWorld(scene, data, renderer) {
   for (const ramp of data.ramps || []) {
     for (const [x, y, h, cat] of ramp.bays) {
       const bay = { x, y, h, ref: ramp.id, v: null, home: cat ?? null, cat: cat == null ? null : ["chem", "oga", "health"][cat] };
-      if (Math.random() < 0.58 && slotFree(x, y, h, 3.2)) {
+      bay.free = slotFree(x, y, h, 3.2);
+      if (cat == null && Math.random() < 0.58 && bay.free) {
         bay.v = "static";
         rampSlots.push({ x, y, h });
       }
       rampBays.push(bay);
     }
+  }
+
+  /* Holding lines beside each x-ray lane, where trucks wait when the scanners cannot keep up:
+     one truck every 19 m back from the first gantry, on the side away from the hall, clear of
+     every road and building. */
+  const holdLines = [];
+  for (const xr of data.xrays) {
+    const route = data.routes.find((r) => r.stops.some((st) => st.ref === xr.id));
+    if (!route) continue;
+    const stop = route.stops.find((st) => st.ref === xr.id);
+    const P = dedupe(route.p);
+    const cum = cumulative(P);
+    const hall = halls.reduce((best, c) => (!best || Math.hypot(c[0] - xr.x, c[1] - xr.y) < Math.hypot(best[0] - xr.x, best[1] - xr.y) ? c : best), null);
+    const slots = [];
+    for (let s = stop.s - 95; s > stop.s - 600 && slots.length < 16; s -= 19) {
+      const [x, y] = pointAt(P, cum, s);
+      const a = pointAt(P, cum, s - 4);
+      const b = pointAt(P, cum, s + 4);
+      const h = Math.atan2(b[0] - a[0], b[1] - a[1]);
+      let best = null;
+      for (const side of [1, -1]) {
+        const off = 7.2 * side;
+        const px = x - Math.cos(h) * off;
+        const py = y + Math.sin(h) * off;
+        if (!slotFree(px, py, h, 3.4)) continue;
+        if (data.buildings.some((bl) => [-7, 0, 7].some((k) => inside(px + Math.sin(h) * k, py + Math.cos(h) * k, openRing(bl.ring))))) continue;
+        const away = hall ? Math.hypot(px - hall[0], py - hall[1]) : 0;
+        if (!best || away > best.away) best = { x: px, y: py, h, away };
+      }
+      if (best) slots.push(best);
+      else if (slots.length) break;
+    }
+    holdLines.push({ ref: xr.id, slots });
   }
 
   const stallOverlays = {
@@ -1625,6 +1669,8 @@ export function buildWorld(scene, data, renderer) {
     portalCtl,
     xrayCtl,
     yardSlots,
+    parkSlots,
+    holdLines,
     rampSlots,
     rampBays,
     yardCapacity,

@@ -661,6 +661,14 @@ body.ar .pl-range-wrap, body.ar .pl-ends, body.ar .pl-range { direction: ltr; }
 body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
 .pill.icon-pill svg { width: 15px; height: 15px; }
 
+
+/* planner: header actions, waiting tags */
+.pl-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+.pl-head h2 { white-space: nowrap; }
+.pl-icon { display: grid; place-items: center; width: 30px; padding: 4px 0; }
+.pl-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.pl-icon.ok { color: #6fe3c8; border-color: rgba(111, 227, 200, 0.6); }
+.ppin.shed .wait { color: #ff8e99; font-weight: 600; padding-left: 7px; border-left: 1px solid var(--line-2); }
 /* ---------- loader ---------- */
 #loader {
   position: fixed;
