@@ -14,7 +14,10 @@ import { Atmosphere, PRESETS } from "./atmosphere.js";
 import { buildGround } from "./terrain.js";
 import { buildBeacons, buildRouteTrace } from "./overlays.js";
 import { Executive, SAMPLE_STEP } from "./executive.js";
-import { Planner, model } from "./planner.js";
+import { Planner, fmtH, bottleneckHTML } from "./planner.js";
+import { PortModel, CATS } from "./portmodel.js";
+import { makePlate, drawCountry, COUNTRY } from "./plates.js";
+import { createDemo } from "./demo.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -73,6 +76,11 @@ async function main() {
   }
   /* Planner defaults and limits: parking bays, x-ray scanners, inspection categories, model. */
   const cfg = await (await fetch("config.json", { cache: "no-store" })).json();
+  /* The learned port model (ml/learn.py → learned.json): synthetic trucks, calibrated queues,
+     demand profile. Every KPI on the dashboards and the planner comes from it. */
+  status("Loading the learned port model");
+  const learned = await (await fetch("learned.json")).json();
+  const pm = new PortModel(learned, cfg);
   const plan = { pins: [], open: false };
   await wait();
 
@@ -143,10 +151,11 @@ async function main() {
       feed.unshift(item);
       if (feed.length > 4) feed.pop();
       exec.event(item);
-      if (kind === "release") exec.release(sim.time, v);
       feedDirty = true;
     },
   });
+  sim.setModel(pm);
+  sim.mix = { ...pm.share };
   let feedDirty = true;
 
   const statics = [];
@@ -157,9 +166,13 @@ async function main() {
       where,
       kind: slot.kind,
       stall: slot.stall ?? -1,
-      plate: Math.random() < 0.6 ? `${Math.floor(1000 + Math.random() * 8999)} ${pick(["أ ب ج", "ر س ط", "ك ل م", "ن هـ و"])}` : `${Math.floor(100000 + Math.random() * 899999)}`,
       cargo: pick(["Foodstuffs", "Construction steel", "Electronics", "Animal feed", "Auto parts", "Furniture", "Textiles", "Machinery"]),
     };
+    v.profile = pick(pm.pop);
+    v.plateInfo = makePlate(v.profile.co);
+    v.plate = v.plateInfo.ar || v.plateInfo.text;
+    v.country = v.plateInfo.country;
+    v.cat = v.profile.cat;
     if (!fleet.allocate(v)) return;
     const dx = Math.sin(slot.h);
     const dy = Math.cos(slot.h);
@@ -209,9 +222,7 @@ async function main() {
     fleet.release(v);
     props.delete(key);
   };
-  const scenarioOf = (s) => ({ ...s, alloc: s.alloc || Object.fromEntries((data.ramps.find((r) => r.categories) || { categories: [] }).categories.map((c) => [c.id, c.bays])) });
   function syncProps(state, res) {
-    const m = cfg.model;
     const today = cfg.parking.default;
     /* parking: open stalls are main stalls not closed by the scenario, plus opened proposals */
     const closed = new Set(state.parking < today ? closeOrderOf(today - state.parking) : []);
@@ -229,7 +240,7 @@ async function main() {
     }
     /* import docks: busy docks per category, counting trucks the simulation already has there */
     for (const cat of ["chem", "oga", "health"]) {
-      const busy = Math.min(state.alloc[cat] || 0, res.lam * m.inspectRate * (state.mix[cat] || 0) * m.inspectionHours);
+      const busy = Math.min(physAlloc(state)[cat] || 0, res.cats[cat].busy * (dockOrder.length / Math.max(1, state.docks)));
       const live = world.rampBays.filter((b) => b.cat === cat && b.v && b.v !== "static").length;
       let need = Math.max(0, Math.round(busy) - live);
       for (const i of bayOrder) {
@@ -265,19 +276,34 @@ async function main() {
   /* Main stalls close from the north-east end of the lot. */
   const closeRank = world.mainStalls.map((st, i) => [i, st.x * 0.76 + st.y * 0.65]).sort((a, b) => b[1] - a[1]).map(([i]) => i);
   const closeOrderOf = (k) => closeRank.slice(0, k);
-  /* The scenario runs in the simulation too: arrivals, scanner lanes, inspection mix. */
+  /* The scenario runs in the simulation too: arrivals (with the learned hourly profile) and
+     scanner lanes. The category mix is the learned one. */
   function syncSim(state) {
-    sim.setInbound(state.demand / 24);
-    sim.mix = { ...state.mix };
+    sim.setInbound(pm.demandOf(state) / 24);
     const lanes = data.xrays.map((x) => x.id);
     sim.xrayOff = new Set(state.xray < lanes.length ? lanes.slice(state.xray) : []);
     sim.tandem = new Set(lanes.slice(0, Math.max(0, state.xray - lanes.length)));
   }
+  /* Docks in the scene: a scenario with more or fewer docks than exist is drawn on the real
+     docks in proportion, and the difference is shown as a proposal pin. */
+  let dockOrder = [];
+  const physAlloc = (st) => {
+    const n = dockOrder.length || st.docks;
+    const raw = CATS.map((c) => [c, ((st.alloc[c] || 0) / Math.max(1, st.docks)) * n]);
+    const out = Object.fromEntries(raw.map(([c, v]) => [c, Math.floor(v)]));
+    let left = n - CATS.reduce((a, c) => a + out[c], 0);
+    raw.sort((a, b) => (b[1] % 1) - (a[1] % 1));
+    for (let i = 0; left > 0; i = (i + 1) % 3, left -= 1) out[raw[i][0]] += 1;
+    return out;
+  };
   {
-    const s0 = scenarioOf({ demand: cfg.model.demandPerDay, parking: cfg.parking.default, xray: cfg.xray.default, mix: { ...cfg.ramps.volumeMix } });
-    plan.result = model(cfg, s0);
-    syncSim(s0);
-    syncProps(s0, plan.result);
+    const ri = (data.ramps || []).find((r) => r.categories);
+    const ax = ri ? [ri.categories[2].x - ri.categories[0].x, ri.categories[2].y - ri.categories[0].y] : [1, 0];
+    dockOrder = world.importBays.map((b, i) => [i, b.home, b.x * ax[0] + b.y * ax[1]]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([i]) => i);
+    pm.shed = ri ? ri.categories : [];
+    plan.result = pm.baseRun;
+    syncSim(pm.today);
+    syncProps(pm.today, plan.result);
   }
   fleet.commit();
 
@@ -412,7 +438,7 @@ async function main() {
       operations: "Operations", simulated: "Simulated", trucksOnSite: "Trucks on site", parking: "Main parking", bays: "bays",
       scans: "X-ray / hr", clearance: "Avg clearance", atRamps: "At ramps", released: "Released",
       cleared: "cleared", booths: "booths active", queue: "on approach", min: "min", activity: "Live activity",
-      vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour",
+      vOverview: "Overview", vGates: "Gates", vParking: "Parking", vXray: "X-ray", vRamps: "Ramps", vBooths: "Booths", tour: "Tour", demo: "Demo",
       exec: "Executive", planner: "Planner", xTitle: "Executive overview", xSub: "Abu Samra Land Port · figures since", xUpdated: "updated",
       xAllGood: "All stations operating normally", xAttention1: "station needs attention", xAttentionN: "stations need attention",
       tTrucks: "Trucks on site", tClear: "Avg clearance time", tReleased: "Trucks released", tParking: "Main parking occupancy", tScans: "X-ray scans", tPax: "Passengers cleared",
@@ -433,7 +459,7 @@ async function main() {
       operations: "العمليات", simulated: "محاكاة", trucksOnSite: "الشاحنات في المنفذ", parking: "المواقف الرئيسية", bays: "موقف",
       scans: "مسح / ساعة", clearance: "متوسط التخليص", atRamps: "في الرمبات", released: "تم الإفراج",
       cleared: "مسافر", booths: "أكشاك عاملة", queue: "في الطريق", min: "دقيقة", activity: "النشاط المباشر",
-      vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة",
+      vOverview: "عام", vGates: "البوابات", vParking: "المواقف", vXray: "الأشعة", vRamps: "الرمبات", vBooths: "الأكشاك", tour: "جولة", demo: "العرض",
       exec: "العرض التنفيذي", planner: "المخطط", xTitle: "النظرة التنفيذية", xSub: "منفذ أبو سمرة البري · الأرقام منذ", xUpdated: "آخر تحديث",
       xAllGood: "جميع المحطات تعمل بشكل طبيعي", xAttention1: "محطة تحتاج إلى متابعة", xAttentionN: "محطات تحتاج إلى متابعة",
       tTrucks: "الشاحنات في المنفذ", tClear: "متوسط زمن التخليص", tReleased: "الشاحنات المفرج عنها", tParking: "إشغال المواقف الرئيسية", tScans: "المسح بالأشعة", tPax: "المسافرون المنجزون",
@@ -651,7 +677,7 @@ async function main() {
      outgrows its shed takes the neighbouring shed's nearest docks. */
   const shedAt = Object.fromEntries((rampInfo ? rampInfo.categories : []).map((c, i) => [i, c]));
   const axis = rampInfo ? [rampInfo.categories[2].x - rampInfo.categories[0].x, rampInfo.categories[2].y - rampInfo.categories[0].y] : [1, 0];
-  const dockOrder = world.importBays.map((b, i) => [i, b.home, b.x * axis[0] + b.y * axis[1]]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([i]) => i);
+  dockOrder = world.importBays.map((b, i) => [i, b.home, b.x * axis[0] + b.y * axis[1]]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([i]) => i);
   const CAT_IDS = ["chem", "oga", "health"];
   /* Line icons on a 24-unit grid: a flask, a government portico, a shield with a cross. */
   const CAT_ICON = {
@@ -757,10 +783,11 @@ async function main() {
       xrayOffPin.shown = st.xray < cfg.xray.default;
       xrayOffPin.el.innerHTML = `<b>${P("X-ray 2", "أشعة 2")}</b><em>${P("offline", "متوقف")}</em>`;
     }
-    /* docks: contiguous blocks in allocation order */
+    /* docks: contiguous blocks in allocation order, scaled onto the docks that exist */
     let k = 0;
+    const phys = physAlloc(st);
     for (const cat of CAT_IDS) {
-      for (let n = 0; n < st.alloc[cat] && k < dockOrder.length; n += 1, k += 1) {
+      for (let n = 0; n < phys[cat] && k < dockOrder.length; n += 1, k += 1) {
         const i = dockOrder[k];
         world.importBays[i].cat = cat;
         world.dockOverlay.set(i, plan.cats[cat].color);
@@ -776,20 +803,25 @@ async function main() {
         parts.length > 1 ? `<span class="mixbar">${parts.map(([c, n]) => `<u style="flex:${n};background:${plan.cats[c].color}" title="${catName(c)} ${n}"></u>`).join("")}</span>` : ""
       }`;
     }
-    plan.result = plan.planner ? plan.planner.result : model(cfg, st);
+    plan.result = plan.planner && plan.planner.result ? plan.planner.result : pm.evaluate(st);
     syncSim(st);
     syncProps(st, plan.result);
-    /* Waiting trucks per category, from the model, on each shed's tag. */
+    /* Docks per category in the scenario, and trucks queuing for them, on each shed's tag. */
     for (const p of shedPins) {
       const q = plan.result.cats[p.c.id];
-      const waiting = Number.isFinite(q.wait) ? res0(q) : Infinity;
       const tag = p.el.querySelector(".lvv");
-      if (waiting >= 1) tag.insertAdjacentHTML("afterend", `<span class="wait">${Number.isFinite(waiting) ? `${Math.round(waiting)} ${P("waiting", "بالانتظار")}` : P("overloaded", "فوق الطاقة")}</span>`);
+      tag.innerHTML = `<b>${q.docks}</b>`;
+      const waiting = (q.lamDay / 24) * q.wait;
+      if (waiting >= 1) tag.insertAdjacentHTML("afterend", `<span class="wait">${Math.round(waiting)} ${P("waiting", "بالانتظار")}</span>`);
     }
+    const extraDocks = st.docks - pm.today.docks;
+    dockPin.shown = extraDocks !== 0;
+    if (extraDocks) dockPin.el.innerHTML = `<b>${extraDocks > 0 ? "+" : "−"}${Math.abs(extraDocks)}</b> ${P("docks", "رصيف")}<em>${P(extraDocks > 0 ? "proposed" : "closed", extraDocks > 0 ? "مقترح" : "مغلق")}</em>`;
+    dockPin.el.className = `ppin ${extraDocks > 0 ? "prop" : "closed"}`;
     applyVisibility();
   };
-  const res0 = (q) => plan.result.lam * cfg.model.inspectRate * q.share * q.wait;
-  plan.planner = new Planner(cfg, { shedDocks, proposedMax: world.proposedStalls.length }, {
+  const dockPin = rampInfo ? pin(rampInfo.categories[1].x + 40, rampInfo.categories[1].y - 30, 16, "prop") : { el: document.createElement("div"), obj: { visible: false, position: new THREE.Vector3() } };
+  plan.planner = new Planner(pm, {
     lang: () => lang,
     onChange(state) {
       plan.state = state;
@@ -798,23 +830,24 @@ async function main() {
       plan.syncHash();
       renderKpis();
     },
+    onVisualize(p) {
+      plan.lastPlan = p;
+      plan.goal = plan.planner.goal.target;
+      if (!plan.open) setPlanner(true);
+      flyTo(camPose(-120, -150, 1450, 54, 150));
+    },
   });
   plan.state = plan.planner.state;
   plan.planner.mount($("planner"));
   /* A scenario lives in the address (#plan=…), so it can be shared or reopened as a link. */
-  const encodePlan = (s) => `d${s.demand}.p${s.parking}.x${s.xray}.m${["chem", "oga", "health"].map((c) => Math.round(s.mix[c] * 100)).join("-")}.a${["chem", "oga", "health"].map((c) => s.alloc[c]).join("-")}`;
+  const encodePlan = (s) => `s${s.surge}.p${s.parking}.x${s.xray}.d${s.docks}.a${CATS.map((c) => s.alloc[c]).join("-")}.f${s.prefile}.g${s.green}.o${s.overlap}`;
   const decodePlan = (text) => {
     const out = {};
     for (const part of text.split(".")) {
       const k = part[0];
       const v = part.slice(1);
-      if (k === "d") out.demand = Number(v);
-      if (k === "p") out.parking = Number(v);
-      if (k === "x") out.xray = Number(v);
-      if (k === "m") {
-        const [a, b, c] = v.split("-").map(Number);
-        out.mix = { chem: a / 100, oga: b / 100, health: c / 100 };
-      }
+      const key = { s: "surge", p: "parking", x: "xray", d: "docks", f: "prefile", g: "green", o: "overlap" }[k];
+      if (key) out[key] = Number(v);
       if (k === "a") {
         const [a, b, c] = v.split("-").map(Number);
         out.alloc = { chem: a, oga: b, health: c };
@@ -824,7 +857,7 @@ async function main() {
   };
   plan.planner.onShare = () => location.href;
   plan.syncHash = () => {
-    const url = plan.planner.changed() || plan.state.demand !== cfg.model.demandPerDay ? `#plan=${encodePlan(plan.state)}` : " ";
+    const url = plan.planner.changed() ? `#plan=${encodePlan(plan.state)}` : " ";
     window.history.replaceState(null, "", url === " " ? location.pathname + location.search : url);
   };
   function setPlanner(on) {
@@ -850,6 +883,8 @@ async function main() {
     $("dash").classList.toggle("hidden", !showDash);
     $("toggle-dash").classList.toggle("on", showDash);
   };
+  /* Both side panels slide off their edge and leave a small tab to bring them back. */
+  $("dash-tuck").addEventListener("click", () => $("dash").classList.toggle("tucked"));
   $("toggle-dash").addEventListener("click", () => {
     showDash = !showDash;
     applyDash();
@@ -862,7 +897,10 @@ async function main() {
     clockOf: (t) => sim.clock0 + t,
     flowName: (flow) => (FLOWS[flow] || FLOWS.inbound)[lang][0],
     stations: (k, live) => stationObjects.map(({ st }, index) => ({ index, flow: st.flow, n: st.n, tone: st.tone, name: stationName(st), title: lang === "ar" ? st.ar : st.en, value: stationLive(st, k, live) })),
-    cargo: () => [...statics, ...props.values(), ...sim.vehicles].filter((v) => v.type === "truck" && v.cargo).map((v) => v.cargo),
+    learned,
+    cats: plan.cats,
+    scenarioChanged: () => plan.planner.changed(),
+    scenarioLabel: () => scenarioLabel(plan.state),
     onStation(index) {
       setExec(false);
       focusStation(index);
@@ -873,6 +911,19 @@ async function main() {
       select(v);
     },
   });
+  function scenarioLabel(st) {
+    const t = pm.today;
+    const parts = [];
+    if (st.surge) parts.push(`+${st.surge}% trucks`);
+    if (st.xray !== t.xray) parts.push(`${st.xray} X-ray lanes`);
+    if (st.docks !== t.docks) parts.push(`${st.docks} docks`);
+    else if (CATS.some((c) => st.alloc[c] !== t.alloc[c])) parts.push("docks re-split");
+    if (st.parking !== t.parking) parts.push(`${st.parking} bays`);
+    if (st.prefile) parts.push(`${st.prefile}% pre-filed`);
+    if (st.green) parts.push(`${st.green}% green channel`);
+    if (st.overlap) parts.push("shift overlap");
+    return parts.join(" · ");
+  }
   function setExec(on) {
     exec.setOpen(on);
     document.body.classList.toggle("exec-on", on);
@@ -953,8 +1004,8 @@ async function main() {
     tour.k = (tour.k + 1) % tour.order.length;
     const index = tour.order[tour.k];
     const { st } = stationObjects[index];
-    flyTo(camPose(st.x, st.y, focusDistance(st) * 0.9, 64, 100 + (tour.k % 4) * 28), 3.4);
-    tour.hold = 9;
+    flyTo(camPose(st.x, st.y, focusDistance(st) * 0.9, 64, 100 + (tour.k % 4) * 28), 2.6);
+    tour.hold = 6;
     highlightStep(index);
   }
   function stopTour() {
@@ -963,6 +1014,71 @@ async function main() {
     $("tour").classList.remove("on");
   }
   $("tour").addEventListener("click", () => (tour ? stopTour() : startTour()));
+
+  /* ---------- demo: the WASL story played with the twin's own features ---------- */
+  const demo = createDemo({
+    pm,
+    prepare() {
+      stopTour();
+      stopFollow();
+      setExec(false);
+      if (activeFlow !== "inbound") setFlow("inbound");
+      showDash = true;
+      applyDash();
+      $("dash").classList.remove("tucked");
+      $("planner").classList.remove("tucked");
+      $("demo-btn").classList.add("on");
+    },
+    finish() {
+      setExec(false);
+      $("demo-btn").classList.remove("on");
+    },
+    reset() {
+      demoScenario({ ...pm.today });
+      setPlanner(false);
+    },
+    view(name) {
+      stopFollow();
+      flyTo(VIEWS[name](), 2.4);
+      document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
+    },
+    followTruck() {
+      $("follow").click();
+      return followed;
+    },
+    stopFollow,
+    setScenario: (s) => demoScenario(s),
+    async goalSeek(target) {
+      setPlanner(true);
+      const pl = plan.planner;
+      pl.goal.target = target;
+      pl.goal.metric = "median";
+      pl.goal.year = 2026;
+      pl.setTab("goal");
+      const box = $("gs-target");
+      if (box) box.value = target;
+      await pl.runGoal();
+      return pl.goal.result;
+    },
+    applyPlan(p) {
+      const pl = plan.planner;
+      pl.load({ ...p.s, surge: pl.state.surge });
+      pl.setTab("whatif");
+      pl.onChange(pl.state);
+      plan.goal = pl.goal.target;
+      flyTo(camPose(-120, -150, 1450, 54, 150), 2.4);
+    },
+    exec(on) {
+      if (on) setPlanner(false);
+      setExec(on);
+    },
+  });
+  function demoScenario(s) {
+    const pl = plan.planner;
+    pl.load(s);
+    pl.onChange(pl.state);
+  }
+  $("demo-btn").addEventListener("click", () => (demo.running ? demo.stop() : demo.start()));
   controls.addEventListener("start", () => {
     if (!flight) stopTour();
   });
@@ -1025,34 +1141,72 @@ async function main() {
     const candidates = early.length ? early : moving;
     if (candidates.length) select(pick(candidates));
   });
+  /* The ride-along card: who the truck is (plate in its country's format, origin, category from
+     its goods) and the journey the learned model expects for it under the current scenario. */
+  const STAGE_SHORT = { decl: "Declaration submitted", xq: "X-ray", iq: "Inspection starts", insp: "Inspection done", exit: "Gate exit" };
+  const WHY = { hour: "arrival hour", xray: "X-ray", decl: "several declarations", shared: "shared declaration", prefiled: "filing" };
+  function plateHTML(v) {
+    const p = v.plateInfo;
+    if (!p) return `<div class="vc-plate">${v.plate}</div>`;
+    const c = COUNTRY[p.country] || COUNTRY.XX;
+    return `<div class="vc-plate pl-${p.country}" title="${c.en} plate · ${p.rule}"><span class="cc">${c.code}${p.emirate ? ` · ${p.emirate}` : ""}</span><b>${p.text}</b>${p.ar && p.ar !== p.text ? `<i>${p.ar}</i>` : ""}</div>`;
+  }
+  function journeyHTML(v) {
+    const p = v.profile;
+    if (!p) return "";
+    const r = plan.result || pm.baseRun;
+    const j = pm.journey(p, r);
+    if (!j) return "";
+    const t0 = v.clockIn ?? (p.h * 3600 + 15 * 60);
+    let at = t0 + j.gate * 60;
+    const rows = [];
+    for (const k of ["decl", "xq", "iq", "insp", "exit"]) {
+      if (k === "xq" && !p.x) continue;
+      at += j[k] * 60;
+      rows.push(`<li><span>${STAGE_SHORT[k]}</span><em>+${j[k] >= 90 ? `${(j[k] / 60).toFixed(1)} h` : `${Math.round(j[k])} min`}</em><b>${hhmm(at)}</b></li>`);
+    }
+    const risk = Math.round((p.r || 0) * 100);
+    const lv = risk >= 50 ? "l2" : risk >= 30 ? "l1" : "l0";
+    return `<div class="vc-sec"><div class="vc-h">Expected journey <em>learned model${plan.planner.changed() ? " · scenario" : ""}</em></div>
+      <ol class="vc-j">${rows.join("")}</ol>
+      <div class="vc-total">Time in port <b>${fmtH(j.total / 60)}</b> · port median ${fmtH(r.median)}</div>
+      <div class="vc-risk ${lv}"><span>Delay risk (over 8 h)</span><b>${risk}%</b>${p.why ? `<em>driven by ${p.why.map((w) => WHY[w] || w).join(", ")}</em>` : ""}</div></div>`;
+  }
   function renderCard() {
     const v = followed;
     if (!v) return;
+    const catRow = v.cat && plan.cats[v.cat] ? `<dt>Category</dt><dd><span class="vc-cat" style="--c:${plan.cats[v.cat].color}">${plan.cats[v.cat].en}</span></dd>` : "";
+    const p = v.profile;
+    const facts = p
+      ? `<dt>Declarations</dt><dd>${p.n}${p.sh ? " · shared with other trucks" : ""}</dd><dt>Arrived</dt><dd>${String(p.h).padStart(2, "0")}:00 band${p.night ? " · night" : ""}</dd><dt>X-ray</dt><dd>${p.x ? "Selected" : "Not selected"}</dd>`
+      : "";
+    const country = v.country ? COUNTRY[v.country] : null;
     if (v.static) {
       $("vehicle-body").innerHTML = `
-        <div class="vc-title">Container truck <span class="tag">${v.where === "yard" ? "Parked" : "At ramp"}</span></div>
-        <div class="vc-plate">${v.plate}</div>
-        <dl><dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Awaiting x-ray" : "Physical inspection"}</dd></dl>`;
+        <div class="vc-title">Truck <span class="tag">${v.where === "yard" ? "Parked" : v.where === "queue" ? "X-ray queue" : "At ramp"}</span></div>
+        ${plateHTML(v)}
+        <dl>${country ? `<dt>Plate</dt><dd>${country.en}</dd>` : ""}${catRow}<dt>Cargo</dt><dd>${v.cargo}</dd><dt>Status</dt><dd>${v.where === "yard" ? "Waiting for declaration or inspection" : v.where === "queue" ? "Queuing for X-ray" : "Physical inspection"}</dd>${facts}</dl>
+        ${journeyHTML(v)}`;
       return;
     }
     const d = sim.describe(v);
-    const plan = d.plan.map((p) => `<li class="${p.state}" title="${p.label}"></li>`).join("");
-    const now = d.plan.find((p) => p.state === "now");
-    const inspect = v.type === "truck" && v.route.stops.some((s) => s.kind === "ramp");
+    const steps = d.plan.map((q) => `<li class="${q.state}" title="${q.label}"></li>`).join("");
+    const now = d.plan.find((q) => q.state === "now");
+    const inspect = v.type === "truck" && v.route.stops.some((st) => st.kind === "ramp");
     const channel = v.type === "truck" ? `<span class="vc-chan ${inspect ? "red" : "green"}">${inspect ? "Red channel · inspection" : "Green channel"}</span>` : "";
     $("vehicle-body").innerHTML = `
       <div class="vc-title">${d.title} <span class="tag">${d.speed} km/h</span></div>
-      <div class="vc-plate">${d.plate}</div>${channel}
+      ${plateHTML(v)}${channel}
       <dl>
-        <dt>Route</dt><dd>${d.origin}</dd>
+        <dt>Route</dt><dd>${d.origin}${country && v.type === "truck" ? ` · ${country.en} plate` : ""}</dd>
         ${d.declaration ? `<dt>Declaration</dt><dd>${d.declaration}</dd>` : ""}
         ${d.cargo ? `<dt>Cargo</dt><dd>${d.cargo}</dd>` : ""}
-        ${v.cat && inspect ? `<dt>Inspection</dt><dd><span class="vc-cat" style="--c:${plan.cats[v.cat].color}">${plan.cats[v.cat].en}</span></dd>` : ""}
+        ${catRow}${facts}
         <dt>Status</dt><dd>${d.status}</dd>
-        <dt>On site</dt><dd>${d.minutes} min</dd>
       </dl>
-      <ol class="plan">${plan}</ol>
-      <div class="plan-now">${now ? `Next · <b>${now.label}</b>` : "<b>Leaving the port</b>"}</div>`;
+      <ol class="plan">${steps}</ol>
+      <div class="plan-now">${now ? `Next · <b>${now.label}</b>` : "<b>Leaving the port</b>"}</div>
+      ${v.route.flow === "inbound" ? journeyHTML(v) : ""}`;
   }
 
   /* ---------- live activity feed ---------- */
@@ -1102,7 +1256,33 @@ async function main() {
     ring.style.strokeDashoffset = `${169.6 * (1 - Math.min(1, pct))}`;
     ring.style.stroke = pct < 0.75 ? "var(--green)" : pct < 0.9 ? "var(--gold)" : "#e0607e";
     $("k-scans").textContent = k.scansPerHour;
-    $("k-clear").textContent = k.avgClearance ? `${Math.round(k.avgClearance)}` : "—";
+    /* Port KPIs from the learned model under the current scenario, against today. */
+    const r = plan.result || pm.baseRun;
+    const b0 = pm.baseRun;
+    const changed = plan.planner.changed();
+    $("dash-badge").textContent = changed ? "Scenario" : "Today";
+    $("dash-badge").classList.toggle("on", changed);
+    $("k-stay").textContent = r.median.toFixed(1);
+    const dStay = r.median - b0.median;
+    $("k-stay-d").textContent = changed && Math.abs(dStay) >= 0.05 ? `${dStay > 0 ? "▲" : "▼"} ${Math.abs(dStay).toFixed(1)} h` : "";
+    $("k-stay-d").className = `delta ${dStay < -0.04 ? "good" : dStay > 0.04 ? "bad" : ""}`;
+    $("k-stay-sub").innerHTML = `${changed ? `today ${b0.median.toFixed(1)} h · ` : ""}P90 ${fmtH(r.p90)} · ${Math.round(r.over12)}% over 12 h`;
+    const flag = (id, now, then, fmt, lowerBetter = true) => {
+      const el = $(id);
+      el.textContent = fmt(now);
+      el.className = changed && fmt(now) !== fmt(then) ? ((lowerBetter ? now < then : now > then) ? "good" : "bad") : "";
+      el.title = changed ? `today ${fmt(then)}` : "";
+    };
+    const mm = (m) => (m >= 90 ? `${(m / 60).toFixed(1)} h` : `${Math.round(m)} min`);
+    flag("k-perday", r.lamDay, b0.lamDay, (v) => Math.round(v).toLocaleString(), false);
+    flag("k-cap", r.capacity, b0.capacity, (v) => Math.round(v).toLocaleString(), false);
+    flag("k-decl", r.stages.decl.median, b0.stages.decl.median, mm);
+    flag("k-iq", r.stages.iq.median, b0.stages.iq.median, mm);
+    const bnKey = `${r.bottleneck.stage}|${Math.round(r.bottleneck.share)}|${r.bottleneck.pattern.map((q) => q.key).join()}`;
+    if ($("k-bn").__k !== bnKey) {
+      $("k-bn").__k = bnKey;
+      $("k-bn").innerHTML = bottleneckHTML(r, lang);
+    }
     $("k-ramps").textContent = k.inspections;
     $("k-pass").textContent = k.passengers.toLocaleString();
     $("k-booths").textContent = `${k.boothsBusy}/${k.booths}`;
@@ -1127,7 +1307,10 @@ async function main() {
     }
     if (feedDirty) renderFeed();
     if (sim.time - exec.lastT >= SAMPLE_STEP) exec.sample(sim.time, k);
-    if (exec.open) exec.render(k, live);
+    if (exec.open) {
+      exec.setScenario(plan.result || pm.baseRun, pm.baseRun, plan.goal);
+      exec.render(k, live);
+    }
     if (plan.open) plan.planner.live(sim.stats);
 
     sampleTimer -= dt;

@@ -1,0 +1,52 @@
+# Publishes the WASL digital twin to GitHub Pages.
+# Only the static twin is published: view/twin/ and data/processed/scene.json.
+# Raw GAC extracts (portinfo/) are git-ignored and never reach the site; learned.json holds
+# only aggregates and synthetic trucks.
+name: Deploy twin to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}view/twin/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/view _site/data/processed
+          cp -r view/twin _site/view/twin
+          cp data/processed/scene.json _site/data/processed/scene.json
+          test -f _site/view/twin/learned.json || { echo "view/twin/learned.json is missing: run python ml/learn.py and commit it"; exit 1; }
+          # the site root opens the twin
+          cat > _site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en"><head><meta charset="utf-8"><title>WASL</title>
+          <meta http-equiv="refresh" content="0; url=view/twin/">
+          <link rel="canonical" href="view/twin/"></head>
+          <body><a href="view/twin/">Open the WASL digital twin</a></body></html>
+          HTML
+          touch _site/.nojekyll
+          du -sh _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

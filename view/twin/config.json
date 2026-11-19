@@ -1,23 +1,42 @@
 {
-  "_note": "Capacity planner defaults and limits. 'default' is today's port; the planner panel moves within min..max. Model figures are planning assumptions, not measurements: adjust them to the authority's own data.",
+  "_note": "Planner defaults and limits. 'default' is today's port. The planner moves within min..max; each section's gear button lets the user raise or lower these limits in the browser (saved locally). Demand, waits, the category mix and today's dock split are learned from data (learned.json); only the limits, costs and the few assumptions in 'model' live here.",
   "parking": { "default": 700, "min": 450, "max": 1100, "step": 10 },
   "xray": { "default": 2, "min": 1, "max": 4 },
+  "docks": { "default": 130, "min": 100, "max": 200, "step": 5 },
+  "surge": {
+    "max": 120,
+    "events": [],
+    "_events": "Optional named scenarios shown on the surge slider, e.g. { \"pct\": 30, \"label\": \"Corridor disruption\", \"sub\": \"Jun 2026\" }. The data-driven presets (busy day, busiest week, peak day, 2026 growth) are added automatically."
+  },
+  "prefile": { "default": 0, "max": 80 },
+  "green": { "default": 0, "max": 60 },
   "ramps": {
     "categories": [
       { "id": "chem", "en": "Chemical & Others", "tag": "Chemical", "ar": "الكيماويات وأخرى", "color": "#ff8f4a" },
-      { "id": "oga", "en": "Other Gov. Authorities", "short": "OGA", "ar": "الجهات الحكومية الأخرى", "color": "#a08bff" },
+      { "id": "oga", "en": "Other Gov. Authorities", "short": "OGA", "tag": "OGA", "ar": "الجهات الحكومية الأخرى", "color": "#a08bff" },
       { "id": "health", "en": "Health & Food", "tag": "Health", "ar": "الصحة والغذاء", "color": "#38c9a4" }
-    ],
-    "volumeMix": { "chem": 0.25, "oga": 0.45, "health": 0.3 }
+    ]
   },
   "model": {
-    "demandPerDay": 720,
-    "demandMin": 300,
-    "demandMax": 1500,
-    "gateHours": 0.75,
-    "yardHours": 14,
-    "scansPerHourPerScanner": 20,
-    "inspectRate": 0.65,
-    "inspectionHours": 3
+    "prefileFactor": 0.1,
+    "_prefileFactor": "A pre-filed truck keeps 10% of today's declaration wait (about 9 min to match the truck to its declaration and release on arrival). Not zero: courier trucks file early and still wait.",
+    "congestionShare": 0.25,
+    "_congestionShare": "Share of today's X-ray and dock waits caused by queueing for capacity; the rest is process latency that capacity does not remove. Fitted to the 2026 weeks: volume went 350 -> 840 trucks/day with the weekly median flat (elasticity 0.04), and the busiest weeks (+14%) ran 6.0-6.4 h against 5.6 h. With 0.25 the model gives 6.1 h at +14%.",
+    "peakFactor": 1.2,
+    "_peakFactor": "Peak-hour parking use over the daily mean (from the hourly arrival profile).",
+    "growthDamping": 0.5,
+    "_growthDamping": "Learned growth (43%/yr, food declarations 2023-2026) is halved each year after 2026, so 2030 is about 1.46x today (about 1,080 trucks/day) rather than 4x."
+  },
+  "costYears": 5,
+  "currency": "QAR",
+  "costs": {
+    "_note": "Unit costs in QAR (1 USD = 3.64 QAR). capex once, opex per year, lead = months to put in service. Benchmarks from public sources listed in docs/AI.md; replace with GAC procurement figures.",
+    "xray": { "capex": 16400000, "opex": 1900000, "lead": 12, "label": "Drive-through X-ray lane", "basis": "Fixed LINAC portal US$3-6M (vendor ranges, CBP awards); opex: 9 operators x QAR 12.5k/month + 5% maintenance" },
+    "dock": { "capex": 290000, "opex": 540000, "lead": 6, "label": "Covered inspection dock", "basis": "Dock position US$20-36k (Terrapin 2026) + canopy share US$50k; 3.6 inspector FTE x QAR 12.5k/month" },
+    "realloc": { "capex": 40000, "opex": 0, "lead": 1, "label": "Reassign a dock to another category", "basis": "Signage, equipment move and risk-rule update per dock (estimate)" },
+    "parking": { "capex": 91000, "opex": 2000, "lead": 6, "label": "Truck parking bay", "basis": "Paving-only US$25k per bay on authority land (ATRI full-build median US$93.5k includes land and amenities)" },
+    "prefile": { "capex": 800000, "opex": 250000, "lead": 4, "label": "Pre-arrival filing, per 10 points of trucks", "basis": "Broker onboarding, API and incentives (estimate)" },
+    "green": { "capex": 1200000, "opex": 600000, "lead": 6, "label": "Green channel, per 10 points of non-restricted trucks", "basis": "Risk-engine rules and post-clearance audit staff (estimate)" },
+    "overlap": { "capex": 100000, "opex": 900000, "lead": 1, "label": "Overlapping shift handovers", "basis": "One paid overlap hour per inspector shift (estimate)" }
   }
 }

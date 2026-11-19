@@ -1,0 +1,130 @@
+{
+ "generatorValidation": {
+  "chem|0": {
+   "realMedianH": 5.02,
+   "synthMedianH": 5.39,
+   "realP90H": 15.8,
+   "synthP90H": 14.6,
+   "ks": 0.058
+  },
+  "chem|1": {
+   "realMedianH": 5.41,
+   "synthMedianH": 5.59,
+   "realP90H": 14.6,
+   "synthP90H": 13.2,
+   "ks": 0.046
+  },
+  "health|0": {
+   "realMedianH": 5.14,
+   "synthMedianH": 5.44,
+   "realP90H": 14.2,
+   "synthP90H": 12.6,
+   "ks": 0.05
+  },
+  "health|1": {
+   "realMedianH": 6.25,
+   "synthMedianH": 6.26,
+   "realP90H": 17.2,
+   "synthP90H": 14.2,
+   "ks": 0.113
+  },
+  "oga|0": {
+   "realMedianH": 7.74,
+   "synthMedianH": 8.08,
+   "realP90H": 22.4,
+   "synthP90H": 23.6,
+   "ks": 0.025
+  },
+  "oga|1": {
+   "realMedianH": 8.37,
+   "synthMedianH": 9.03,
+   "realP90H": 31.2,
+   "synthP90H": 29.8,
+   "ks": 0.106
+  }
+ },
+ "risk": {
+  "auc": 0.704,
+  "baseRate": 0.349,
+  "trainTrucks": 152134,
+  "testTrucks": 46531,
+  "importance": [
+   {
+    "feature": "Arrival hour",
+    "aucDrop": 0.1026
+   },
+   {
+    "feature": "Inspection category",
+    "aucDrop": 0.0508
+   },
+   {
+    "feature": "Shared declaration",
+    "aucDrop": 0.0396
+   },
+   {
+    "feature": "Plate country",
+    "aucDrop": 0.0331
+   },
+   {
+    "feature": "Declarations",
+    "aucDrop": 0.0106
+   },
+   {
+    "feature": "X-ray",
+    "aucDrop": 0.0054
+   },
+   {
+    "feature": "Weekday",
+    "aucDrop": 0.0036
+   },
+   {
+    "feature": "Daily load",
+    "aucDrop": 0.0017
+   },
+   {
+    "feature": "Pre-filed",
+    "aucDrop": 0.0
+   }
+  ]
+ },
+ "elasticity": {
+  "decl": {
+   "elasticity": 0.239,
+   "r2": 0.263,
+   "weeks": 47
+  },
+  "iq": {
+   "elasticity": -0.075,
+   "r2": 0.058,
+   "weeks": 47
+  }
+ },
+ "current": {
+  "trucks": 66460,
+  "medianStayH": 5.64,
+  "p90StayH": 17.46,
+  "p95StayH": 23.65,
+  "over12hPct": 19.6,
+  "waitingSharePct": 89.4,
+  "redPct": 100.0,
+  "ogaPct": 50.2,
+  "xrayPct": 20.3,
+  "prefiledPct": 0.0,
+  "multiDeclPct": 5.1,
+  "sharedPct": 33.2
+ },
+ "year": {
+  "trucks": 198665,
+  "medianStayH": 5.66,
+  "p90StayH": 16.83,
+  "p95StayH": 22.77,
+  "over12hPct": 18.6,
+  "waitingSharePct": 88.8,
+  "redPct": 99.95,
+  "ogaPct": 52.9,
+  "xrayPct": 20.9,
+  "prefiledPct": 0.0,
+  "multiDeclPct": 5.7,
+  "sharedPct": 29.8
+ }
+}

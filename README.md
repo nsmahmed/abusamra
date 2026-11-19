@@ -37,13 +37,31 @@ python view/serve.py 9000     # or pick another port
 Open the twin through this server, not as a file. It needs no connection beyond the first load of three.js and the fonts: the desert floor is built in the shader from two small tone maps in `view/twin/assets/`, a heavily smoothed colour reference of the real terrain, so nothing is streamed while it runs.
 
 - **Controls:** drag to pan, right-drag to orbit, wheel to zoom, click a vehicle to ride along with it.
-- **Keys:** `1` `2` `3` flows, `N` next time of day, `T` tour, `F` follow a truck, `P` presentation mode, `D` dashboard, `E` executive overview, `C` capacity planner, `L` labels, `Space` pause.
+- **Keys:** `1` `2` `3` flows, `N` next time of day, `T` tour, `F` follow a truck, `P` presentation mode, `D` dashboard, `E` executive overview, `C` scenario planner, `L` labels, `Space` pause.
 - **Deep links:** `?light=day|sunset|night`, `?view=overview|gates|yard|xray|ramps|booths`, `?flow=inbound|outbound|passenger`, `?lang=ar`, `?present=1`, `?exec=1`, `?intro=0`, `?drift=0`, `?cam=x,y,distance,polar,bearing`.
-- **Executive overview:** the gold button in the top bar (or `E`) opens a full-screen board: headline figures, a two-hour trend, the status of every station, clearance times against a 40-minute target, inspection-channel split, cargo mix and the passenger hall. Clicking a station or an event returns to it in 3D. The target is illustrative; change `TARGET_MIN` in `view/twin/executive.js`.
-- **Capacity planner:** the teal sliders button (or `C`) opens what-if settings for truck arrivals, the main parking (450–1,100 bays), the x-ray scanners (1–4) and the import inspection docks by category (Chemical & Others, OGA, Health & Food). The scene follows the scenario: arrivals, scanners in service (a proposed scanner is a second gantry on an existing lane and really scans) and dock categories run in the simulation, while how full the parking, the docks and the x-ray holding queue look comes from the same planning model as the Impact figures. Proposals are outlined in teal, closures in red. The scenario is kept in the address (`#plan=…`), so the link button shares it. Limits and model assumptions are in `view/twin/config.json`; replace the assumptions with the authority's figures before relying on the numbers.
+- **Dashboard (right):** the port's KPIs from the learned model: median time in port, P90, share over 12 h, trucks per day, sustainable trucks per day, declaration wait and inspection queue. Next to them, the bottleneck and which trucks are stuck in it. Under a scenario, every figure shows its change from today (green better, red worse). The small arrow slides the panel off screen.
+- **Scenario planner (left, `C`):**
+  - **What-if** moves load increase (clickable marks from the data: busy day, busiest week, 2026 peak day, 2026 growth), X-ray lanes, inspection docks and their split by category (today inferred / smart / by shed), parking, pre-arrival filing, green channel and shift overlap.
+  - It shows the impact stage by stage, why each figure moved, and the bottleneck.
+  - Each section's gear sets that lever's limits (kept in this browser).
+  - **Goal seek** searches the model in reverse for plans that reach a target and costs each one.
+  - The scenario is kept in the address (`#plan=…`).
+- **Executive overview (`E`):** a full-screen board of the same KPIs, the stay distribution today against the scenario, where the time goes, arrivals against inspection capacity by hour (shift handovers marked), and the category and plate-country mix.
+- **Trucks:** every inbound truck is a synthetic truck drawn from the learned distributions. Its plate is in its country's format, and its goods category sets its ramp. Click a truck to see its expected journey and its delay risk with the reasons.
+- **2030 story:** `view/twin/story.html` presents the port today, 2030 without change, a goal, the plans and the port after the decision.
+
+### Demo and publishing
+
+- **Demo** (next to Tour) plays the WASL story inside the twin, with headline numbers at the top. It moves through Watch (today), Anticipate (2030 as is), Simulate (goal seek to 3.5 h) and Lead (the plan applied, before and after on the executive board). Use ‹ › or the arrow keys to step, and Esc to end.
+- **GitHub Pages:** `.github/workflows/pages.yml` publishes `view/twin/` and `data/processed/scene.json` on every push to `main`. The site root opens the twin.
+- **Pitch deck:** `python docs/pitch/build_deck.py` rebuilds `docs/pitch/WASL_AI_Accelerate_pitch.pptx`.
+
+### The model behind it
+
+`python ml/learn.py` reads the GAC extracts in `portinfo/reports` (never committed). It cleans them as in the bottleneck report, fits the models and writes `view/twin/learned.json`, which holds only aggregates and synthetic trucks. `python tests/model_test.py` checks the calibrated model in a headless browser. Assumptions and unit costs are in `view/twin/config.json`. [docs/AI.md](docs/AI.md) lists every ML part, method, validation figure and cost source.
 - **Quality:** the default targets a steady 60 fps on integrated graphics (about a 1080p frame, post-process anti-aliasing). Add `?quality=high` on a machine with a discrete GPU for native resolution and multisampling.
 
-Traffic, counts and the activity feed are simulated. Terrain tones are derived from Esri World Imagery (© Esri, Maxar, Earthstar Geographics).
+Traffic and the activity feed are simulated; truck behaviour and every KPI come from the learned model, so the figures are synthetic but shaped by the port's data. Terrain tones are derived from Esri World Imagery (© Esri, Maxar, Earthstar Geographics).
 
 ## What is included
 

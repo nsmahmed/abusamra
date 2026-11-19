@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Abu Samra Land Port · Digital Twin</title>
+  <title>WASL · Abu Samra Twin</title>
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,18 +24,18 @@
   <!-- Opening title, shown over the descent into the port -->
   <div id="intro">
     <div class="intro-kicker">General Authority of Customs · الهيئة العامة للجمارك</div>
-    <h1>Abu Samra <span>Land Port</span></h1>
-    <div class="intro-ar">منفذ أبو سمرة البري</div>
-    <div class="intro-sub">Live digital twin</div>
+    <h1>WASL <span>وصل</span></h1>
+    <div class="intro-ar">نصلك برؤيتك · We connect you to your vision</div>
+    <div class="intro-sub"><b>W</b>atch · <b>A</b>nticipate · <b>S</b>imulate · <b>L</b>ead — Abu Samra Land Port</div>
   </div>
 
   <!-- Top bar: identity, flow switch, time and view controls -->
   <header class="topbar glass">
     <div class="brand" title="Replica built from OpenStreetMap roads and footprints, SRTM terrain and the GAC truck process. Building heights and traffic are representative.">
-      <div class="mark"><span>GAC</span></div>
+      <div class="mark wasl"><span>WASL</span></div>
       <div class="titles">
         <div class="t1" id="brand-title">Abu Samra <span>Land Port</span></div>
-        <div class="t2" data-i18n="subtitle">Digital twin · Customs operations</div>
+        <div class="t2" data-i18n="subtitle">Watch · Anticipate · Simulate · Lead</div>
       </div>
     </div>
 
@@ -47,6 +47,7 @@
 
     <div class="tools">
       <button type="button" class="pill plan-btn icon-pill" id="plan-btn" title="Capacity planner (C)"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-i18n="planner">Planner</span></button>
+      <a class="pill story-btn icon-pill" href="story.html" title="WASL 2030 story"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-5 3 3 5-7"/></svg><span>2030</span></a>
       <button type="button" class="pill exec-btn icon-pill" id="exec-btn" title="Executive overview (E)"><svg viewBox="0 0 24 24"><path d="M4 20V11h3.4v9zM10.3 20V4h3.4v16zM16.6 20v-6.5H20V20z"/></svg><span data-i18n="exec">Executive</span></button>
       <span class="vsep"></span>
       <div class="clock" title="Simulated time"><i></i><b id="clock">09:00</b></div>
@@ -80,41 +81,43 @@
 
   <!-- Executive dashboard -->
   <aside class="dash glass" id="dash">
+    <button type="button" class="tuck-btn" id="dash-tuck" title="Hide panel"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
     <div class="dash-head">
       <h2 data-i18n="operations">Operations</h2>
-      <span class="badge" data-i18n="simulated">Simulated</span>
+      <span class="badge" id="dash-badge">Today</span>
       <button type="button" class="ib mini" id="dash-more" title="Executive overview (E)"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg></button>
     </div>
 
     <section class="hero">
-      <div class="k-label" data-i18n="trucksOnSite">Trucks on site</div>
-      <div class="hero-row"><span class="k-big" id="k-trucks">0</span><span class="delta" id="k-trend"></span></div>
-      <svg class="spark" id="spark" viewBox="0 0 240 44" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg>
-    </section>
-
-    <section class="gauge">
-      <svg viewBox="0 0 64 64" class="ring"><circle cx="32" cy="32" r="27" class="track"/><circle cx="32" cy="32" r="27" class="fill" id="g-park"/></svg>
-      <div class="gauge-txt"><b id="k-park-pct">0%</b><span data-i18n="parking">Main parking</span><small><span id="k-yard">0</span> / <span id="k-yard-cap">0</span> <span data-i18n="bays">bays</span></small></div>
+      <div class="k-label">Median time in port <em class="src">model</em></div>
+      <div class="hero-row"><span class="k-big" id="k-stay">–</span><span class="k-unit">h</span><span class="delta" id="k-stay-d"></span></div>
+      <div class="k-sub" id="k-stay-sub"></div>
     </section>
 
     <section class="metrics">
-      <div><b id="k-scans">0</b><span data-i18n="scans">X-ray / hr</span></div>
-      <div><b><span id="k-clear">—</span> <small data-i18n="min">min</small></b><span data-i18n="clearance">Avg clearance</span></div>
-      <div><b id="k-ramps">0</b><span data-i18n="atRamps">At ramps</span></div>
-      <div><b id="k-released">0</b><span data-i18n="released">Released</span></div>
+      <div><b id="k-perday">–</b><span>Trucks / day</span></div>
+      <div><b id="k-cap">–</b><span>Sustainable / day</span></div>
+      <div><b id="k-decl">–</b><span>Declaration wait</span></div>
+      <div><b id="k-iq">–</b><span>Inspection queue</span></div>
     </section>
 
-    <section class="pax">
-      <div class="k-label" data-i18n="passengers">Passengers</div>
-      <div class="pax-row">
-        <div><b id="k-pass">0</b><span data-i18n="cleared">cleared</span></div>
-        <div><b id="k-booths">0/0</b><span data-i18n="booths">booths active</span></div>
-        <div><b id="k-cars">0</b><span data-i18n="queue">on approach</span></div>
+    <section class="dash-bn" id="k-bn"></section>
+
+    <section class="livebox">
+      <div class="k-label"><i class="live-dot"></i>Live in the twin</div>
+      <div class="live-row">
+        <div><b id="k-trucks">0</b><span data-i18n="trucksOnSite">Trucks on site</span><em class="delta" id="k-trend"></em></div>
+        <svg class="spark" id="spark" viewBox="0 0 240 44" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg>
       </div>
+      <div class="gauge">
+        <svg viewBox="0 0 64 64" class="ring"><circle cx="32" cy="32" r="27" class="track"/><circle cx="32" cy="32" r="27" class="fill" id="g-park"/></svg>
+        <div class="gauge-txt"><b id="k-park-pct">0%</b><span data-i18n="parking">Main parking</span><small><span id="k-yard">0</span> / <span id="k-yard-cap">0</span> <span data-i18n="bays">bays</span></small></div>
+        <div class="gauge-side"><span><b id="k-scans">0</b> X-ray / h</span><span><b id="k-ramps">0</b> at ramps</span><span><b id="k-released">0</b> released</span></div>
+      </div>
+      <div class="pax-mini"><span data-i18n="passengers">Passengers</span> <b id="k-pass">0</b> · <span id="k-booths">0/0</span> booths · <span id="k-cars">0</span> on approach</div>
     </section>
 
     <section class="feed">
-      <div class="k-label"><i class="live-dot"></i><span data-i18n="activity">Live activity</span></div>
       <ol id="feed"></ol>
     </section>
   </aside>
@@ -124,12 +127,12 @@
   <section class="exec" id="exec" aria-hidden="true">
     <header class="ex-head">
       <div>
-        <h2 data-i18n="xTitle">Executive overview</h2>
+        <h2><span class="ex-wasl">WASL</span> <span data-i18n="xTitle">Executive overview</span></h2>
         <p id="ex-sub"></p>
       </div>
       <div class="ex-head-r">
+        <span class="ex-scen" id="ex-scen"></span>
         <span class="ex-health" id="ex-health"></span>
-        <span class="badge" data-i18n="simulated">Simulated</span>
         <button type="button" class="ib" id="exec-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
     </header>
@@ -139,38 +142,36 @@
     <div class="ex-row ex-row-a">
       <article class="card">
         <div class="card-head">
-          <div><h3 data-i18n="xTrend">Trend · last 2 hours</h3><p class="card-now" id="ex-trend-now"></p></div>
+          <div><h3><i class="live-dot"></i><span data-i18n="xTrend">Trend · last 2 hours</span></h3><p class="card-now" id="ex-trend-now"></p></div>
           <div class="seg small" id="ex-metric">
             <button type="button" class="on" data-metric="trucks" data-i18n="mTrucks">Trucks on site</button>
             <button type="button" data-metric="rate" data-i18n="mRate">Releases / hr</button>
             <button type="button" data-metric="park" data-i18n="mPark">Parking %</button>
-            <button type="button" data-metric="pax" data-i18n="mPax">Passengers / hr</button>
           </div>
         </div>
         <div class="chart" id="ex-trend"></div>
       </article>
       <article class="card">
-        <div class="card-head"><h3 data-i18n="xStations">Process health</h3><div class="ex-legend" id="ex-legend"></div></div>
+        <div class="card-head"><h3><i class="live-dot"></i><span data-i18n="xStations">Process health</span></h3><div class="ex-legend" id="ex-legend"></div></div>
         <div class="ex-stations" id="ex-stations"></div>
       </article>
     </div>
 
     <div class="ex-row ex-row-b">
       <article class="card">
-        <div class="card-head"><div><h3 data-i18n="xClearDist">Clearance time · gate to release</h3><p class="card-now" id="ex-clear-stat"></p></div></div>
+        <div class="card-head"><div><h3>Time in port · import trucks</h3><p class="card-now" id="ex-stay-stat"></p></div><span class="src-tag">model</span></div>
         <div class="chart" id="ex-hist"></div>
       </article>
       <article class="card">
-        <div class="card-head"><h3 data-i18n="xChannel">Inspection channel · released trucks</h3></div>
-        <div id="ex-channel"></div>
-        <div class="card-head sub"><h3 data-i18n="xCargo">Cargo on site</h3></div>
-        <div class="hbars" id="ex-cargo"></div>
+        <div class="card-head"><h3>Where the time goes · share of truck-hours</h3><span class="src-tag">model</span></div>
+        <div id="ex-where"></div>
+        <div id="ex-bn"></div>
       </article>
       <article class="card">
-        <div class="card-head"><h3 data-i18n="xPaxHall">Passenger hall</h3></div>
-        <div id="ex-pax"></div>
-        <div class="card-head sub"><h3><i class="live-dot"></i><span data-i18n="activity">Live activity</span></h3></div>
-        <ol class="ex-feed" id="ex-feed"></ol>
+        <div class="card-head"><h3>24-hour pattern · learned from 2026</h3><span class="src-tag">data</span></div>
+        <div class="chart day" id="ex-day"></div>
+        <div class="mix" id="ex-mix"></div>
+        <ol class="ex-feed" id="ex-feed" hidden></ol>
       </article>
     </div>
     <div class="ex-tip" id="ex-tip"></div>
@@ -199,6 +200,7 @@
     </div>
     <span class="vsep"></span>
     <button type="button" class="pill accent" id="tour"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span data-i18n="tour">Tour</span></button>
+    <button type="button" class="pill demo" id="demo-btn" title="Play the WASL story in the twin"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg><span data-i18n="demo">Demo</span></button>
     <button type="button" class="ib" id="follow" title="Ride along with a truck (F)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
   </nav>
 
@@ -209,15 +211,15 @@
 
   <div id="loader">
     <div class="loader-card">
-      <div class="mark big"><span>GAC</span></div>
-      <h2>Abu Samra Land Port</h2>
-      <p class="ar">منفذ أبو سمرة البري</p>
+      <div class="mark big wasl"><span>WASL</span></div>
+      <h2>WASL · Abu Samra Land Port</h2>
+      <p class="ar">وصل · منفذ أبو سمرة البري</p>
       <div class="progress"><i id="loader-bar"></i></div>
       <p id="loader-step">Starting</p>
     </div>
   </div>
 
-  <div class="credit">Map data © OpenStreetMap contributors · Terrain tones after Esri World Imagery</div>
+  <div class="credit">Port model learned from GAC 2026 gate-pass and OGA extracts (synthetic trucks, medians) · Map data © OpenStreetMap contributors · Terrain tones after Esri World Imagery</div>
 
   <script type="module" src="app.js"></script>
 </body>

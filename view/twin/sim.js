@@ -1,4 +1,5 @@
 import { VEHICLE_SPECS, pick } from "./vehicles.js";
+import { makePlate, drawCountry, COUNTRY } from "./plates.js";
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const smooth = (e0, e1, x) => {
@@ -74,7 +75,6 @@ class Route {
   }
 }
 
-const KSA_LETTERS = ["أ ب ج", "ر س ط", "ك ل م", "ن هـ و", "د ص ع", "ب ح ي"];
 /* Import inspection categories and the cargo each one covers. */
 export const CATEGORY_CARGO = {
   chem: ["Construction steel", "Cement", "Building materials", "Furniture", "Household goods"],
@@ -128,7 +128,13 @@ export class Simulation {
     this.stations = new Map();
     this.stats = { passengers: 0, buses: 0, scans: [], cleared: [], inspections: 0, released: 0, releasedBy: { inbound: 0, outbound: 0 }, inspected: { chem: 0, oga: 0, health: 0 }, waved: { chem: 0, oga: 0, health: 0 } };
     /* Share of inspected import trucks in each category; the planner can change it. */
-    this.mix = { chem: 0.25, oga: 0.45, health: 0.3 };
+    this.mix = { chem: 0.5, oga: 0.25, health: 0.25 };
+    /* Learned model (portmodel.js): synthetic journeys for import trucks, plate-country mix and
+       the 24-hour arrival profile. Set by the app once it has loaded. */
+    this.model = null;
+    this.countries = { QA: 40, SA: 38, KW: 8, OM: 8, AE: 6 };
+    this.exportCountries = { QA: 72, SA: 20, KW: 3, OM: 3, AE: 2 };
+    this.carCountries = { QA: 74, SA: 20, KW: 2, OM: 2, AE: 2 };
     this.tmp = {};
     this.tmp2 = {};
     this.bays = [];
@@ -198,10 +204,11 @@ export class Simulation {
     vehicle.spec = spec;
     if (truck) {
       const inbound = route.flow === "inbound";
-      vehicle.plate = inbound ? `${Math.floor(1000 + Math.random() * 8999)} ${pick(KSA_LETTERS)}` : `${Math.floor(100000 + Math.random() * 899999)}`;
       vehicle.origin = inbound ? "Saudi Arabia → Qatar" : "Qatar → Saudi Arabia";
       vehicle.declaration = `QA-${inbound ? "IM" : "EX"}-2026-${Math.floor(100000 + Math.random() * 899999)}`;
       vehicle.cargo = pick(CARGO);
+      vehicle.clockIn = this.clock;
+      this.setPlate(vehicle, drawCountry(inbound ? this.countries : this.exportCountries));
       if (inbound) {
         let r = Math.random();
         vehicle.cat = "health";
@@ -214,6 +221,16 @@ export class Simulation {
         }
         vehicle.tanker = vehicle.cat === "chem" && Math.random() < 0.3;
         vehicle.cargo = pick(CATEGORY_CARGO[vehicle.cat]);
+        /* A journey drawn from the learned population, in the truck's category. */
+        if (this.model) {
+          const ci = ["chem", "oga", "health"].indexOf(vehicle.cat);
+          const pool = this.model.byCat[ci];
+          if (pool && pool.length) {
+            vehicle.profile = pick(pool);
+            this.setPlate(vehicle, vehicle.profile.co);
+            vehicle.decls = vehicle.profile.n;
+          }
+        }
         /* A red-channel truck takes a lane that passes docks of its category, and every truck
            avoids an x-ray lane that is out of service. */
         const xrayRef = (r) => (r.stops.find((st) => st.kind === "xray") || {}).ref;
@@ -228,13 +245,25 @@ export class Simulation {
         if (lane.twin && this.tandem.has(xrayRef(lane)) && Math.random() < 0.5) vehicle.route = lane.twin;
       }
     } else {
-      vehicle.plate = `${Math.floor(10000 + Math.random() * 899999)}`;
+      this.setPlate(vehicle, drawCountry(this.carCountries));
       vehicle.origin = route.flow === "arrival" ? "Arriving in Qatar" : "Departing Qatar";
     }
     if (!this.fleet.allocate(vehicle)) return null;
     if (vehicle.tanker) vehicle.cargo = "Fuel / liquid bulk";
     this.vehicles.push(vehicle);
     return vehicle;
+  }
+
+  setPlate(v, country) {
+    v.plateInfo = makePlate(country);
+    v.plate = v.plateInfo.ar || v.plateInfo.text;
+    v.country = v.plateInfo.country;
+  }
+
+  setModel(model) {
+    this.model = model;
+    model.byCat = [0, 1, 2].map((c) => model.pop.filter((p) => p.c === c));
+    this.countries = model.L.countries;
   }
 
   startClear(route) {
@@ -741,7 +770,9 @@ export class Simulation {
      scenario's arrivals per hour. */
   inboundGap() {
     const routes = this.routes.filter((r) => r.flow === "inbound" && !r.isTwin).length || 1;
-    const mean = (routes * 3600) / Math.max(1, this.inboundPerHour);
+    /* The learned 24-hour arrival profile: busier at 14:00 and 22:00, thin before dawn. */
+    const prof = this.model ? this.model.prof[Math.floor(this.clock / 3600) % 24] * 24 : 1;
+    const mean = (routes * 3600) / Math.max(1, this.inboundPerHour * prof);
     return mean * rnd(0.75, 1.25);
   }
 
@@ -969,6 +1000,8 @@ export class Simulation {
     return {
       title: v.type === "truck" ? (v.tanker ? "Tanker truck" : "Container truck") : v.type === "bus" ? "Passenger bus" : "Passenger car",
       plate: v.plate,
+      plateInfo: v.plateInfo,
+      country: v.country ? COUNTRY[v.country] : null,
       origin: v.origin,
       cargo: v.cargo,
       declaration: v.declaration,

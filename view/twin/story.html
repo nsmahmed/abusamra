@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WASL 2030 Story</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0e13; --bg-2: #10141b; --card: rgba(255, 255, 255, 0.035);
+      --ink: #eef0f2; --ink-2: rgba(238, 240, 242, 0.78); --muted: rgba(238, 240, 242, 0.52); --faint: rgba(238, 240, 242, 0.28);
+      --line: rgba(255, 255, 255, 0.08); --line-2: rgba(255, 255, 255, 0.14);
+      --teal: #5fe0d8; --gold: #d6b47a; --gold-2: #ecd3a3; --rose: #e0527a; --good: #6fe3c8; --bad: #ff8e99; --maroon: #8a1538;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-snap-type: y proximity; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.5; }
+    [lang="ar"], .ar { font-family: "IBM Plex Sans Arabic", "Segoe UI", sans-serif; }
+    a { color: inherit; }
+    button { font: inherit; color: inherit; }
+    svg { display: block; overflow: visible; }
+
+    .top { position: fixed; inset: 0 0 auto 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; background: linear-gradient(180deg, rgba(11, 14, 19, 0.92), rgba(11, 14, 19, 0)); }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(140deg, #1d6f6b, #0d3b44); font-size: 9px; font-weight: 700; letter-spacing: 0.08em; }
+    .brand em { font-style: normal; font-weight: 400; color: var(--muted); }
+    .twin-link { font-size: 13px; text-decoration: none; padding: 7px 14px; border-radius: 99px; border: 1px solid rgba(95, 224, 216, 0.4); color: var(--teal); }
+    .twin-link:hover { background: rgba(95, 224, 216, 0.1); }
+
+    .rail { position: fixed; right: 22px; top: 50%; transform: translateY(-50%); z-index: 20; display: flex; flex-direction: column; gap: 12px; }
+    .rail a { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-2); text-decoration: none; font-size: 11px; font-weight: 700; color: var(--muted); transition: all 0.25s; }
+    .rail a.on { color: #0b1416; background: var(--teal); border-color: transparent; }
+
+    section { min-height: 100vh; padding: 96px max(24px, calc((100vw - 1080px) / 2)) 72px; scroll-snap-align: start; position: relative; }
+    section + section { border-top: 1px solid var(--line); }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.7s, transform 0.7s; }
+    .reveal.in { opacity: 1; transform: none; }
+
+    .hero { display: grid; place-items: center; text-align: center; background: radial-gradient(1200px 600px at 50% 40%, rgba(29, 111, 107, 0.25), transparent 70%), var(--bg); }
+    .hero .word { font-size: clamp(72px, 14vw, 168px); font-weight: 700; letter-spacing: 0.06em; line-height: 1; background: linear-gradient(120deg, var(--teal), var(--gold-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero .ar-word { font-size: clamp(28px, 4vw, 44px); color: var(--gold-2); margin-top: 6px; }
+    .hero .vision { font-size: clamp(18px, 2.4vw, 26px); font-weight: 300; margin-top: 18px; }
+    .acro { display: flex; gap: clamp(14px, 3vw, 38px); justify-content: center; flex-wrap: wrap; margin-top: 26px; font-size: clamp(14px, 1.7vw, 18px); color: var(--ink-2); }
+    .acro b { color: var(--teal); font-weight: 700; }
+    .hero .sub { margin-top: 30px; color: var(--muted); font-size: 13px; }
+    .cue { margin-top: 36px; display: inline-flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; text-decoration: none; }
+    .cue i { width: 18px; height: 28px; border: 1.5px solid var(--faint); border-radius: 10px; position: relative; }
+    .cue i::after { content: ""; position: absolute; left: 50%; top: 6px; width: 3px; height: 6px; margin-left: -1.5px; border-radius: 2px; background: var(--teal); animation: cue 1.6s infinite; }
+    @keyframes cue { 50% { transform: translateY(8px); opacity: 0.3; } }
+
+    .kick { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    .kick b { color: var(--teal); font-size: 15px; }
+    h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 600; line-height: 1.15; margin: 10px 0 12px; max-width: 880px; }
+    h2 .hl { color: var(--teal); }
+    h2 .hl.bad { color: var(--bad); }
+    h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--ink-2); }
+    .lede { font-size: 16px; color: var(--ink-2); max-width: 760px; margin: 0 0 28px; }
+
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 22px; }
+    .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+    .tile .v { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; }
+    .tile .v small { font-size: 15px; color: var(--muted); margin-left: 3px; }
+    .tile .n { font-size: 12px; color: var(--muted); }
+    .tile .d { font-size: 12px; margin-top: 2px; }
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+
+    .grid2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; align-items: start; }
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+    @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } .rail { display: none; } }
+
+    .wbar { display: flex; gap: 2px; height: 22px; border-radius: 7px; overflow: hidden; margin-bottom: 14px; }
+    .wbar i { display: block; min-width: 3px; transition: flex 0.6s; }
+    .wrow { display: grid; grid-template-columns: 12px 1fr 64px 48px; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-2); padding: 3px 0; }
+    .wrow i { width: 10px; height: 10px; border-radius: 3px; }
+    .wrow b { text-align: right; font-weight: 500; color: var(--ink); }
+    .wrow em { text-align: right; font-style: normal; color: var(--muted); }
+    .wrow.bn span { color: var(--bad); font-weight: 600; }
+
+    .bn-box { border-radius: 12px; padding: 12px 14px; background: rgba(224, 82, 122, 0.08); border: 1px solid rgba(224, 82, 122, 0.3); font-size: 13px; }
+    .bn-h { display: flex; align-items: center; gap: 7px; color: var(--ink-2); }
+    .bn-h i { width: 8px; height: 8px; border-radius: 50%; background: var(--rose); box-shadow: 0 0 10px var(--rose); }
+    .bn-h b { color: var(--ink); }
+    .bn-s { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .bn-pat { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .bn-pat li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; }
+    .bn-pat li span { color: var(--ink-2); }
+    .bn-pat li b { color: #ff9fb0; }
+    .bn-pat li em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: var(--faint); }
+
+    .chart .grid { stroke: rgba(255, 255, 255, 0.07); }
+    .chart .ax { fill: var(--muted); font-size: 11px; font-family: inherit; }
+    .chart .lbl { font-weight: 600; }
+    .chart .goal { stroke: var(--gold-2); stroke-dasharray: 3 3; }
+    .chart .goal-t { fill: var(--gold-2); }
+    .no-goal .goal, .no-goal .goal-t { display: none; }
+
+    .years { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 16px; }
+    .yr { border-radius: 12px; padding: 10px 12px; border: 1px solid var(--line); background: var(--card); }
+    .yr .y { font-size: 12px; color: var(--muted); }
+    .yr .m { font-size: 22px; font-weight: 500; }
+    .yr .t { font-size: 11.5px; color: var(--muted); }
+    .yr .s { display: inline-block; margin-top: 6px; font-size: 10.5px; padding: 1px 8px; border-radius: 99px; }
+    .s-ok { background: rgba(63, 191, 138, 0.14); color: var(--good); }
+    .s-warn { background: rgba(240, 181, 95, 0.14); color: #f0c27a; }
+    .s-bad { background: rgba(255, 93, 108, 0.16); color: var(--bad); }
+    @media (max-width: 700px) { .years { grid-template-columns: repeat(2, 1fr); } }
+
+    .goalbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 18px; }
+    .goalbar label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); }
+    .goalbar input { width: 84px; font: inherit; font-size: 22px; font-weight: 600; text-align: center; color: var(--gold-2); background: rgba(214, 180, 122, 0.08); border: 1px solid rgba(214, 180, 122, 0.4); border-radius: 10px; padding: 6px 4px; }
+    .run { border: 0; border-radius: 10px; padding: 11px 20px; font-weight: 600; background: linear-gradient(90deg, var(--teal), var(--gold)); color: #0b1416; cursor: pointer; }
+    .run:disabled { opacity: 0.6; cursor: progress; }
+    .prog { flex: 1 1 160px; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+    .prog i { display: block; height: 100%; width: 0; background: var(--teal); transition: width 0.2s; }
+    .searchnote { font-size: 12.5px; color: var(--muted); margin: -6px 0 16px; }
+
+    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (max-width: 900px) { .plans { grid-template-columns: 1fr; } }
+    .plan { text-align: left; cursor: pointer; border: 1px solid var(--line-2); border-top: 3px solid var(--pc); border-radius: 14px; padding: 14px 16px; background: var(--card); transition: background 0.2s, transform 0.2s; }
+    .plan:hover { background: rgba(255, 255, 255, 0.06); }
+    .plan.on { background: rgba(255, 255, 255, 0.07); box-shadow: 0 0 0 1px var(--pc) inset; }
+    .plan header { display: flex; justify-content: space-between; align-items: baseline; }
+    .plan header b { color: var(--pc); }
+    .plan .why { font-size: 11.5px; color: var(--muted); margin: 2px 0 10px; min-height: 34px; }
+    .plan .res { font-size: 28px; font-weight: 500; }
+    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 13px; margin: 8px 0; }
+    .meta span { display: flex; flex-direction: column; }
+    .meta em { font-style: normal; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .items { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }
+    .items li { display: flex; justify-content: space-between; gap: 8px; }
+    .items em { font-style: normal; color: var(--muted); }
+
+    .cmp { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .cmp th { text-align: right; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 0 8px; }
+    .cmp th:first-child, .cmp td:first-child { text-align: left; }
+    .cmp td { padding: 8px 0; border-top: 1px solid var(--line); text-align: right; }
+    .cmp td:first-child { color: var(--ink-2); }
+    .cmp td.after { font-weight: 600; }
+    .cmp th { white-space: nowrap; padding-left: 12px; }
+    .cmp td + td { padding-left: 12px; white-space: nowrap; }
+    .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; text-decoration: none; padding: 9px 16px; border-radius: 99px; border: 1px solid var(--line-2); }
+    .btn:hover { background: rgba(255, 255, 255, 0.06); }
+    .btn.pri { border-color: transparent; background: var(--teal); color: #0b1416; font-weight: 600; }
+
+    .finale { display: grid; place-items: center; text-align: center; background: radial-gradient(1000px 500px at 50% 55%, rgba(214, 180, 122, 0.12), transparent 70%), var(--bg); }
+    .finale .word { font-size: clamp(64px, 12vw, 140px); font-weight: 700; letter-spacing: 0.06em; line-height: 1; background: linear-gradient(120deg, var(--teal), var(--gold-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .finale .result { font-size: clamp(16px, 2vw, 21px); color: var(--ink-2); margin: 22px auto 0; max-width: 720px; }
+    .finale .result b { color: var(--ink); }
+    .how { margin: 44px auto 0; max-width: 760px; font-size: 12px; color: var(--muted); text-align: left; border-top: 1px solid var(--line); padding-top: 16px; }
+    .how b { color: var(--ink-2); font-weight: 600; }
+    .loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg); color: var(--muted); font-size: 13px; transition: opacity 0.5s; }
+    .loading.done { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">Loading the learned port model…</div>
+  <header class="top">
+    <a class="brand" href="index.html"><span class="mark">WASL</span>Abu Samra Land Port <em>· 2030 story</em></a>
+    <a class="twin-link" href="index.html">Open the digital twin →</a>
+  </header>
+  <nav class="rail" id="rail">
+    <a href="#s1" title="Watch: the port today">W</a>
+    <a href="#s2" title="Anticipate: 2030 without change">A</a>
+    <a href="#s3" title="Simulate: set a goal">S</a>
+    <a href="#s4" title="Lead: the port after the decision">L</a>
+  </nav>
+
+  <section class="hero" id="s0">
+    <div class="reveal">
+      <div class="word">WASL</div>
+      <div class="ar-word ar" lang="ar">وصل · نصلك برؤيتك</div>
+      <div class="vision">We connect you to your vision</div>
+      <div class="acro"><span><b>W</b>atch</span><span><b>A</b>nticipate</span><span><b>S</b>imulate</span><span><b>L</b>ead</span></div>
+      <div class="sub">A digital twin of Abu Samra land port, General Authority of Customs, Qatar</div>
+      <a class="cue" href="#s1"><i></i>Scroll, or use the arrow keys</a>
+    </div>
+  </section>
+
+  <section id="s1">
+    <div class="reveal">
+      <div class="kick"><b>W</b> · Watch · the port today</div>
+      <h2 id="w-h"></h2>
+      <p class="lede" id="w-lede"></p>
+      <div class="tiles" id="w-tiles"></div>
+      <div class="grid2">
+        <div class="panel"><h3>Where a truck's time goes · share of all truck-hours</h3><div id="w-where"></div></div>
+        <div><div id="w-bn"></div><p class="lede" style="font-size:13px;margin-top:14px" id="w-note"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <div class="reveal">
+      <div class="kick"><b>A</b> · Anticipate · 2030 if nothing changes</div>
+      <h2 id="a-h"></h2>
+      <p class="lede" id="a-lede"></p>
+      <div class="grid2">
+        <div class="panel"><h3>Median time in port, same resources as today</h3><div class="chart no-goal" id="a-chart"></div><div class="years" id="a-years"></div></div>
+        <div><div class="tiles" id="a-tiles" style="grid-template-columns:1fr 1fr"></div><div id="a-bn"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s3">
+    <div class="reveal">
+      <div class="kick"><b>S</b> · Simulate · set a goal, let the model find the plan</div>
+      <h2>What would it take to get the median truck through in <span class="hl" id="g-h">3.5 h</span> by 2030?</h2>
+      <p class="lede">Goal seeking runs the learned port model in reverse. It tries every combination of X-ray lanes, inspection docks and their split by category, parking, pre-arrival filing, a green channel and shift overlap within the planner's limits. Each one is costed over five years from public unit costs. It then keeps three different answers.</p>
+      <div class="goalbar">
+        <label>Target median <input id="g-target" type="number" min="2.5" max="12" step="0.5" value="3.5"> hours, at 2030 demand</label>
+        <button class="run" id="g-run" type="button">Find plans</button>
+        <div class="prog"><i id="g-prog"></i></div>
+      </div>
+      <p class="searchnote" id="g-note"></p>
+      <div class="plans" id="g-plans"></div>
+      <div class="panel" style="margin-top:16px"><h3>Cost against hours saved per truck</h3><div class="chart" id="g-cost"></div></div>
+    </div>
+  </section>
+
+  <section id="s4">
+    <div class="reveal">
+      <div class="kick"><b>L</b> · Lead · the port after the decision</div>
+      <h2 id="l-h"></h2>
+      <p class="lede" id="l-lede"></p>
+      <div class="grid2">
+        <div class="panel"><h3>Median time in port to 2030 · each plan against no change</h3><div class="chart" id="l-chart"></div></div>
+        <div class="panel">
+          <table class="cmp" id="l-table"></table>
+          <div class="btns" id="l-btns"></div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:18px">
+        <div class="panel"><h3>Where the time goes in 2030 with the plan</h3><div id="l-where"></div></div>
+        <div id="l-bn"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="finale" id="s5">
+    <div class="reveal">
+      <div class="word">WASL</div>
+      <div class="ar-word ar" lang="ar" style="font-size:28px;color:var(--gold-2);margin-top:6px">نصلك برؤيتك</div>
+      <div class="vision" style="font-size:24px;font-weight:300;margin-top:10px">We connect you to your vision</div>
+      <div class="acro"><span><b>W</b>atch</span><span><b>A</b>nticipate</span><span><b>S</b>imulate</span><span><b>L</b>ead</span></div>
+      <p class="result" id="f-result"></p>
+      <div class="how">
+        <b>How these numbers are made.</b> The model learns from the 2026 gate-pass and declaration extracts. Duplicates are removed, rows are rolled up to one row per truck, stays over 7 days are dropped, and every figure is a median, as in the bottleneck report. A Gaussian-mixture generator draws synthetic trucks stage by stage, by goods category and X-ray. A queueing model calibrated to today's waits turns lanes, docks and bays into hours. Demand to 2030 follows the learned growth of food declarations, halved each year. Unit costs are public benchmarks converted to QAR (see <code>config.json</code> and <code>docs/AI.md</code>). The figures are synthetic, built to behave like the port, not to report it.
+      </div>
+    </div>
+  </section>
+
+  <script type="module">
+    import { loadModel, CATS } from "./portmodel.js";
+    import { fmtH, fmtQAR, PLAN_COLORS, bottleneckHTML, drawProjection, drawCost } from "./planner.js";
+
+    const $ = (id) => document.getElementById(id);
+    const STAGES = [
+      ["gate", "Wait at entry (parking full)", "#7c8593"],
+      ["decl", "Wait for declaration", "#d6b47a"],
+      ["xq", "Queue for X-ray", "#4cc3c0"],
+      ["iq", "Queue for inspection", "#e0527a"],
+      ["insp", "Inspection", "#a08bff"],
+      ["exit", "Release and exit", "#3fbf8a"],
+    ];
+    const LEVER = { xray: "X-ray lanes", docks: "Inspection docks", prefile: "Pre-arrival filing", green: "Green channel", overlap: "Shift overlap", parking: "Parking" };
+    const RES = { xray: "X-ray lanes", chem: "Chemical & others docks", oga: "OGA docks", health: "Health & food docks", parking: "main parking" };
+    const WHY = {
+      cheap: "The cheapest set of changes that reaches the goal.",
+      resilient: "The cheapest plan that still holds the goal in a week like the busiest of 2026.",
+      best: "The lowest time in port for at most 1.5× the cheapest budget.",
+    };
+    const mins = (m) => (m >= 90 ? `${(m / 60).toFixed(1)} h` : `${Math.round(m)} min`);
+    const n0 = (v) => Math.round(v).toLocaleString("en-US");
+
+    const m = await loadModel("./");
+    const today = m.baseRun;
+    const Y = 2030;
+    const noChange = m.evaluate({ ...m.today, year: Y });
+    const path = m.projection(m.today);
+    const surge2030 = Math.round((m.growthFactor(Y) - 1) * 100);
+    $("loading").classList.add("done");
+
+    /* ---------- shared pieces ---------- */
+    function where(el, r) {
+      const rows = STAGES.filter(([k]) => r.stages[k].share >= 0.5);
+      el.innerHTML = `<div class="wbar">${rows.map(([k, , c]) => `<i style="flex:${r.stages[k].share} 0 0;background:${c}" title="${k}"></i>`).join("")}</div>` +
+        rows.map(([k, name, c]) => `<div class="wrow ${r.bottleneck.stage === k ? "bn" : ""}"><i style="background:${c}"></i><span>${name}</span><b>${mins(r.stages[k].median)}</b><em>${Math.round(r.stages[k].share)}%</em></div>`).join("") +
+        `<div class="wrow" style="color:var(--faint);font-size:11px"><i></i><span>stage</span><b style="color:var(--faint);font-weight:400">median</b><em>of hours</em></div>`;
+    }
+    const tile = (v, unit, name, d = "") => `<div class="tile"><div class="v">${v}${unit ? `<small>${unit}</small>` : ""}</div><div class="n">${name}</div>${d ? `<div class="d">${d}</div>` : ""}</div>`;
+    const delta = (now, then, unit = "h", lowerBetter = true, digits = 1) => {
+      const d = now - then;
+      if (Math.abs(d) < 10 ** -digits / 2) return "";
+      const good = lowerBetter ? d < 0 : d > 0;
+      return `<span class="${good ? "good" : "bad"}">${d > 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(digits)}${unit} vs today</span>`;
+    };
+    const hashOf = (s) => `index.html#plan=s${s.surge}.p${s.parking}.x${s.xray}.d${s.docks}.a${CATS.map((c) => s.alloc[c]).join("-")}.f${s.prefile}.g${s.green}.o${s.overlap}`;
+
+    /* ---------- W: today ---------- */
+    $("w-h").innerHTML = `A truck spends a median of <span class="hl">${fmtH(today.median)}</span> in the port. ${Math.round(today.stages.decl.share)}% of all truck-hours go to waiting for the declaration.`;
+    $("w-lede").textContent = `${n0(today.lamDay)} trucks arrive on a median day. One in five goes through X-ray, and nearly every truck is inspected (red lane). No declaration is filed before the truck arrives.`;
+    $("w-tiles").innerHTML = [
+      tile(n0(today.lamDay), "", "Trucks per day, median day"),
+      tile(today.median.toFixed(1), "h", "Median time in port"),
+      tile(fmtH(today.p90).replace(" h", ""), "h", "Slowest 10% (P90)"),
+      tile(Math.round(today.over12), "%", "Trucks over 12 hours"),
+      tile(n0(today.capacity), "", "Sustainable trucks per day", `limited by ${RES[today.limit]}`),
+    ].join("");
+    where($("w-where"), today);
+    $("w-bn").innerHTML = bottleneckHTML(today);
+    $("w-note").textContent = `Capacity is not today's problem: the busiest resource runs at ${Math.round(Math.max(...Object.values(today.util)) * 100)}%. The time is lost in the declaration and in the inspection queue, which waits on agency review as much as on docks.`;
+
+    /* ---------- A: 2030 without change ---------- */
+    const knee = path.find((p) => p.unstable || p.median > today.median * 1.4);
+    $("a-h").innerHTML = `By ${Y}, ${n0(noChange.lamDay)} trucks a day. Without change, the median truck waits <span class="hl bad">${fmtH(noChange.median)}</span>.`;
+    $("a-lede").textContent = `Truck numbers follow the growth learned from food declarations (43% a year in 2023 to 2026), halved each year after 2026. The port absorbs the first years.${knee ? ` In ${knee.year}, ${RES[knee.bottleneck.resource]} pass their limit, queues carry over from one day to the next, and time in port grows much faster than traffic.` : ""}`;
+    drawProjection($("a-chart"), m, { plans: [], target: 0, metric: "median" }, 0, "As-is");
+    $("a-years").innerHTML = path.map((p) => {
+      const st = p.unstable ? ["s-bad", "over capacity"] : p.median > today.median * 1.15 ? ["s-warn", "strained"] : ["s-ok", "coping"];
+      return `<div class="yr"><div class="y">${p.year}</div><div class="m">${fmtH(p.median)}</div><div class="t">${n0(p.perDay)} trucks/day</div><span class="s ${st[0]}">${st[1]}</span></div>`;
+    }).join("");
+    $("a-tiles").innerHTML = [
+      tile(fmtH(noChange.median).replace(" h", ""), "h", `Median in ${Y}`, delta(noChange.median, today.median)),
+      tile(fmtH(noChange.p90).replace(" h", ""), "h", "Slowest 10% (P90)", delta(noChange.p90, today.p90, "h", true, 0)),
+      tile(Math.round(noChange.over12), "%", "Trucks over 12 hours", delta(noChange.over12, today.over12, " pts", true, 0)),
+      tile(`${Math.round(noChange.util.parking * 100)}`, "%", "Main parking at peak", noChange.overflow > 0 ? `<span class="bad">${n0(noChange.overflow)} trucks wait outside</span>` : ""),
+    ].join("");
+    $("a-bn").innerHTML = bottleneckHTML(noChange);
+
+    /* ---------- S: goal seek ---------- */
+    let result = null;
+    let chosen = "resilient";
+    async function seek() {
+      const target = Math.max(2.5, Math.min(12, Number($("g-target").value) || 3.5));
+      $("g-h").textContent = fmtH(target);
+      $("g-run").disabled = true;
+      $("g-run").textContent = "Searching…";
+      result = await m.goalSeek({ target, year: Y, onProgress: (f) => ($("g-prog").style.width = `${Math.round(f * 100)}%`) });
+      $("g-run").disabled = false;
+      $("g-run").textContent = "Find plans";
+      $("g-note").textContent = `${n0(result.searched)} scenarios evaluated, ${n0(result.feasible)} reach ${fmtH(target)}.` + (result.reached ? "" : " None reaches the target within today's limits, so these are the closest. Raise a limit in the twin's planner (gear buttons) or relax the target.");
+      if (!result.plans.some((p) => p.id === chosen)) chosen = result.plans[0].id;
+      renderPlans();
+      renderLead();
+    }
+    function renderPlans() {
+      const g = result;
+      $("g-plans").innerHTML = g.plans.map((p) => {
+        const years = m.cost(p.s).years;
+        return `<button type="button" class="plan ${p.id === chosen ? "on" : ""}" data-id="${p.id}" style="--pc:${PLAN_COLORS[p.id]}">
+          <header><b>${p.name}</b><span class="res">${fmtH(p.value)}</span></header>
+          <div class="why">${WHY[p.id]}</div>
+          <div class="meta"><span><em>5-year cost</em>${fmtQAR(p.cost)}</span><span><em>In service</em>${p.lead} months</span><span><em>Busy week</em><b class="${p.stress <= g.target ? "good" : "bad"}">${fmtH(p.stress)}</b></span></div>
+          <ul class="items">${p.items.map((i) => `<li><span>${i.label}</span><em>${fmtQAR(i.capex + i.opex * years)}</em></li>`).join("")}</ul>
+        </button>`;
+      }).join("");
+      $("g-plans").querySelectorAll(".plan").forEach((b) => b.addEventListener("click", () => {
+        chosen = b.dataset.id;
+        renderPlans();
+        renderLead();
+      }));
+      drawCost($("g-cost"), g, noChange.median);
+    }
+
+    /* ---------- L: after the decision ---------- */
+    function renderLead() {
+      const g = result;
+      const p = g.plans.find((x) => x.id === chosen);
+      const after = m.evaluate({ ...p.s, year: Y });
+      const top = [...p.contrib].filter((c) => c.hours > 0.02).slice(0, 3);
+      $("l-h").innerHTML = `With the <span class="hl" style="color:${PLAN_COLORS[p.id]}">${p.name}</span> plan, the median truck spends <span class="hl">${fmtH(after.median)}</span> in port in ${Y}, not ${fmtH(noChange.median)}.`;
+      $("l-lede").textContent = `${fmtQAR(p.cost)} over five years, in service within ${p.lead} months.` + (top.length ? ` What does the work: ${top.map((c) => `${LEVER[c.lever] || c.lever} (${fmtH(c.hours)} less)`).join(", ")}. Each figure is the time the plan would lose without that lever.` : "");
+      drawProjection($("l-chart"), m, g, 0, "As-is");
+      const row = (name, a, b, c, fmt, lowerBetter = true) => {
+        const cls = (lowerBetter ? c < b : c > b) ? "good" : c === b ? "" : "bad";
+        return `<tr><td>${name}</td><td>${fmt(a)}</td><td>${fmt(b)}</td><td class="after ${cls}">${fmt(c)}</td></tr>`;
+      };
+      $("l-table").innerHTML = `<tr><th></th><th>Today</th><th>${Y} · no change</th><th>${Y} · ${p.name}</th></tr>` +
+        row("Trucks per day", today.lamDay, noChange.lamDay, after.lamDay, n0, false).replace(/class="after (good|bad)"/, 'class="after"') +
+        row("Median time in port", today.median, noChange.median, after.median, fmtH) +
+        row("Slowest 10% (P90)", today.p90, noChange.p90, after.p90, fmtH) +
+        row("Trucks over 12 hours", today.over12, noChange.over12, after.over12, (v) => `${Math.round(v)}%`) +
+        row("Sustainable trucks per day", today.capacity, noChange.capacity, after.capacity, n0, false) +
+        `<tr><td>Bottleneck</td><td>${STAGES.find((s) => s[0] === today.bottleneck.stage)[1]}</td><td>${STAGES.find((s) => s[0] === noChange.bottleneck.stage)[1]}</td><td class="after">${STAGES.find((s) => s[0] === after.bottleneck.stage)[1]}</td></tr>`;
+      $("l-btns").innerHTML = `<a class="btn pri" href="${hashOf({ ...p.s, surge: surge2030 })}">See the plan in the twin at ${Y} traffic →</a><a class="btn" href="${hashOf({ ...m.today, surge: surge2030 })}">${Y} with no change</a>`;
+      where($("l-where"), after);
+      $("l-bn").innerHTML = bottleneckHTML(after);
+      $("f-result").innerHTML = `${Y}: <b>${n0(after.lamDay)}</b> trucks a day, median <b>${fmtH(after.median)}</b> instead of <b>${fmtH(noChange.median)}</b>, for <b>${fmtQAR(p.cost)}</b> over five years.`;
+    }
+
+    $("g-run").addEventListener("click", seek);
+    $("g-target").addEventListener("keydown", (e) => e.key === "Enter" && seek());
+    seek();
+
+    /* ---------- scroll: reveal, rail, arrow keys ---------- */
+    const secs = [...document.querySelectorAll("section")];
+    const io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      e.target.querySelector(".reveal")?.classList.add("in");
+      document.querySelectorAll(".rail a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === `#${e.target.id}`));
+    }), { threshold: 0.35 });
+    secs.forEach((s) => io.observe(s));
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT") return;
+      const dir = { ArrowDown: 1, PageDown: 1, " ": 1, ArrowUp: -1, PageUp: -1 }[e.key];
+      if (!dir) return;
+      e.preventDefault();
+      const y = window.scrollY + 10;
+      const i = secs.findIndex((s) => s.offsetTop > y);
+      const cur = i < 0 ? secs.length - 1 : i - 1;
+      secs[Math.max(0, Math.min(secs.length - 1, cur + dir))].scrollIntoView({ behavior: "smooth" });
+    });
+    let rt;
+    addEventListener("resize", () => {
+      clearTimeout(rt);
+      rt = setTimeout(() => {
+        drawProjection($("a-chart"), m, { plans: [], target: 0, metric: "median" }, 0, "As-is");
+        if (result) {
+          drawCost($("g-cost"), result, noChange.median);
+          drawProjection($("l-chart"), m, result, 0, "As-is");
+        }
+      }, 200);
+    });
+  </script>
+</body>
+</html>
