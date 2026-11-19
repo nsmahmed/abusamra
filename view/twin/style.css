@@ -924,3 +924,70 @@ body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
 .dm-dots i.on { background: #5fe0d8; }
 body.demo-on .vehicle-hint, body.demo-on #intro { display: none; }
 @media (max-width: 700px) { .dm-big { font-size: 40px; } #demo { top: 70px; } }
+
+/* what changed: tag over the changed place, pins flash */
+.chg-tag { pointer-events: none; left: 0; top: 0; }
+.chg-in { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 12px; background: rgba(8, 20, 22, 0.9); border: 1.5px solid #5fe0d8; color: #e8fffd; box-shadow: 0 0 0 4px rgba(95, 224, 216, 0.16), 0 10px 30px rgba(0, 0, 0, 0.45); white-space: nowrap; }
+.chg-in b { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #9fe9e3; }
+.chg-in span { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chg-in i { font-style: normal; margin: 0 8px; opacity: 0.6; }
+.chg-in em { font-style: normal; color: #5fe0d8; }
+.chg-in.down { border-color: #ff5d6c; box-shadow: 0 0 0 4px rgba(255, 93, 108, 0.16), 0 10px 30px rgba(0, 0, 0, 0.45); }
+.chg-in.down em, .chg-in.down b { color: #ff9aa4; }
+.chg-in.proc { border-color: #f2c14e; box-shadow: 0 0 0 4px rgba(242, 193, 78, 0.16), 0 10px 30px rgba(0, 0, 0, 0.45); }
+.chg-in.proc em, .chg-in.proc b { color: #f7d27a; }
+.chg-in { animation: chg-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+@keyframes chg-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.ppin.flash { animation: pin-flash 0.7s ease-in-out 6 alternate; }
+@keyframes pin-flash { from { box-shadow: 0 0 0 0 rgba(95, 224, 216, 0); } to { box-shadow: 0 0 0 7px rgba(95, 224, 216, 0.35); background: rgba(20, 60, 60, 0.95); } }
+
+/* stage times above the followed truck */
+.truck-tag { pointer-events: none; left: 0; top: 0; display: flex; align-items: stretch; gap: 1px; border-radius: 10px; overflow: hidden; background: rgba(8, 12, 18, 0.86); border: 1px solid rgba(95, 224, 216, 0.35); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); white-space: nowrap; font-size: 11px; margin-bottom: 8px; }
+.truck-tag > b { display: flex; flex-direction: column; justify-content: center; padding: 5px 10px; background: rgba(95, 224, 216, 0.16); color: #fff; font-size: 14px; font-weight: 600; }
+.truck-tag > b small { font-size: 9.5px; font-weight: 400; color: #9fe9e3; }
+.truck-tag span { display: flex; flex-direction: column; padding: 5px 9px; color: var(--muted); }
+.truck-tag span em { font-style: normal; color: var(--ink); font-weight: 600; font-size: 12.5px; }
+.truck-tag span.top em { color: #ff9aa4; }
+
+/* ===================== phone view (body.mobile) ===================== */
+#m-panel { display: none; }
+body.mobile .rail, body.mobile .dash, body.mobile .planner, body.mobile .credit, body.mobile .dock,
+body.mobile #flow-tabs, body.mobile .tools, body.mobile .t2, body.mobile .vehicle-hint { display: none !important; }
+body.mobile .topbar { left: 10px; right: 10px; top: 10px; padding: 6px 10px; }
+body.mobile .topbar .t1 { font-size: 14px; }
+body.mobile #m-panel { display: block; position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 30; padding: 12px; border-radius: 18px; }
+.m-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.m-kpis > div { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6px 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); }
+.m-kpis b { font-size: 24px; font-weight: 600; line-height: 1.1; color: #fff; font-variant-numeric: tabular-nums; }
+.m-kpis > div:first-child b { color: #5fe0d8; }
+.m-kpis small { font-size: 10.5px; line-height: 1.25; color: var(--muted); margin-top: 2px; }
+.m-views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 10px; padding: 3px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); }
+.m-views button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; padding: 8px 0; border-radius: 9px; cursor: pointer; }
+.m-views button.on { background: rgba(95, 224, 216, 0.18); color: #fff; }
+.m-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.m-act { display: flex; align-items: center; justify-content: center; gap: 6px; height: 46px; border-radius: 13px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.06); color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.m-act svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.m-act.demo { background: #5fe0d8; color: #08201e; border-color: transparent; }
+.m-act.demo svg { fill: currentColor; stroke: none; }
+.m-hint { margin: 8px 0 0; text-align: center; font-size: 11px; color: var(--muted); }
+.m-hint a { color: #8ff0e8; }
+/* the truck card becomes a bottom sheet over the panel */
+body.mobile #vehicle { left: 10px; right: 10px; top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); width: auto; max-height: 46vh; background: rgba(12, 15, 20, 0.96); overflow-y: auto; z-index: 35; }
+body.mobile .truck-tag { font-size: 10px; }
+body.mobile .truck-tag span { padding: 4px 6px; }
+body.mobile .chg-in span { font-size: 16px; }
+/* the demo caption sits under the top bar and leaves the panel room */
+body.mobile #demo { top: 62px; }
+body.mobile .dm-card { padding: 10px 14px 8px; }
+body.mobile .dm-big { font-size: 34px; }
+body.mobile .dm-line { font-size: 13px; }
+body.mobile .dm-sub { font-size: 11px; }
+body.mobile.demo-on #m-panel .m-views, body.mobile.demo-on #m-panel .m-hint { display: none; }
+body.mobile .exec { padding: 64px 10px 10px; }
+body.mobile:has(#vehicle.open) #m-panel { display: none; }
+body.mobile #intro { padding: 0 16px; }
+body.mobile .intro-kicker { font-size: 9.5px; letter-spacing: 0.14em; }
+body.mobile .intro-ar { font-size: 15px; }
+body.mobile .intro-sub { width: auto; max-width: 100%; font-size: 9.5px; letter-spacing: 0.14em; padding: 7px 12px; }
+body.mobile .truck-tag { flex-wrap: wrap; max-width: 300px; justify-content: center; }
+body.mobile .truck-tag > b { flex-basis: 100%; flex-direction: row; align-items: baseline; gap: 6px; justify-content: center; padding: 4px; }

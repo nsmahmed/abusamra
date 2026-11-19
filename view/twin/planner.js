@@ -177,7 +177,6 @@ export class Planner {
         </section>
 
         <section class="pl-sec">
-          <div class="pl-row"><span class="pl-label">${t("process")}</span></div>
           <div class="pl-row sub"><span class="pl-label">${t("prefile")} ${gear("prefile")}</span><span class="pl-val"><b id="pl-pf-v"></b></span></div>
           ${range("pf", "prefile", 5)}
           <div class="pl-row sub"><span class="pl-label">${t("green")} ${gear("green")}</span><span class="pl-val"><b id="pl-gr-v"></b></span></div>

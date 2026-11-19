@@ -90,7 +90,11 @@ async function main() {
      1080p frame whatever the display scaling, and smooths edges in post. ?quality=high lifts
      the cap and switches to multisampling for machines with a discrete GPU. */
   const high = params.get("quality") === "high";
-  const budget = high ? 6.5e6 : 2.2e6;
+  /* Phone view (?m=1, or a small touch screen): the live twin with three numbers and a few
+     big buttons; panels, planner and feeds stay hidden. ?m=0 forces the full view. */
+  const mobile = params.get("m") === "1" || (params.get("m") !== "0" && matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").matches);
+  document.body.classList.toggle("mobile", mobile);
+  const budget = high ? 6.5e6 : mobile ? 1.1e6 : 2.2e6;
   const fitRatio = () => Math.min(window.devicePixelRatio, high ? 2 : 1.5, Math.sqrt(budget / Math.max(1, stage.clientWidth * stage.clientHeight)));
   let pixelRatio = fitRatio();
   renderer.setPixelRatio(pixelRatio);
@@ -829,16 +833,147 @@ async function main() {
       plan.paint();
       plan.syncHash();
       renderKpis();
+      noteChange(state);
     },
     onVisualize(p) {
       plan.lastPlan = p;
       plan.goal = plan.planner.goal.target;
       if (!plan.open) setPlanner(true);
-      flyTo(camPose(-120, -150, 1450, 54, 150));
+      /* the camera then visits each change the plan makes (noteChange) */
     },
   });
   plan.state = plan.planner.state;
   plan.planner.mount($("planner"));
+
+  /* ---------- what changed: the camera visits each change and it glows ----------
+     After any planner change (a slider, a goal-seek plan, a shared link) the camera flies to
+     every place that changed, rings pulse on the ground there and a tag shows before → after. */
+  const snap = (s) => JSON.parse(JSON.stringify(s));
+  function changeSpots(a, b) {
+    const out = [];
+    const pct = (v) => `${Math.round(v)}%`;
+    const yard = station("inbound", 4);
+    const ramps = station("inbound", 6);
+    if (b.xray !== a.xray) {
+      const extra = b.xray - cfg.xray.default;
+      const list = extra > 0 ? world.proposedXrays.slice(0, extra) : data.xrays;
+      const [x, y] = centroid(list.length ? list : data.xrays);
+      out.push({ x, y, r: 60, dist: 360, title: P2("X-ray lanes", "مسارات الأشعة"), from: a.xray, to: b.xray, up: b.xray > a.xray, pins: [xrayAll, xrayOffPin, ...xrayPins] });
+    }
+    if (b.parking !== a.parking) {
+      const today = cfg.parking.default;
+      const list = b.parking > today ? world.proposedStalls.slice(0, b.parking - today) : b.parking < today ? closeOrderOf(today - b.parking).map((i) => world.mainStalls[i]) : world.mainStalls;
+      const [x, y] = centroid(list.length ? list : world.mainStalls);
+      out.push({ x, y, r: 100, dist: 540, title: P2("Parking bays", "المواقف"), from: a.parking, to: b.parking, up: b.parking > a.parking, pins: [parkPin, closedPin] });
+    }
+    const split = (s) => CATS.map((c) => s.alloc[c]).join(" / ");
+    if (b.docks !== a.docks || split(a) !== split(b)) {
+      const [x, y] = rampInfo ? centroid(rampInfo.categories) : [ramps.x, ramps.y];
+      const more = b.docks !== a.docks;
+      out.push({ x, y, r: 120, dist: 520, title: more ? P2("Inspection docks", "أرصفة التفتيش") : P2("Docks per goods type", "الأرصفة لكل فئة"), from: more ? a.docks : split(a), to: more ? b.docks : split(b), up: b.docks >= a.docks, pins: [dockPin, ...shedPins] });
+    }
+    if (b.prefile !== a.prefile) out.push({ x: yard.x, y: yard.y, r: 110, dist: 520, title: P2("Declarations filed before arrival", "بيانات مقدمة قبل الوصول"), from: pct(a.prefile), to: pct(b.prefile), up: b.prefile > a.prefile, process: true });
+    if (b.green !== a.green) out.push({ x: ramps.x, y: ramps.y, r: 110, dist: 480, title: P2("Green channel", "المسار الأخضر"), from: pct(a.green), to: pct(b.green), up: b.green > a.green, process: true });
+    if (!!b.overlap !== !!a.overlap) out.push({ x: ramps.x + 40, y: ramps.y - 30, r: 110, dist: 480, title: P2("Shift handovers", "تسليم المناوبات"), from: a.overlap ? P2("overlapped", "متداخلة") : P2("gap", "فجوة"), to: b.overlap ? P2("overlapped", "متداخلة") : P2("gap", "فجوة"), up: !!b.overlap, process: true });
+    return out;
+  }
+  function P2(en, ar) {
+    return lang === "ar" ? ar : en;
+  }
+  const ringGeo = new THREE.RingGeometry(0.86, 1, 72);
+  ringGeo.rotateX(-Math.PI / 2);
+  const rings = [];
+  const chgEl = document.createElement("div");
+  chgEl.className = "chg-tag";
+  const chgObj = new CSS2DObject(chgEl);
+  chgObj.center.set(0.5, 1);
+  chgObj.visible = false;
+  scene.add(chgObj);
+  let chgHide = 0;
+  function flashSpot(s) {
+    const color = s.process ? "#f2c14e" : s.up ? "#5fe0d8" : "#ff5d6c";
+    for (let k = 0; k < 3; k += 1) {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+      m.position.copy(v3(s.x, s.y, 1.5));
+      m.renderOrder = 7;
+      scene.add(m);
+      rings.push({ m, r: s.r, t: -k * 0.55, life: 5.5 });
+    }
+    chgEl.innerHTML = `<div class="chg-in ${s.process ? "proc" : s.up ? "up" : "down"}"><b>${s.title}</b><span>${s.from}<i>→</i><em>${s.to}</em></span></div>`;
+    chgObj.position.copy(v3(s.x, s.y, s.r * 0.35 + 12));
+    chgObj.visible = true;
+    clearTimeout(chgHide);
+    chgHide = setTimeout(() => (chgObj.visible = false), 4200);
+    for (const p of s.pins || []) {
+      if (!p || !p.el) continue;
+      p.el.classList.remove("flash");
+      void p.el.offsetWidth;
+      p.el.classList.add("flash");
+      setTimeout(() => p.el.classList.remove("flash"), 4200);
+    }
+  }
+  function stepRings(dt) {
+    for (let i = rings.length - 1; i >= 0; i -= 1) {
+      const g = rings[i];
+      g.t += dt;
+      g.life -= dt;
+      if (g.life <= 0) {
+        scene.remove(g.m);
+        g.m.material.dispose();
+        rings.splice(i, 1);
+        continue;
+      }
+      const f = g.t < 0 ? 0 : (g.t % 1.65) / 1.65;
+      const s = g.r * (0.35 + 0.9 * f);
+      g.m.scale.set(s, 1, s);
+      g.m.material.opacity = g.t < 0 ? 0 : (1 - f) * 0.95 * Math.min(1, g.life / 1.2);
+    }
+  }
+  let changeTour = null;
+  function showChanges(spots) {
+    stopTour();
+    if (followed) stopFollow();
+    cancelChanges();
+    changeTour = { spots, i: -1, timer: 0 };
+    nextChange();
+  }
+  function nextChange() {
+    const ct = changeTour;
+    if (!ct) return;
+    ct.i += 1;
+    const s = ct.spots[ct.i];
+    if (!s) {
+      changeTour = null;
+      return;
+    }
+    flyTo(camPose(s.x, s.y, s.dist, 57, 128 + ct.i * 22), 2.2);
+    flight.then = () => {
+      if (changeTour !== ct) return;
+      flashSpot(s);
+      ct.timer = setTimeout(nextChange, 3400);
+    };
+  }
+  function cancelChanges() {
+    if (changeTour) clearTimeout(changeTour.timer);
+    changeTour = null;
+  }
+  let focusTimer = 0;
+  function noteChange(st) {
+    if (!plan.seen) plan.seen = snap(pm.today);
+    clearTimeout(focusTimer);
+    if (plan.quiet) {
+      plan.quiet = false;
+      plan.seen = snap(st);
+      return;
+    }
+    focusTimer = setTimeout(() => {
+      const spots = changeSpots(plan.seen, plan.state);
+      plan.seen = snap(plan.state);
+      if (spots.length) showChanges(spots);
+    }, 600);
+  }
+  /* seconds the camera needs to visit every change from the last one shown to state s */
+  plan.changeTime = (s) => changeSpots(plan.seen || pm.today, s).length * 5.6;
   /* A scenario lives in the address (#plan=…), so it can be shared or reopened as a link. */
   const encodePlan = (s) => `s${s.surge}.p${s.parking}.x${s.xray}.d${s.docks}.a${CATS.map((c) => s.alloc[c]).join("-")}.f${s.prefile}.g${s.green}.o${s.overlap}`;
   const decodePlan = (text) => {
@@ -1034,12 +1169,14 @@ async function main() {
       $("demo-btn").classList.remove("on");
     },
     reset() {
+      plan.quiet = true;
       demoScenario({ ...pm.today });
       setPlanner(false);
     },
     view(name) {
       stopFollow();
-      flyTo(VIEWS[name](), 2.4);
+      cancelChanges();
+      flyTo(VIEWS[name](), 3.2);
       document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
     },
     followTruck() {
@@ -1060,13 +1197,15 @@ async function main() {
       await pl.runGoal();
       return pl.goal.result;
     },
+    /* Loads the plan; the camera then visits each change. Returns the seconds that takes. */
     applyPlan(p) {
       const pl = plan.planner;
       pl.load({ ...p.s, surge: pl.state.surge });
       pl.setTab("whatif");
+      const secs = plan.changeTime(pl.state);
       pl.onChange(pl.state);
       plan.goal = pl.goal.target;
-      flyTo(camPose(-120, -150, 1450, 54, 150), 2.4);
+      return secs;
     },
     exec(on) {
       if (on) setPlanner(false);
@@ -1079,8 +1218,13 @@ async function main() {
     pl.onChange(pl.state);
   }
   $("demo-btn").addEventListener("click", () => (demo.running ? demo.stop() : demo.start()));
+  /* phone buttons press the same controls as the full view */
+  document.querySelectorAll("#m-panel [data-m]").forEach((b) => b.addEventListener("click", () => $(b.dataset.m).click()));
   controls.addEventListener("start", () => {
-    if (!flight) stopTour();
+    if (!flight) {
+      stopTour();
+      cancelChanges();
+    }
   });
 
   /* ---------- vehicle picking and ride-along ---------- */
@@ -1129,6 +1273,7 @@ async function main() {
   function stopFollow() {
     followed = null;
     chase = false;
+    truckTag.visible = false;
     trace.hide();
     $("vehicle").classList.remove("open");
   }
@@ -1143,7 +1288,25 @@ async function main() {
   });
   /* The ride-along card: who the truck is (plate in its country's format, origin, category from
      its goods) and the journey the learned model expects for it under the current scenario. */
-  const STAGE_SHORT = { decl: "Declaration submitted", xq: "X-ray", iq: "Inspection starts", insp: "Inspection done", exit: "Gate exit" };
+  const STAGE_SHORT = { decl: "Waiting for declaration", xq: "X-ray queue and scan", iq: "Waiting for inspection", insp: "Physical inspection", exit: "Release to gate exit" };
+  const STAGE_TAG = { decl: "Declaration", xq: "X-ray", iq: "Wait for dock", insp: "Inspection", exit: "Release" };
+  const dur = (m) => (m >= 90 ? `${(m / 60).toFixed(1)} h` : `${Math.round(m)} min`);
+  /* A tag above the followed truck: how long it stays at each stage. */
+  const truckTagEl = document.createElement("div");
+  truckTagEl.className = "truck-tag";
+  const truckTag = new CSS2DObject(truckTagEl);
+  truckTag.center.set(0.5, 1);
+  truckTag.visible = false;
+  scene.add(truckTag);
+  function paintTruckTag(v) {
+    const p = v && v.profile;
+    const j = p && (v.static || (v.route && v.route.flow === "inbound")) ? pm.journey(p, plan.result || pm.baseRun) : null;
+    truckTag.visible = !!j;
+    if (!j) return;
+    const keys = ["decl", "xq", "iq", "insp", "exit"].filter((k) => k !== "xq" || p.x);
+    const top = keys.reduce((a, k) => (j[k] > j[a] ? k : a), keys[0]);
+    truckTagEl.innerHTML = `<b>${fmtH(j.total / 60)} <small>in port</small></b>${keys.map((k) => `<span class="${k === top ? "top" : ""}">${STAGE_TAG[k]}<em>${dur(j[k])}</em></span>`).join("")}`;
+  }
   const WHY = { hour: "arrival hour", xray: "X-ray", decl: "several declarations", shared: "shared declaration", prefiled: "filing" };
   function plateHTML(v) {
     const p = v.plateInfo;
@@ -1163,17 +1326,18 @@ async function main() {
     for (const k of ["decl", "xq", "iq", "insp", "exit"]) {
       if (k === "xq" && !p.x) continue;
       at += j[k] * 60;
-      rows.push(`<li><span>${STAGE_SHORT[k]}</span><em>+${j[k] >= 90 ? `${(j[k] / 60).toFixed(1)} h` : `${Math.round(j[k])} min`}</em><b>${hhmm(at)}</b></li>`);
+      rows.push(`<li><span>${STAGE_SHORT[k]}</span><em>${dur(j[k])}</em><b>${hhmm(at)}</b></li>`);
     }
     const risk = Math.round((p.r || 0) * 100);
     const lv = risk >= 50 ? "l2" : risk >= 30 ? "l1" : "l0";
-    return `<div class="vc-sec"><div class="vc-h">Expected journey <em>learned model${plan.planner.changed() ? " · scenario" : ""}</em></div>
+    return `<div class="vc-sec"><div class="vc-h">Time at each stage <em>learned model${plan.planner.changed() ? " · scenario" : ""}</em></div>
       <ol class="vc-j">${rows.join("")}</ol>
       <div class="vc-total">Time in port <b>${fmtH(j.total / 60)}</b> · port median ${fmtH(r.median)}</div>
       <div class="vc-risk ${lv}"><span>Delay risk (over 8 h)</span><b>${risk}%</b>${p.why ? `<em>driven by ${p.why.map((w) => WHY[w] || w).join(", ")}</em>` : ""}</div></div>`;
   }
   function renderCard() {
     const v = followed;
+    paintTruckTag(v);
     if (!v) return;
     const catRow = v.cat && plan.cats[v.cat] ? `<dt>Category</dt><dd><span class="vc-cat" style="--c:${plan.cats[v.cat].color}">${plan.cats[v.cat].en}</span></dd>` : "";
     const p = v.profile;
@@ -1263,6 +1427,11 @@ async function main() {
     $("dash-badge").textContent = changed ? "Scenario" : "Today";
     $("dash-badge").classList.toggle("on", changed);
     $("k-stay").textContent = r.median.toFixed(1);
+    if (mobile) {
+      $("m-stay").textContent = r.median.toFixed(1);
+      $("m-day").textContent = Math.round(r.lamDay).toLocaleString("en-US");
+      $("m-park").textContent = `${Math.round(pct * 100)}%`;
+    }
     const dStay = r.median - b0.median;
     $("k-stay-d").textContent = changed && Math.abs(dStay) >= 0.05 ? `${dStay > 0 ? "▲" : "▼"} ${Math.abs(dStay).toFixed(1)} h` : "";
     $("k-stay-d").className = `delta ${dStay < -0.04 ? "good" : dStay > 0.04 ? "bad" : ""}`;
@@ -1424,6 +1593,7 @@ async function main() {
     marker.visible = !!followed;
     if (followed) {
       marker.position.set(followed.x, 0.4, -followed.y);
+      truckTag.position.set(followed.x, 9, -followed.y);
       const pulse = 1 + 0.06 * Math.sin(elapsed * 4);
       marker.scale.set(pulse, 1, pulse);
       if (!followed.static) trace.progress(followed.s + 9);
@@ -1444,6 +1614,7 @@ async function main() {
     const drifting = drift && !followed && !tour && idle > 25;
     controls.autoRotate = !flight && (!!tour || drifting);
     controls.autoRotateSpeed = tour ? 0.55 : 0.22;
+    stepRings(dt);
     stepFlight(dt);
     stepOpening(dt);
     controls.update();

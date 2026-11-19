@@ -47,7 +47,6 @@
 
     <div class="tools">
       <button type="button" class="pill plan-btn icon-pill" id="plan-btn" title="Capacity planner (C)"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-i18n="planner">Planner</span></button>
-      <a class="pill story-btn icon-pill" href="story.html" title="WASL 2030 story"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-5 3 3 5-7"/></svg><span>2030</span></a>
       <button type="button" class="pill exec-btn icon-pill" id="exec-btn" title="Executive overview (E)"><svg viewBox="0 0 24 24"><path d="M4 20V11h3.4v9zM10.3 20V4h3.4v16zM16.6 20v-6.5H20V20z"/></svg><span data-i18n="exec">Executive</span></button>
       <span class="vsep"></span>
       <div class="clock" title="Simulated time"><i></i><b id="clock">09:00</b></div>
@@ -203,6 +202,27 @@
     <button type="button" class="pill demo" id="demo-btn" title="Play the WASL story in the twin"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg><span data-i18n="demo">Demo</span></button>
     <button type="button" class="ib" id="follow" title="Ride along with a truck (F)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
   </nav>
+
+  <!-- Phone view: three numbers and a few big buttons over the live twin -->
+  <section id="m-panel" class="glass" aria-label="Port at a glance">
+    <div class="m-kpis">
+      <div><b id="m-stay">5.9</b><small>hours in port<br>median truck</small></div>
+      <div><b id="m-day">738</b><small>trucks<br>a day</small></div>
+      <div><b id="m-park">0%</b><small>parking<br>in use</small></div>
+    </div>
+    <div class="m-views">
+      <button type="button" data-view="overview">Port</button>
+      <button type="button" data-view="yard">Parking</button>
+      <button type="button" data-view="xray">X-ray</button>
+      <button type="button" data-view="ramps">Ramps</button>
+    </div>
+    <div class="m-acts">
+      <button type="button" class="m-act demo" data-m="demo-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Demo</button>
+      <button type="button" class="m-act" data-m="tour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>Tour</button>
+      <button type="button" class="m-act" data-m="follow"><svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>A truck</button>
+    </div>
+    <p class="m-hint">Drag to move · pinch to zoom · <a href="?m=0">full view</a></p>
+  </section>
 
   <section id="vehicle" class="glass">
     <button type="button" id="vehicle-close" aria-label="Close">×</button>

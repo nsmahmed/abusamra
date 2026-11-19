@@ -38,7 +38,7 @@ export function createDemo(api) {
   /* Each scene: chapter letter, enter() sets the twin up and returns the caption, hold seconds. */
   const scenes = [
     {
-      L: "", chap: "Abu Samra land port · digital twin", hold: 6,
+      L: "", chap: "Abu Samra land port · digital twin", hold: 8,
       enter() {
         api.reset();
         api.view("overview");
@@ -46,21 +46,21 @@ export function createDemo(api) {
       },
     },
     {
-      L: "W", chap: "Watch · the port today", hold: 6.5,
+      L: "W", chap: "Watch · the port today", hold: 10,
       enter() {
         api.view("yard");
         return { count: [0, today().lamDay, fmtN], unit: "trucks a day", line: "A median day at Abu Samra", sub: "Demand, hourly rhythm and goods mix learned from 2026 gate passes" };
       },
     },
     {
-      L: "W", chap: "Watch · time in port", hold: 6.5,
+      L: "W", chap: "Watch · time in port", hold: 10,
       enter() {
         const r = today();
         return { count: [0, r.median, (v) => v.toFixed(1)], unit: "hours", line: "Median time a truck spends in the port", sub: `Slowest 10%: ${fmtH(r.p90)} · ${Math.round(r.over12)}% of trucks stay over 12 hours` };
       },
     },
     {
-      L: "W", chap: "Watch · the bottleneck", hold: 7.5,
+      L: "W", chap: "Watch · the bottleneck", hold: 11,
       enter() {
         api.view("ramps");
         const r = today();
@@ -68,17 +68,24 @@ export function createDemo(api) {
       },
     },
     {
-      L: "W", chap: "Watch · every truck is learned", hold: 8,
+      L: "W", chap: "Watch · every truck is learned", hold: 15,
       enter() {
         const v = api.followTruck();
         const risk = v && v.profile ? Math.round(v.profile.r * 100) : null;
-        return risk === null
-          ? { big: "AI", line: "Every truck is drawn from the distributions learned from 198,665 real trucks", sub: "Plate, goods category, ramp and stage times" }
-          : { count: [0, risk, (x) => `${Math.round(x)}%`], line: "delay risk for this truck, predicted by the ML model", sub: `Synthetic truck learned from 198,665 real ones · ${v.country ? `${(COUNTRY[v.country] || COUNTRY.XX).en} plate` : ""}${v.profile.why ? ` · driven by ${v.profile.why.map((w) => WHY[w] || w).join(", ")}` : ""}` };
+        if (risk === null) return { big: "AI", line: "Every truck is drawn from the distributions learned from 198,665 real trucks", sub: "Plate, goods category, ramp and stage times" };
+        /* how long this truck stays at each stage, from the learned model */
+        const j = pm.journey(v.profile, today());
+        const dur = (m) => (m >= 90 ? `${(m / 60).toFixed(1)} h` : `${Math.round(m)} min`);
+        const stages = j ? [["Declaration", j.decl], v.profile.x ? ["X-ray", j.xq] : null, ["Wait for inspection", j.iq], ["Inspection", j.insp], ["Release", j.exit]].filter(Boolean).map(([n, m]) => `${n} ${dur(m)}`).join(" · ") : "";
+        return {
+          count: [0, risk, (x) => `${Math.round(x)}%`],
+          line: `delay risk for this ${v.country ? `${(COUNTRY[v.country] || COUNTRY.XX).en}-plated ` : ""}truck${v.profile.why ? `, driven by ${v.profile.why.map((w) => WHY[w] || w).join(", ")}` : ""}`,
+          sub: j ? `Time at each stage: ${stages} · total ${fmtH(j.total / 60)}` : "Synthetic truck learned from 198,665 real ones",
+        };
       },
     },
     {
-      L: "A", chap: "Anticipate · 2030 if nothing changes", hold: 8,
+      L: "A", chap: "Anticipate · 2030 if nothing changes", hold: 11,
       enter() {
         api.stopFollow();
         api.setScenario({ ...pm.today, surge: surge2030 });
@@ -89,7 +96,7 @@ export function createDemo(api) {
       },
     },
     {
-      L: "A", chap: "Anticipate · where it breaks", hold: 7.5,
+      L: "A", chap: "Anticipate · where it breaks", hold: 11,
       enter() {
         api.view("yard");
         const r = ctx.r2030;
@@ -97,7 +104,7 @@ export function createDemo(api) {
       },
     },
     {
-      L: "S", chap: "Simulate · set a goal", hold: 4, wait: true,
+      L: "S", chap: "Simulate · set a goal", hold: 8, wait: true,
       async enter(show) {
         ctx.goal = 3.5;
         show({ big: `${ctx.goal} h`, line: "Goal: median time in port by 2030", sub: "Goal seeking runs the learned model in reverse over every lever within its limits…" });
@@ -107,21 +114,22 @@ export function createDemo(api) {
       },
     },
     {
-      L: "L", chap: "Lead · the decision", hold: 9,
+      L: "L", chap: "Lead · the decision", hold: 10,
       enter() {
         const g = ctx.g;
         const p = g.plans.find((x) => x.id === "resilient") || g.plans[0];
         ctx.p = p;
-        api.applyPlan(p);
+        /* the camera visits each change the plan makes; the scene lasts until it has seen them all */
+        const secs = api.applyPlan(p);
         /* the plan already carries the 2030 traffic as its load increase */
         const after = pm.evaluate(p.s);
         ctx.after = after;
         const top = p.contrib.filter((c) => c.hours > 0.02).slice(0, 3).map((c) => ({ prefile: "pre-arrival filing", green: "green channel", overlap: "shift overlap", docks: "docks", xray: "X-ray lanes" }[c.lever] || c.lever));
-        return { count: [ctx.r2030.median, after.median, (v) => v.toFixed(1)], unit: "hours", good: true, line: `${p.name} plan · median in 2030`, sub: `${fmtQAR(p.cost)} over 5 years · in service in ${p.lead} months · ${top.join(" + ")}` };
+        return { hold: Math.max(10, secs + 5), count: [ctx.r2030.median, after.median, (v) => v.toFixed(1)], unit: "hours", good: true, line: `${p.name} plan · median in 2030`, sub: `${fmtQAR(p.cost)} over 5 years · in service in ${p.lead} months · ${top.join(" + ")}` };
       },
     },
     {
-      L: "L", chap: "Lead · before and after", hold: 8,
+      L: "L", chap: "Lead · before and after", hold: 11,
       enter() {
         api.exec(true);
         const saved = ctx.r2030.median - ctx.after.median;
@@ -129,7 +137,7 @@ export function createDemo(api) {
       },
     },
     {
-      L: "", chap: "WASL", hold: 7,
+      L: "", chap: "WASL", hold: 9,
       enter() {
         api.exec(false);
         api.view("overview");
@@ -158,7 +166,7 @@ export function createDemo(api) {
       const [a, b, fmt] = c.count;
       const t0 = performance.now();
       const step = (t) => {
-        const f = Math.min(1, (t - t0) / 1400);
+        const f = Math.min(1, (t - t0) / 2400);
         const e = 1 - (1 - f) ** 3;
         big.innerHTML = `${fmt(a + (b - a) * e)}${unit}`;
         if (f < 1) anim = requestAnimationFrame(step);
@@ -188,14 +196,14 @@ export function createDemo(api) {
     if (my !== token) return;
     busy = false;
     show(c);
-    left = s.hold;
+    left = total = c.hold || s.hold;
   }
 
+  let total = 1;
   function tick() {
     if (paused || busy || k < 0) return;
     left -= 0.1;
-    const s = scenes[k];
-    q(".dm-bar i").style.width = `${Math.max(0, Math.min(100, (1 - left / s.hold) * 100))}%`;
+    q(".dm-bar i").style.width = `${Math.max(0, Math.min(100, (1 - left / total) * 100))}%`;
     if (left <= 0) go(k + 1);
   }
 

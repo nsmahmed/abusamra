@@ -40,7 +40,8 @@ jobs:
           <!DOCTYPE html>
           <html lang="en"><head><meta charset="utf-8"><title>WASL</title>
           <meta http-equiv="refresh" content="0; url=view/twin/">
-          <link rel="canonical" href="view/twin/"></head>
+          <link rel="canonical" href="view/twin/">
+          <script>location.replace("view/twin/" + location.search + location.hash);</script></head>
           <body><a href="view/twin/">Open the WASL digital twin</a></body></html>
           HTML
           touch _site/.nojekyll
