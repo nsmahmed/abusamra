@@ -401,7 +401,9 @@ export class PortModel {
   }
 
   /* ---------- goal seeking: inverse search over the calibrated model ---------- */
-  async goalSeek({ target, year = 2026, surge = 0, metric = "median", onProgress } = {}) {
+  /* physical: search only infrastructure (X-ray lanes, docks and their split, parking), with
+     process levers held at today's values; parking is then sized for the busiest week. */
+  async goalSeek({ target, year = 2026, surge = 0, metric = "median", physical = false, onProgress } = {}) {
     const lim = this.limits();
     const t = this.today;
     const grid = (a, b, step) => {
@@ -411,10 +413,12 @@ export class PortModel {
     };
     const xs = grid(t.xray, lim.xray[1], 1);
     const ds = grid(t.docks, lim.docks[1], Math.max(5, Math.round((lim.docks[1] - t.docks) / 6 / 5) * 5 || 10));
-    const ps = grid(0, lim.prefile[1], 10);
-    const gs = grid(0, lim.green[1], 10);
+    const ps = physical ? [t.prefile] : grid(0, lim.prefile[1], 10);
+    const gs = physical ? [t.green] : grid(0, lim.green[1], 10);
+    const os = physical ? [t.overlap] : [0, 1];
+    const busyPct = Math.round(this.L.demand.busiestWeek.vsCurrent);
     const combos = [];
-    for (const x of xs) for (const d of ds) for (const smart of d === t.docks ? [0, 1] : [1]) for (const p of ps) for (const g of gs) for (const o of [0, 1]) combos.push({ x, d, smart, p, g, o });
+    for (const x of xs) for (const d of ds) for (const smart of d === t.docks ? [0, 1] : [1]) for (const p of ps) for (const g of gs) for (const o of os) combos.push({ x, d, smart, p, g, o });
     const tried = [];
     const value = (r) => (metric === "p90" ? r.p90 : r.median);
     for (let k = 0; k < combos.length; k += 1) {
@@ -426,6 +430,13 @@ export class PortModel {
       if (r.overflow > 0) {
         s.parking = Math.min(lim.parking[1], Math.ceil((r.peakYard + 5) / 10) * 10);
         r = this.evaluate(s, true);
+      }
+      if (physical) {
+        const rb = this.evaluate({ ...s, surge: surge + busyPct }, true);
+        if (rb.overflow > 0) {
+          s.parking = Math.min(lim.parking[1], Math.max(s.parking, Math.ceil((rb.peakYard + 5) / 10) * 10));
+          r = this.evaluate(s, true);
+        }
       }
       const cost = this.cost(s);
       tried.push({ s, value: value(r), median: r.median, p90: r.p90, over12: r.over12, cost: cost.total, capex: cost.capex, opex: cost.opex, lead: cost.lead, items: cost.items, unstable: r.unstable });
@@ -468,6 +479,7 @@ export class PortModel {
         ["prefile", { prefile: 0 }],
         ["green", { green: 0 }],
         ["overlap", { overlap: 0 }],
+        ["parking", { parking: t.parking }],
       ];
       for (const [lever, patch] of tries) {
         const same = Object.keys(patch).every((k) => JSON.stringify(p.s[k]) === JSON.stringify(patch[k]));

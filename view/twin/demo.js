@@ -3,13 +3,41 @@
    and pops the headline number at the top. Every number comes from the learned model. */
 
 import { fmtH, fmtQAR } from "./planner.js";
-import { COUNTRY } from "./plates.js";
-
-const WHY = { hour: "arrival hour", xray: "X-ray", decl: "several declarations", shared: "shared declaration", prefiled: "filing", cat: "goods category", country: "plate country" };
 
 /* count-up length, and the reading speed used to give long captions enough time */
 const COUNT_MS = 3500;
 const WORDS_PER_SEC = 2;
+const YEARS = [2026, 2027, 2028, 2029, 2030];
+
+/* A small line chart for the story card; lines draw in from left to right. */
+function chartSVG(ch) {
+  const W = 560, H = 180, L = 50, R = 92, T = 16, B = 28;
+  const all = ch.series.flatMap((s) => s.v).concat(ch.goal != null ? [ch.goal] : []);
+  const top = Math.max(...all);
+  const lo0 = ch.min ?? Math.min(...all) * 0.9;
+  const raw = (top * 1.05 - lo0) / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+  const lo = Math.floor(lo0 / step) * step;
+  const hi = lo + step * Math.ceil((top * 1.02 - lo) / step);
+  const x = (i) => L + (i / (ch.x.length - 1)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let g = "";
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line class="ax" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${ch.yFmt(Math.round(v * 10) / 10)}</text>`;
+  ch.x.forEach((yr, i) => (g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${yr}</text>`));
+  if (ch.axis) g += `<text x="${L}" y="${T - 6}" font-size="10">${ch.axis}</text>`;
+  if (ch.goal != null) g += `<line class="goal" x1="${L}" x2="${W - R}" y1="${y(ch.goal)}" y2="${y(ch.goal)}"/><text class="goal-t fade" x="${L + 6}" y="${y(ch.goal) - 6}">Goal ${ch.goal} h</text>`;
+  for (const s of ch.series) {
+    const d = s.v.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const last = s.v[s.v.length - 1];
+    const ex = x(s.v.length - 1);
+    const ey = y(last);
+    g += `<path class="ln" d="${d}" stroke="${s.color}"/>`;
+    g += `<g class="fade"><circle cx="${ex}" cy="${ey}" r="4.5" fill="${s.color}"/><text class="end" x="${ex + 10}" y="${ey + (s.label ? 0 : 5)}" style="fill:${s.color}">${s.fmt(last)}</text>${s.label ? `<text x="${ex + 10}" y="${ey + 14}">${s.label}</text>` : ""}</g>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+
 const fmtN = (v) => Math.round(v).toLocaleString("en-US");
 
 export function createDemo(api) {
@@ -22,6 +50,7 @@ export function createDemo(api) {
       <div class="dm-big"></div>
       <div class="dm-line"></div>
       <div class="dm-sub"></div>
+      <div class="dm-chart"></div>
       <div class="dm-bar"><i></i></div>
       <div class="dm-ctl">
         <button type="button" data-a="prev" title="Previous scene">‹</button>
@@ -82,38 +111,44 @@ export function createDemo(api) {
         const stages = j ? [["Declaration", j.decl], v.profile.x ? ["X-ray", j.xq] : null, ["Wait for inspection", j.iq], ["Inspection", j.insp], ["Release", j.exit]].filter(Boolean).map(([n, m]) => `${n} ${dur(m)}`).join(" · ") : "";
         return {
           count: [0, risk, (x) => `${Math.round(x)}%`],
-          line: `delay risk for this ${v.country ? `${(COUNTRY[v.country] || COUNTRY.XX).en}-plated ` : ""}truck${v.profile.why ? `, driven by ${v.profile.why.map((w) => WHY[w] || w).join(", ")}` : ""}`,
+          line: "delay risk for this truck (over 8 hours in port)",
           sub: j ? `Time at each stage: ${stages} · total ${fmtH(j.total / 60)}` : "Synthetic truck learned from 198,665 real ones",
         };
       },
     },
     {
-      L: "A", chap: "Anticipate · 2030 if nothing changes", hold: 18,
+      L: "A", chap: "Anticipate · traffic to 2030", hold: 20,
       enter() {
         api.stopFollow();
         api.setScenario({ ...pm.today, surge: surge2030 });
-        api.view("overview");
-        const r = pm.evaluate({ ...pm.today, surge: surge2030 });
-        ctx.r2030 = r;
-        return { count: [today().median, r.median, (v) => v.toFixed(1)], unit: "hours", bad: true, line: `Median time in port in 2030 · ${fmtN(r.lamDay)} trucks a day`, sub: `Learned growth of food declarations, damped to 2030 (+${surge2030}% trucks) · same resources as today` };
+        api.view("yard");
+        ctx.r2030 = pm.evaluate({ ...pm.today, surge: surge2030 });
+        const per = YEARS.map((year) => pm.evaluate({ ...pm.today, year }).lamDay);
+        return {
+          count: [today().lamDay, ctx.r2030.lamDay, fmtN], unit: "trucks a day", bad: true,
+          line: `Expected trucks a day by 2030 · +${surge2030}%`,
+          sub: "Learned growth of food declarations, damped year by year",
+          chart: { x: YEARS, series: [{ v: per, color: "#ff8e99", fmt: fmtN }], yFmt: fmtN, axis: "trucks a day" },
+        };
       },
     },
     {
-      L: "A", chap: "Anticipate · where it breaks", hold: 18,
+      L: "A", chap: "Anticipate · where it breaks", hold: 22,
       enter() {
-        api.view("yard");
+        api.view("overview");
         const r = ctx.r2030;
-        return { count: [today().util.parking * 100, r.util.parking * 100, (v) => `${Math.round(v)}%`], bad: true, line: "Main parking at peak hour", sub: `${r.overflow > 0 ? `${fmtN(r.overflow)} trucks wait outside the gate · ` : ""}slowest 10% wait ${fmtH(r.p90)} · ${Math.round(r.over12)}% over 12 hours` };
+        api.pulseBottlenecks(r);
+        return { count: [today().median, r.median, (v) => v.toFixed(1)], unit: "hours", bad: true, line: "Median time in port in 2030 with today's resources", sub: "Red: where trucks wait · the main parking fills at peak, the X-ray and inspection queues grow" };
       },
     },
     {
       L: "S", chap: "Simulate · set a goal", hold: 16, wait: true,
       async enter(show) {
-        ctx.goal = 3.5;
-        show({ big: `${ctx.goal} h`, line: "Goal: median time in port by 2030", sub: "Goal seeking runs the learned model in reverse over every lever within its limits…" });
-        const g = await api.goalSeek(ctx.goal);
+        ctx.goal = Math.ceil(today().median * 2) / 2;
+        show({ big: `${ctx.goal} h`, line: "Goal: keep 2030 at today's time in port", sub: "Goal seeking runs the learned model in reverse over X-ray lanes, inspection docks and parking…" });
+        const g = await api.goalSeek(ctx.goal, true);
         ctx.g = g;
-        return { count: [0, g.feasible, fmtN], line: `of ${fmtN(g.searched)} scenarios reach ${ctx.goal} h`, sub: "Each one is costed from public unit costs · three different plans are kept" };
+        return { count: [0, g.feasible, fmtN], line: `of ${fmtN(g.searched)} infrastructure plans reach ${ctx.goal} h in 2030`, sub: "Each one is costed from public unit costs · three different plans are kept" };
       },
     },
     {
@@ -124,25 +159,36 @@ export function createDemo(api) {
         ctx.p = p;
         /* the camera visits each change the plan makes; the scene lasts until it has seen them all */
         const secs = api.applyPlan(p);
-        /* the plan already carries the 2030 traffic as its load increase */
         const after = pm.evaluate(p.s);
         ctx.after = after;
-        const top = p.contrib.filter((c) => c.hours > 0.02).slice(0, 3).map((c) => ({ prefile: "pre-arrival filing", green: "green channel", overlap: "shift overlap", docks: "docks", xray: "X-ray lanes" }[c.lever] || c.lever));
-        return { hold: Math.max(18, secs + 8), count: [ctx.r2030.median, after.median, (v) => v.toFixed(1)], unit: "hours", good: true, line: `${p.name} plan · median in 2030`, sub: `${fmtQAR(p.cost)} over 5 years · in service in ${p.lead} months · ${top.join(" + ")}` };
+        const t = pm.today;
+        const adds = [
+          p.s.xray > t.xray ? `${p.s.xray - t.xray} X-ray ${p.s.xray - t.xray === 1 ? "lane" : "lanes"}` : "",
+          p.s.docks > t.docks ? `${p.s.docks - t.docks} inspection docks` : "",
+          p.s.parking > t.parking ? `${p.s.parking - t.parking} parking bays` : "",
+        ].filter(Boolean);
+        return { hold: Math.max(18, secs + 8), count: [ctx.r2030.median, after.median, (v) => v.toFixed(1)], unit: "hours", good: true, line: `${p.name} plan · median in 2030`, sub: `Adds ${adds.join(" and ") || "no new resources"} · ${fmtQAR(p.cost)} over 5 years · in service in ${p.lead} months` };
       },
     },
     {
-      L: "L", chap: "Lead · before and after", hold: 18,
+      L: "L", chap: "Lead · time in port to 2030", hold: 22,
       enter() {
-        api.exec(true);
+        api.view("overview");
+        const asIs = pm.projection(pm.today).map((r) => r.median);
+        const withPlan = pm.projection({ ...ctx.p.s, surge: 0 }).map((r) => r.median);
         const saved = ctx.r2030.median - ctx.after.median;
-        return { count: [0, saved, (v) => v.toFixed(1)], unit: "hours saved", good: true, line: "per truck in 2030, against continuing as is", sub: `As is: ${fmtH(ctx.r2030.median)} · with the plan: ${fmtH(ctx.after.median)} · today: ${fmtH(today().median)}` };
+        const h = (v) => `${v.toFixed(1)} h`;
+        return {
+          count: [0, saved, (v) => v.toFixed(1)], unit: "hours saved per truck", good: true,
+          line: "Median time in port, as is against the plan",
+          sub: `As is: ${h(ctx.r2030.median)} in 2030 · with the plan: ${h(ctx.after.median)} · today: ${h(today().median)}`,
+          chart: { x: YEARS, series: [{ v: asIs, color: "#ff8e99", label: "As is", fmt: h }, { v: withPlan, color: "#6fe3c8", label: "With plan", fmt: h }], goal: ctx.goal, yFmt: (v) => `${v} h`, axis: "hours", min: 0 },
+        };
       },
     },
     {
       L: "", chap: "WASL", hold: 12,
       enter() {
-        api.exec(false);
         api.view("overview");
         return { big: "WASL", line: "We connect you to your vision", sub: "Watch · Anticipate · Simulate · Lead", title: true };
       },
@@ -176,6 +222,21 @@ export function createDemo(api) {
       };
       anim = requestAnimationFrame(step);
     } else big.innerHTML = `${c.big}${unit}`;
+    const box = q(".dm-chart");
+    box.classList.remove("done");
+    box.innerHTML = c.chart ? chartSVG(c.chart) : "";
+    if (c.chart) {
+      for (const path of box.querySelectorAll(".ln")) {
+        const len = path.getTotalLength();
+        path.style.strokeDasharray = len;
+        path.style.strokeDashoffset = len;
+        path.getBoundingClientRect();
+        path.style.transition = `stroke-dashoffset ${COUNT_MS / 1000}s ease-in-out`;
+        path.style.strokeDashoffset = 0;
+      }
+      clearTimeout(box.t);
+      box.t = setTimeout(() => box.classList.add("done"), COUNT_MS);
+    }
     q(".dm-line").textContent = c.line || "";
     q(".dm-sub").textContent = c.sub || "";
     const card = q(".dm-card");
@@ -195,6 +256,7 @@ export function createDemo(api) {
     q(".dm-chap").textContent = s.chap;
     dots.forEach((d, j) => d.classList.toggle("on", j <= k));
     busy = true;
+    if (api.clearPulses) api.clearPulses();
     const c = await s.enter(show);
     if (my !== token) return;
     busy = false;

@@ -433,7 +433,7 @@ export class Planner {
     btn.textContent = this.t("running");
     btn.disabled = true;
     prog.classList.add("on");
-    g.result = await this.m.goalSeek({ target: g.target, metric: g.metric, year: g.year, surge: this.state.surge, onProgress: (f) => (prog.firstElementChild.style.width = `${Math.round(f * 100)}%`) });
+    g.result = await this.m.goalSeek({ target: g.target, metric: g.metric, year: g.year, surge: this.state.surge, physical: !!g.physical, onProgress: (f) => (prog.firstElementChild.style.width = `${Math.round(f * 100)}%`) });
     g.busy = false;
     btn.textContent = this.t("run");
     btn.disabled = false;

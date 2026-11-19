@@ -880,7 +880,27 @@ async function main() {
     if (b.docks !== a.docks || split(a) !== split(b)) {
       const [x, y] = rampInfo ? centroid(rampInfo.categories) : [ramps.x, ramps.y];
       const more = b.docks !== a.docks;
-      out.push({ x, y, r: 120, dist: 520, title: more ? P2("Inspection docks", "أرصفة التفتيش") : P2("Docks per goods type", "الأرصفة لكل فئة"), from: more ? a.docks : split(a), to: more ? b.docks : split(b), up: b.docks >= a.docks, pins: [dockPin, ...shedPins] });
+      const added = b.docks - a.docks;
+      out.push({
+        x, y, r: 120, dist: 520,
+        title: more ? P2("Inspection docks", "أرصفة التفتيش") : P2("Docks per goods type", "الأرصفة لكل فئة"),
+        from: more ? a.docks : split(a), to: more ? b.docks : split(b), up: b.docks >= a.docks, pins: [dockPin, ...shedPins],
+        note: added > 0 ? P2("New docks in pink", "الأرصفة الجديدة بالوردي") : "",
+        /* paint the share of docks the plan adds in pink while the camera is there */
+        highlight: added > 0 ? () => {
+          const n = Math.max(1, Math.round((dockOrder.length * added) / b.docks));
+          const list = dockOrder.slice(-n);
+          for (const i of list) world.dockOverlay.set(i, NEW_DOCK);
+          return () => list.forEach((i) => world.dockOverlay.set(i, plan.cats[world.importBays[i].cat]?.color || null));
+        } : null,
+      });
+    }
+    /* Parking size unchanged but the plan empties the yard faster: show its peak use. Only
+       alongside a lever change, so a traffic change alone does not start a tour. */
+    if (out.length && b.parking === a.parking) {
+      const ua = Math.min(1, pm.evaluate(a).util.parking);
+      const ub = Math.min(1, pm.evaluate(b).util.parking);
+      if (Math.abs(ua - ub) >= 0.1) out.push({ x: yard.x, y: yard.y, r: 110, dist: 560, title: P2("Main parking at peak", "المواقف الرئيسية وقت الذروة"), from: pct(ua * 100), to: pct(ub * 100), up: ub < ua, pins: [], note: ub < ua ? P2("Trucks leave the yard sooner", "الشاحنات تغادر أسرع") : "" });
     }
     if (b.prefile !== a.prefile) out.push({ x: yard.x, y: yard.y, r: 110, dist: 520, title: P2("Declarations filed before arrival", "بيانات مقدمة قبل الوصول"), from: pct(a.prefile), to: pct(b.prefile), up: b.prefile > a.prefile, process: true });
     if (b.green !== a.green) out.push({ x: ramps.x, y: ramps.y, r: 110, dist: 480, title: P2("Green channel", "المسار الأخضر"), from: pct(a.green), to: pct(b.green), up: b.green > a.green, process: true });
@@ -903,16 +923,22 @@ async function main() {
   /* how long the camera rests on each change, and how long the flight to it takes */
   const CHG_DWELL = 7;
   const CHG_FLY = 3.6;
-  function flashSpot(s, step) {
-    const color = s.process ? "#f2c14e" : s.up ? "#5fe0d8" : "#ff5d6c";
+  const NEW_DOCK = "#ff4fd8";
+  function addRings(s, color, life, pulse = false) {
     for (let k = 0; k < 3; k += 1) {
       const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
       m.position.copy(v3(s.x, s.y, 1.5));
       m.renderOrder = 7;
       scene.add(m);
-      rings.push({ m, r: s.r, t: -k * 0.55, life: CHG_DWELL });
+      rings.push({ m, r: s.r, t: -k * 0.55, life, pulse });
     }
-    chgEl.innerHTML = `<div class="chg-in ${s.process ? "proc" : s.up ? "up" : "down"}">${step ? `<small>${step}</small>` : ""}<b>${s.title}</b><span>${s.from}<i>→</i><em>${s.to}</em></span></div>`;
+  }
+  function flashSpot(s, step) {
+    const color = s.process ? "#f2c14e" : s.up ? "#5fe0d8" : "#ff5d6c";
+    addRings(s, color, CHG_DWELL);
+    const undo = s.highlight && s.highlight();
+    if (undo) setTimeout(undo, CHG_DWELL * 1000);
+    chgEl.innerHTML = `<div class="chg-in ${s.process ? "proc" : s.up ? "up" : "down"}">${step ? `<small>${step}</small>` : ""}<b>${s.title}</b><span>${s.from}<i>→</i><em>${s.to}</em></span>${s.note ? `<small class="note">${s.note}</small>` : ""}</div>`;
     chgObj.position.copy(v3(s.x, s.y, s.r * 0.35 + 12));
     chgObj.visible = true;
     clearTimeout(chgHide);
@@ -941,6 +967,41 @@ async function main() {
       g.m.scale.set(s, 1, s);
       g.m.material.opacity = g.t < 0 ? 0 : (1 - f) * 0.95 * Math.min(1, g.life / 1.2);
     }
+  }
+  /* Red pulses with a tag on each bottleneck, all at once (the demo's "where it breaks"). */
+  const pulseTags = [];
+  function pulseSpots(list) {
+    clearPulses();
+    for (const s of list) {
+      addRings(s, "#ff4d5e", 3600, true);
+      const el = document.createElement("div");
+      el.className = "pulse-tag";
+      el.innerHTML = `<div class="chg-in down"><b>${s.title}</b><span>${s.value}</span></div>`;
+      const o = new CSS2DObject(el);
+      o.center.set(0.5, 1);
+      o.position.copy(v3(s.x, s.y, 70));
+      scene.add(o);
+      pulseTags.push(o);
+    }
+  }
+  function clearPulses() {
+    for (const g of rings) if (g.pulse) g.life = Math.min(g.life, 1.2);
+    for (const o of pulseTags) {
+      scene.remove(o);
+      o.element.remove();
+    }
+    pulseTags.length = 0;
+  }
+  function bottleneckSpots(r) {
+    const yard = station("inbound", 4);
+    const [rx, ry] = rampInfo ? centroid(rampInfo.categories) : [station("inbound", 6).x, station("inbound", 6).y];
+    const [xx, xy] = centroid(data.xrays);
+    const full = Math.round(Math.min(1, r.util.parking) * 100);
+    return [
+      { x: yard.x, y: yard.y, r: 230, title: "Main parking", value: `${full}% full at peak${r.overflow >= 1 ? ` · ${Math.round(r.overflow)} wait outside` : ""}` },
+      { x: xx, y: xy, r: 150, title: "X-ray queue", value: dur(r.stages.xq.median) },
+      { x: rx, y: ry, r: 200, title: "Wait for inspection", value: dur(r.stages.iq.median) },
+    ];
   }
   let changeTour = null;
   function showChanges(spots) {
@@ -1185,6 +1246,7 @@ async function main() {
     },
     finish() {
       setExec(false);
+      clearPulses();
       if (demoSpeed) document.querySelector(`[data-speed="${demoSpeed}"]`)?.click();
       demoSpeed = 0;
       $("demo-btn").classList.remove("on");
@@ -1206,9 +1268,14 @@ async function main() {
     },
     stopFollow,
     setScenario: (s) => demoScenario(s),
-    async goalSeek(target) {
+    pulseBottlenecks(r) {
+      pulseSpots(bottleneckSpots(r));
+    },
+    clearPulses,
+    async goalSeek(target, physical = false) {
       setPlanner(true);
       const pl = plan.planner;
+      pl.goal.physical = physical;
       pl.goal.target = target;
       pl.goal.metric = "median";
       pl.goal.year = 2026;
@@ -1216,6 +1283,7 @@ async function main() {
       const box = $("gs-target");
       if (box) box.value = target;
       await pl.runGoal();
+      pl.goal.physical = false;
       return pl.goal.result;
     },
     /* Loads the plan; the camera then visits each change. Returns the seconds that takes. */
@@ -1328,7 +1396,6 @@ async function main() {
     const top = keys.reduce((a, k) => (j[k] > j[a] ? k : a), keys[0]);
     truckTagEl.innerHTML = `<b>${fmtH(j.total / 60)} <small>in port</small></b>${keys.map((k) => `<span class="${k === top ? "top" : ""}">${STAGE_TAG[k]}<em>${dur(j[k])}</em></span>`).join("")}`;
   }
-  const WHY = { hour: "arrival hour", xray: "X-ray", decl: "several declarations", shared: "shared declaration", prefiled: "filing" };
   function plateHTML(v) {
     const p = v.plateInfo;
     if (!p) return `<div class="vc-plate">${v.plate}</div>`;
@@ -1354,7 +1421,7 @@ async function main() {
     return `<div class="vc-sec"><div class="vc-h">Time at each stage <em>learned model${plan.planner.changed() ? " · scenario" : ""}</em></div>
       <ol class="vc-j">${rows.join("")}</ol>
       <div class="vc-total">Time in port <b>${fmtH(j.total / 60)}</b> · port median ${fmtH(r.median)}</div>
-      <div class="vc-risk ${lv}"><span>Delay risk (over 8 h)</span><b>${risk}%</b>${p.why ? `<em>driven by ${p.why.map((w) => WHY[w] || w).join(", ")}</em>` : ""}</div></div>`;
+      <div class="vc-risk ${lv}"><span>Delay risk (over 8 h)</span><b>${risk}%</b></div></div>`;
   }
   function renderCard() {
     const v = followed;
