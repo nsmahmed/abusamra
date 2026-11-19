@@ -398,6 +398,43 @@ for i, (e, h, d, c, t) in enumerate(steps):
 text(s, 0.7, 6.2, 12, 0.5, "Six AI parts sit inside these three steps: the next slides show each one.", size=15, color=INK2)
 footer(s)
 
+# A1b Where the AI is: all six models on one page
+s = new("One page for the question 'where is the AI?'. Six models in three steps. Learn: a clustering model makes realistic trucks, a boosted-tree classifier predicts each truck's delay. Simulate: a forecast projects traffic to 2030, a calibrated queueing model turns resources into waiting hours. Recommend: pattern mining finds the bottleneck, goal seeking searches every mix of changes and returns three costed plans.")
+kicker(s, "Appendix · where the AI is")
+title(s, "Six models, one decision")
+ai = [
+    ("Learn", TEAL, TEAL_T, [
+        ("diagram-project", "Truck patterns", "Gaussian mixture model", "Unsupervised · clustering", "Groups similar trucks and creates 4,000 realistic new ones", "Every truck in the twin, no real data shown"),
+        ("triangle-exclamation", "Delay risk", "Gradient-boosted trees", "Supervised · classification", "Predicts each truck's chance of staying over 8 h, with reasons", "Who will be late, and why (AUC 0.70)"),
+    ]),
+    ("Simulate", GRAPE, GRAPE_T, [
+        ("chart-line", "Traffic forecast", "Growth trend + regression", "Time series · regression", "Projects trucks a day to 2030 and how waits react to volume", "When the port breaks: 2029"),
+        ("gears", "Twin engine", "Calibrated queueing model", "Simulation · fitted to data", "Turns lanes, docks and parking into waiting hours, hour by hour", "Any what-if answered in a blink"),
+    ]),
+    ("Recommend", CORAL, CORAL_T, [
+        ("magnifying-glass-chart", "Bottleneck finder", "Share and lift analysis", "Pattern mining", "Finds the stage that eats the hours and who is trapped there", "Aims the plan at the real problem"),
+        ("route", "Goal seeking", "Inverse search + ablation", "Optimisation · prescriptive", "Tries 3,402 mixes of changes, prices them, keeps three plans", "A target becomes a costed decision"),
+    ]),
+]
+for ci, (step, c, t, models) in enumerate(ai):
+    x = 0.7 + ci * 4.05
+    shp(s, MSO_SHAPE.ROUNDED_RECTANGLE, x, 1.8, 3.8, 0.36, fill=c, radius=0.5)
+    text(s, x, 1.8, 3.8, 0.36, f"{ci + 1} · {step}", size=13, color=WHITE, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    if ci < 2:
+        shp(s, MSO_SHAPE.RIGHT_ARROW, x + 3.84, 1.86, 0.18, 0.24, fill=SUN)
+    for ri, (ic, name, model, kind, does, gives) in enumerate(models):
+        y = 2.32 + ri * 2.27
+        card(s, x, y, 3.8, 2.12, fill=t, line=None, radius=0.1)
+        icon(s, x + 0.2, y + 0.2, 0.62, ic, c)
+        text(s, x + 0.97, y + 0.17, 2.7, 0.35, name, size=16, color=INK, bold=True)
+        text(s, x + 0.97, y + 0.5, 2.7, 0.3, model, size=12.5, color=c, bold=True)
+        pill_w = 0.12 + len(kind) * 0.068
+        shp(s, MSO_SHAPE.ROUNDED_RECTANGLE, x + 0.2, y + 0.92, pill_w, 0.27, fill=WHITE, radius=0.5)
+        text(s, x + 0.2, y + 0.92, pill_w, 0.27, kind, size=10, color=c, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, x + 0.2, y + 1.27, 3.45, 0.45, does, size=11.5, color=INK2)
+        text(s, x + 0.2, y + 1.72, 3.45, 0.3, [[("→ ", {"color": c, "bold": True}), (gives, {"bold": True})]], size=11.5, color=INK)
+footer(s)
+
 # A2 AI 1: clustering picture
 s = new("The first AI groups similar trucks together, like sorting marbles by colour, then creates brand-new trucks that behave like each group. Technically a Gaussian mixture model: each group is one soft, stretched cloud, and the stretch is what keeps a slow declaration and a slow inspection together.")
 kicker(s, "Appendix · AI 1 · learning truck patterns")
