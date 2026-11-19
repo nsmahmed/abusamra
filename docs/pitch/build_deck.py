@@ -13,7 +13,9 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WASL_AI_Accelerate_pitch.pptx")
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "WASL_AI_Accelerate_pitch.pptx")
+SITE = "https://nsmahmed.github.io/abusamra/"  # the GitHub Pages address; the QR slide points here
 
 BG = "0B1016"; CARD = "151C26"; CARD2 = "1B2430"; LINE = "26313F"
 INK = "EEF0F2"; INK2 = "C4CAD2"; MUTED = "8A94A3"
@@ -282,7 +284,34 @@ for i, (h, d, c) in enumerate(cards):
     text(s, cx + 0.3, cy + 1.0, 3.3, 1.0, d, size=14, color=INK2)
 footer(s)
 
-# 8 Thank you
+# 8 Try it yourself (QR)
+import qrcode
+qr_path = os.path.join(HERE, "qr_wasl.png")
+qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=16, border=2)
+qr.add_data(SITE); qr.make(fit=True)
+qr.make_image(fill_color="#0B1016", back_color="white").save(qr_path)
+s = new("Invite the jury to scan and try it on their phones while you take questions: press Demo for the guided story, or open the planner and move a lever.")
+kicker(s, "Try it yourself")
+title(s, "Scan and run the port yourself")
+box(s, 0.6, 2.0, 4.6, 4.6, fill="FFFFFF", radius=0.06)
+s.shapes.add_picture(qr_path, Inches(0.85), Inches(2.25), Inches(4.1), Inches(4.1)).name = "QR code to the live twin"
+text(s, 5.75, 2.05, 7.0, 0.5, SITE.replace("https://", "").rstrip("/"), size=24, color=TEAL, bold=True)
+text(s, 5.75, 2.6, 7.0, 0.4, "Runs in any browser · phone, tablet or laptop · Arabic and English", size=14, color=MUTED)
+tries = [
+    ("Demo", "Press Demo next to Tour: the 90-second WASL story plays inside the twin."),
+    ("Planner", "Open the planner, click a load-increase mark (busiest week, 2026 peak) and watch the hours move."),
+    ("Goal seek", "Set a target such as 3.5 h and let the model find three costed plans."),
+    ("Ride along", "Click any truck: its plate, its expected journey and its delay risk."),
+]
+for i, (h, d) in enumerate(tries):
+    cy = 3.3 + i * 0.85
+    o = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(5.75), Inches(cy), Inches(0.5), Inches(0.5))
+    o.fill.solid(); o.fill.fore_color.rgb = rgb(TEAL); o.line.fill.background()
+    text(s, 5.75, cy, 0.5, 0.5, str(i + 1), size=15, color=BG, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, 6.45, cy - 0.02, 6.3, 0.75, [[(h + "  ", {"bold": True, "color": INK}), (d, {})]], size=14.5, color=INK2)
+footer(s)
+
+# 9 Thank you
 s = new("Close with the slogan and open for questions. The appendix holds the AI detail; jump to it when the jury asks where the AI is.")
 logo_mark(s, 6.17, 1.2, 1.0)
 text(s, 0.6, 2.55, 12.1, 1.2, "Thank you", size=60, color=INK, bold=True, align=PP_ALIGN.CENTER)

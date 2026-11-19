@@ -6,7 +6,7 @@ name: Deploy twin to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [demo/v07_ai, main]
   workflow_dispatch:
 
 permissions:
