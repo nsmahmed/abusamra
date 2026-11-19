@@ -4,9 +4,9 @@
 # only aggregates and synthetic trucks.
 name: Deploy twin to GitHub Pages
 
+# Pages currently deploys straight from the demo/v07_ai branch (root index.html opens the twin).
+# This workflow is the alternative for Source = GitHub Actions; run it by hand from the Actions tab.
 on:
-  push:
-    branches: [demo/v07_ai, main]
   workflow_dispatch:
 
 permissions:
