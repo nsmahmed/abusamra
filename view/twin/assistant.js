@@ -16,8 +16,10 @@ const NAME = {
   gate: "waiting at the entry gate (parking full)", decl: "declaration and paperwork", xq: "X-ray queue and scan", iq: "waiting for inspection", insp: "physical inspection", exit: "release and exit",
   night: "trucks arriving at night (22:00-06:00)", afternoon: "trucks arriving 13:00-15:00",
 };
-const CAT_NAME = { chem: "Chemical & Others", oga: "OGA (other government authorities)", health: "Health & Food" };
+const CAT_NAME = { chem: "Chemical & Others goods", oga: "OGA goods (need another government authority)", health: "Health & Food goods" };
 const nm = (k) => NAME[k] || CAT_NAME[k] || k;
+/* goods categories, as opposed to the docks that inspect them */
+const goods = (k) => CAT_NAME[k] || NAME[k] || k;
 const r1 = (v) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
 const r0 = (v) => (Number.isFinite(v) ? Math.round(v) : null);
 
@@ -97,10 +99,12 @@ Rules:
 - The figures are from a calibrated planning model built on 2026 data; trucks on screen are synthetic. Say "the model expects" for scenarios, not "will".
 - Assumptions matter: when you give a forecast or a plan, name the main assumption it rests on (growth to 2030, or how much of the waiting capacity can remove) if the tool reports it.
 - Prefer showing over telling: when the user asks to see something, or an answer is about a place or a scenario, call show_place or show_scenario.
-- Be brief: 2-5 short sentences or a few bullets. Use hours with one decimal.
+- Executive style: lead with the answer in one sentence, then at most 3 short bullets. Under 70 words. No headings, no preamble, no offers of further help. Hours with one decimal.
+- Demand: use today (year 2026) unless the user names a year. "Traffic grows X%" means load_increase_pct = X on today's demand.
+- When you show a scenario, quote the figures of that same scenario; do not mix in figures from a different year or setting.
 - Report what the data shows; do not add causes or explanations the tool results do not contain.
 - For a what-if, compare it with no change under the same demand (both are in the tool result).
-- Use the human names the tools give (e.g. "Chemical & Others docks"), never internal ids.
+- Use the human names the tools give, never internal ids. Keep stages (e.g. declaration and paperwork), resources (e.g. Chemical & Others docks) and goods categories distinct; do not merge them in one claim.
 - "AUC" is not accuracy: it is how well the model ranks a slow truck above a fast one (0.5 = chance, 1 = perfect). Say so if asked about accuracy.
 - You cannot see individual real trucks or declarations; there are none in the twin.`;
 
@@ -121,11 +125,11 @@ export function mountAssistant(api) {
   const log = $("ask-log");
 
   const paintStatic = () => {
-    $("ask-sub").textContent = T("Answers from the twin's own model", "إجابات من نموذج التوأم نفسه");
-    $("ask-q").placeholder = T("Ask about the port, a what-if or a plan…", "اسأل عن المنفذ أو سيناريو أو خطة…");
+    $("ask-sub").textContent = T("Answers from the port model · fact-checked", "إجابات من نموذج المنفذ · مُتحقق منها");
+    $("ask-q").placeholder = T("Ask a question…", "اطرح سؤالًا…");
     const sugg = api.lang() === "ar"
-      ? ["أين عنق الزجاجة اليوم ولماذا؟", "ماذا لو زادت الشاحنات 20% وأضفنا مسار أشعة؟", "ابحث عن خطط تبقي 2030 عند 6 ساعات", "على ماذا تعتمد هذه الأرقام؟"]
-      : ["Where is the bottleneck today, and why?", "What if traffic grows 20% and we add an X-ray lane?", "Find plans that keep 2030 at 6 hours", "What are these numbers based on?"];
+      ? ["أين عنق الزجاجة اليوم؟", "ماذا لو زادت الشاحنات 20% مع مسار أشعة إضافي؟", "خطط تبقي 2030 عند 6 ساعات", "على ماذا تعتمد الأرقام؟"]
+      : ["Where is the bottleneck today?", "+20% trucks and one more X-ray lane?", "Plans to keep 2030 at 6 hours", "What are the numbers based on?"];
     $("ask-sugg").innerHTML = history.length ? "" : sugg.map((q) => `<button type="button">${esc(q)}</button>`).join("");
     $("ask-sugg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => send(b.textContent)));
     root.dir = api.lang() === "ar" ? "rtl" : "ltr";
@@ -174,13 +178,13 @@ export function mountAssistant(api) {
       share_of_all_truck_hours_pct: r0(r.bottleneck.share),
       busiest_resource: nm(r.bottleneck.resource),
       busiest_resource_load_pct: r0(r.bottleneck.util * 100),
-      over_represented_among_slowest_quarter_at_that_stage: (r.bottleneck.pattern || []).slice(0, 3).map((p) => ({ group: nm(p.key), times_over_represented: r1(p.lift), share_of_slowest_pct: r0(p.inSlow), share_of_all_trucks_pct: r0(p.overall) })),
+      over_represented_among_slowest_quarter_at_that_stage: (r.bottleneck.pattern || []).slice(0, 3).map((p) => ({ group: goods(p.key), times_over_represented: r1(p.lift), share_of_slowest_pct: r0(p.inSlow), share_of_all_trucks_pct: r0(p.overall) })),
     },
     resource_load_pct: Object.fromEntries(Object.entries(r.util || {}).map(([k, v]) => [nm(k), r0(v * 100)])),
     stage_median_minutes: Object.fromEntries(Object.entries(r.stages || {}).map(([k, v]) => [nm(k), r0(v.median)])),
-    median_h_by_goods_category: Object.fromEntries(Object.entries(r.byCat || {}).map(([k, v]) => [nm(k), r1(v)])),
+    median_time_in_port_h_by_goods_category: Object.fromEntries(Object.entries(r.byCat || {}).map(([k, v]) => [goods(k), r1(v)])),
   });
-  const settings = (s) => ({ year: s.year, load_increase_pct: s.surge, xray_lanes: s.xray, inspection_docks: s.docks, docks_by_category: Object.fromEntries(Object.entries(s.alloc).map(([k, v]) => [nm(k), v])), parking_bays: s.parking, shift_overlap: !!s.overlap });
+  const settings = (s) => ({ year: s.year, load_increase_pct: s.surge, xray_lanes: s.xray, inspection_docks: s.docks, docks_by_goods_category: Object.fromEntries(Object.entries(s.alloc).map(([k, v]) => [goods(k), v])), parking_bays: s.parking, shift_overlap: !!s.overlap });
 
   const run = {
     port_status({ which }) {
@@ -191,13 +195,13 @@ export function mountAssistant(api) {
       const { s, clipped } = stateFrom(a);
       const r = pm.evaluate(s);
       const base = pm.evaluate({ ...pm.today, year: s.year, surge: s.surge });
-      return { settings: settings(s), clipped_to_limits: clipped, scenario: detail(r), no_change_same_demand: detail(base), today_2026: figures(pm.baseRun) };
+      return { settings: settings(s), clipped_to_limits: clipped, scenario: detail(r), no_change_settings: settings({ ...pm.today, year: s.year, surge: s.surge }), no_change_same_demand: detail(base), today_2026: figures(pm.baseRun) };
     },
     show_scenario(a) {
       const { s, clipped } = stateFrom(a);
       api.showScenario(s);
       const base = pm.evaluate({ ...pm.today, year: s.year, surge: s.surge });
-      return { shown_on_screen: true, settings: settings(s), clipped_to_limits: clipped, scenario: detail(pm.evaluate(s)), no_change_same_demand: detail(base), today_2026: figures(pm.baseRun) };
+      return { shown_on_screen: true, settings: settings(s), clipped_to_limits: clipped, scenario: detail(pm.evaluate(s)), no_change_settings: settings({ ...pm.today, year: s.year, surge: s.surge }), no_change_same_demand: detail(base), today_2026: figures(pm.baseRun) };
     },
     async find_plans({ target_hours, measure = "median", year = 2030 }) {
       const g = await api.findPlans(target_hours, measure, year);
@@ -260,13 +264,63 @@ export function mountAssistant(api) {
       .replace(/\n{2,}/g, "<br><br>")
       .replace(/\n/g, "<br>");
   const TOOL_LABEL = {
-    port_status: ["Read the port's figures", "قراءة أرقام المنفذ"],
-    evaluate_scenario: ["Ran a what-if in the model", "تشغيل سيناريو في النموذج"],
-    show_scenario: ["Showed the scenario in the twin", "عرض السيناريو في التوأم"],
-    find_plans: ["Searched and tested plans", "البحث عن الخطط واختبارها"],
-    show_place: ["Moved the camera", "تحريك الكاميرا"],
-    about_the_model: ["Read the model's basis", "قراءة أساس النموذج"],
+    port_status: ["Port figures", "أرقام المنفذ"],
+    evaluate_scenario: ["What-if", "ماذا لو"],
+    show_scenario: ["Scenario shown", "عرض السيناريو"],
+    find_plans: ["Plans", "الخطط"],
+    show_place: ["Camera", "الكاميرا"],
+    about_the_model: ["Model basis", "أساس النموذج"],
   };
+
+  /* ---------- fact check: Microsoft Decision 1.1 gates every answer that states figures ----------
+     The language model writes; the decision model judges one yes/no question: does every number
+     and fact in the answer match the model's tool results? It sees the same tool results the
+     language model saw (this answer's and the last few turns'), so an invented or misattributed
+     figure is caught. Thresholds were set on test answers with planted errors: correct answers
+     scored 0.74-0.98; wrong, invented, swapped or misattributed figures 0.001-0.03. Verified is
+     0.6 and above, "Check figures" 0.3-0.6, "Not verified" below 0.3. */
+  const evidence = [];
+  const CHECK = {
+    type: "noul",
+    criteria: {
+      true: "Every number stated in the answer appears in the tool results for the same quantity and the same scenario (rounding allowed), or is simple arithmetic on them.",
+      false: "At least one number in the answer is absent from the tool results, differs from them beyond rounding, or is given for the wrong quantity or scenario.",
+    },
+  };
+  const badge = (p) => {
+    if (p == null) return `<span class="ask-chk wait">${T("Checking…", "جارٍ التحقق…")}</span>`;
+    const pct = Math.round(p * 100);
+    const tip = T(`Microsoft Decision 1.1: figures match the model (${pct}%)`, `Microsoft Decision 1.1: تطابق الأرقام مع النموذج (${pct}%)`);
+    if (p >= 0.6) return `<span class="ask-chk ok" title="${esc(tip)}">✓ ${T("Verified", "تم التحقق")}</span>`;
+    if (p >= 0.3) return `<span class="ask-chk mid" title="${esc(tip)}">◐ ${T("Check figures", "راجع الأرقام")}</span>`;
+    return `<span class="ask-chk bad" title="${esc(tip)}">⚠ ${T("Not verified", "غير مؤكد")}</span>`;
+  };
+  async function factCheck(answer, footer, fresh) {
+    if (!ai.status.decision || !/[\d٠-٩]/.test(answer)) {
+      footer.querySelector(".ask-chk")?.remove();
+      return;
+    }
+    /* the results this answer was written from: this question's tools, else the recent ones,
+       flattened to one "quantity = value" line each, which the decision model reads far more
+       reliably than nested JSON */
+    const basis = fresh.length ? fresh : evidence.slice(-3);
+    const flat = (o, pre, out) => {
+      if (o && typeof o === "object") {
+        for (const [k, v] of Object.entries(o)) flat(v, Array.isArray(o) ? `${pre} #${Number(k) + 1}` : `${pre}${pre ? " › " : ""}${k.replace(/_/g, " ")}`, out);
+      } else out.push(`${pre} = ${o}`);
+      return out;
+    };
+    const lines = basis.flatMap((b) => flat(b.result, "", []).map((l) => `[${b.tool}] ${l}`));
+    let facts = lines.join("\n");
+    if (facts.length > 50000) facts = facts.slice(0, 50000);
+    const state = `TOOL RESULTS (facts from the port model):\n${facts}\n\nANSWER TO CHECK:\n${answer}`;
+    try {
+      const res = await ai.decide(state, { grounded: CHECK });
+      footer.querySelector(".ask-chk").outerHTML = badge(res.answers.grounded.noul);
+    } catch {
+      footer.querySelector(".ask-chk")?.remove();
+    }
+  }
   const add = (cls, html) => {
     const el = document.createElement("div");
     el.className = `ask-m ${cls}`;
@@ -285,6 +339,7 @@ export function mountAssistant(api) {
     add("me", esc(text));
     const pending = add("bot wait", `<i></i><i></i><i></i>`);
     const used = [];
+    const fresh = [];
     history.push({ role: "user", content: text });
     try {
       /* answer in the language of this question, whatever came before */
@@ -299,7 +354,8 @@ export function mountAssistant(api) {
         if (!msg.tool_calls?.length) {
           history.push({ role: "assistant", content: msg.content || "" });
           pending.className = "ask-m bot";
-          pending.innerHTML = `${md(msg.content || "")}${used.length ? `<div class="ask-tools">${used.map((u) => `<span>${esc(u)}</span>`).join("")}</div>` : ""}`;
+          pending.innerHTML = `${md(msg.content || "")}<div class="ask-foot">${used.map((u) => `<span class="ask-tool">${esc(u)}</span>`).join("")}${badge(null)}</div>`;
+          factCheck(msg.content || "", pending.querySelector(".ask-foot"), fresh);
           break;
         }
         for (const call of msg.tool_calls) {
@@ -317,6 +373,11 @@ export function mountAssistant(api) {
           const lab = TOOL_LABEL[name];
           if (lab && !used.includes(T(...lab))) used.push(T(...lab));
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out).slice(0, 12000) });
+          if (name !== "show_place") {
+            fresh.push({ tool: name, result: out });
+            evidence.push({ tool: name, result: out });
+            if (evidence.length > 6) evidence.shift();
+          }
         }
         if (round === 5) throw new Error(T("The question needed too many steps; try a narrower one.", "احتاج السؤال خطوات كثيرة؛ جرّب سؤالًا أضيق."));
       }

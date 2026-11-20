@@ -4,7 +4,7 @@ The browser never sees a key. It posts to the local server, which adds the key f
 out of git) and forwards only two kinds of request:
 
     /api/chat    the WASL assistant: chat completions with tool definitions, fixed model
-    /api/decide  priority fit: Microsoft Decision 1.1 /score, fixed model
+    /api/decide  fact check: Microsoft Decision 1.1 (/v1/systemone), fixed model
 
 Nothing about real trucks is sent: the browser sends the user's question and the outputs of the
 calibrated port model (aggregates and scenario results). Without a .env the endpoints report that
@@ -86,6 +86,6 @@ class AzureAI:
             return 503, b'{"error":{"message":"Decision model not configured (.env)"}}'
         state = payload.get("state")
         questions = payload.get("questions")
-        if not isinstance(state, str) or not state or len(state) > 12_000 or not isinstance(questions, dict) or not 1 <= len(questions) <= 10:
+        if not isinstance(state, str) or not state or len(state) > 60_000 or not isinstance(questions, dict) or not 1 <= len(questions) <= 10:
             return 400, b'{"error":{"message":"state (text) and 1-10 questions required"}}'
-        return self._post(f"{self.dec_base}/score", {"model": self.dec_model, "state": state, "questions": questions}, timeout=60)
+        return self._post(f"{self.dec_base}/v1/systemone", {"model": self.dec_model, "state": state, "questions": questions}, timeout=60)

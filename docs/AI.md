@@ -136,12 +136,13 @@ Replace these with GAC procurement figures before using the numbers for a decisi
 - **Rule.** The **robust choice** is the cheapest plan that reaches the goal in the most futures; ties go to the better worst case. The table shows, for every plan, the 5-year cost, the expected value, the worst case and the futures it holds in.
 - **What it is.** Decision analysis under uncertainty over the calibrated model. Plain arithmetic, about 0.5 s in the browser, every number traceable.
 
-## 8. Priority fit: Microsoft Decision 1.1 (Azure AI Foundry)
+## 8. Fact check: Microsoft Decision 1.1 gates the assistant's answers (Azure AI Foundry)
 
-- **The gap it fills.** The model computes the options; it cannot know what the decision maker values. Executives state priorities in words ("keep spending low", "never break in a surge").
-- **How.** The planner sends Decision 1.1 a text description of the compared plans, with the model's own figures for each (levers, 5-year cost, expected and worst-case time, futures held), plus the priority as written. Decision 1.1's `/score` endpoint returns calibrated probabilities over the plans (a `choice` question).
-- **Output.** Which plan fits the priority, with how sure it is. When the top two are within 30 points, the planner says it is a close call: the priority does not separate the plans.
-- **What it does not do.** It produces no figures and searches nothing; it only weighs the computed options against the stated priority. Only model outputs are sent.
+- **What a decision model is.** Microsoft Decision 1.1 does not write text. It answers a typed question (yes/no, one of several options, or a level) about text, JSON or an image, with a probability. Microsoft positions it for classification, routing, grading and gating, and for checking a generative model's output.
+- **The job here.** The language model writes each Ask WASL answer; Decision 1.1 then answers one yes/no question: does every number in the answer appear in the model's tool results, for the same quantity and scenario (rounding allowed)? It sees exactly what the language model saw: this question's tool results, flattened to one "quantity = value" line each (nested JSON was read far less reliably).
+- **Badge.** Verified (0.6 and above), Check figures (0.3-0.6), Not verified (below 0.3), with the probability on hover. Answers without numbers are not checked.
+- **Tested.** On real answers with planted errors: correct answers 0.74-0.99; a wrong median, swapped figures, an invented cost or a wrong load 0.001-0.03. Two fixes came out of testing: the tools now state the no-change settings explicitly, and goods categories are named apart from the docks that inspect them, so answers do not merge the two.
+- **Limits.** It is a second opinion, not proof: scores depend on wording, and a correct answer can still score in the middle band. It checks figures, not the reasoning around them.
 
 ## 9. Ask WASL: language model with the twin's model as tools (Azure OpenAI)
 
@@ -160,4 +161,4 @@ Replace these with GAC procurement figures before using the numbers for a decisi
 
 ## Keys and hosting
 
-The keys live in `.env` (ignored by git). `view/serve.py` reads them and forwards only two requests: `/api/chat` (fixed model, token cap) and `/api/decide` (fixed model). The browser never sees a key. On GitHub Pages there is no server, so the AI features hide themselves and everything else works.
+The keys live in `.env` (ignored by git). `view/serve.py` reads them and forwards only two requests: `/api/chat` (fixed model, token cap) and `/api/decide` (Decision 1.1 `/v1/systemone`, fixed model). The browser never sees a key. On GitHub Pages there is no server, so the AI features hide themselves and everything else works.

@@ -159,7 +159,7 @@ export class Executive {
     const { tr } = this.ctx;
     const spark = `<svg class="tspark" viewBox="0 0 120 30" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg>`;
     const meter = `<div class="tmeter"><i></i><u></u></div>`;
-    const tile = (id, label, extra = "", src = "model") => `<div class="tile src-${src}" id="xt-${id}"><span class="tl">${esc(label)}<em>${src === "live" ? "live" : "model"}</em></span><div class="tv"><b>–</b><small></small></div><div class="ts"></div>${extra}</div>`;
+    const tile = (id, label, extra = "", src = "model") => `<div class="tile src-${src}" id="xt-${id}"><span class="tl">${esc(label)}${src === "live" ? "<em>live</em>" : ""}</span><div class="tv"><b>–</b><small></small></div><div class="ts"></div>${extra}</div>`;
     this.el.tiles.__html = null;
     this.el.tiles.innerHTML =
       tile("stay", "Median time in port", meter) + tile("p90", "Slowest 10% (P90)") + tile("perday", "Trucks per day") +
@@ -190,7 +190,7 @@ export class Executive {
     const s = this.samples;
     const last = s.length - 1;
     const hourAgo = last >= PER_HOUR ? s[last - PER_HOUR] : null;
-    put(this.el.sub, `Abu Samra Land Port · import trucks · model from ${this.ctx.learned.source.commercial.toLocaleString()} commercial trucks (${this.ctx.learned.source.from} – ${this.ctx.learned.source.to}) · live view since ${s.length ? hhmm(clockOf(s[0].t)) : "–"}`);
+    put(this.el.sub, `Import trucks · learned from ${this.ctx.learned.source.commercial.toLocaleString()} journeys · live since ${s.length ? hhmm(clockOf(s[0].t)) : "–"}`);
     put(this.el.scen, changed ? `<span class="ex-scen-on">Scenario applied</span> ${esc(this.ctx.scenarioLabel())}` : `<span>Today's port</span>`);
     const vs = (now, then, fmt) => (changed && fmt(now) !== fmt(then) ? `<span class="dl ${now < then ? "good" : "bad"}">${fmt(then)} → ${fmt(now)}</span>` : "");
     const goal = this.goal;
@@ -377,7 +377,7 @@ export class Executive {
     const co = Object.entries(L.countries).filter(([k]) => k !== "XX").sort((a, b) => b[1] - a[1]);
     const top = co[0][1];
     const crow = co.map(([k, v]) => `<div class="hrow" data-tip="${COUNTRY[k].en} plates|${v.toFixed(1)}% of trucks, 2026 gate passes"><span>${COUNTRY[k].en}</span><div><i style="width:${(v / top) * 100}%"></i></div><b>${Math.round(v)}%</b></div>`).join("");
-    put(this.el.mix, `<div class="mix-h">Inspection category <em>from declaration items</em></div>${rows}<div class="mix-h">Plate country <em>from vehicle numbers</em></div>${crow}`);
+    put(this.el.mix, `<div class="mix-h">Inspection category</div>${rows}<div class="mix-h">Plate country</div>${crow}`);
   }
 
   renderFeed() {

@@ -23,16 +23,14 @@ const T = {
     title: "Scenario planner", whatif: "What-if", goal: "Goal seek", today: "Today", scenario: "Scenario", reset: "Reset", share: "Copy link", copied: "Link copied", tuck: "Hide panel",
     impact: "Impact", median: "Median time in port", p90: "Slowest 10% (P90)", over12: "Over 12 hours", capacity: "Sustainable trucks / day", limited: "limited by",
     why: "Why it moved", bottleneck: "Bottleneck", pattern: "Who is stuck there",
-    demand: "Truck arrivals", perDay: "trucks / day", baseNote: "median day, last 90 days of data", surge: "Load increase",
+    demand: "Truck arrivals", perDay: "trucks / day", baseNote: "median day, last 90 days", surge: "Load increase",
     xray: "X-ray lanes", lanes: "lanes", docks: "Inspection docks", split: "Split by category", inferred: "Today (inferred)", smart: "Smart split", byShed: "By shed",
     parking: "Main parking", bays: "bays", process: "Process levers", prefile: "Declarations filed before arrival", green: "Green channel, non-restricted goods", overlap: "Overlap shift handovers",
     limits: "Limits", min: "Min", max: "Max", save: "Save", cancel: "Cancel",
     target: "Target", hours: "h", metric: "Measure", horizon: "Demand in", run: "Find plans", running: "Searching scenarios…", visualize: "Visualize in the twin",
-    cost5: "5-year cost", leadT: "In service in", months: "months", saves: "Each lever's part", none: "No change", noPlan: "No setting within the limits reaches the target; showing the closest plans. Raise a limit (gear) or relax the target.",
+    cost5: "5-year cost", leadT: "In service in", month: "month", months: "months", saves: "Each lever's part", none: "No change", noPlan: "No setting within the limits reaches the target; showing the closest plans. Raise a limit (gear) or relax the target.",
     proj: "Median time in port to 2030", doNothing: "No change", costVs: "Cost against hours saved",
-    robustH: "Robust decision", robustNote: "Each plan re-run in 9 futures: demand low, expected or high, crossed with how much of today's waiting more capacity can remove. The two numbers the model is least sure of.", holds: "Reaches the goal", worst: "Worst case", expected: "Expected", futures: "futures", robustPick: "Robust choice", robustWhy: "the cheapest plan that reaches the goal in the most futures", testing: "Testing the plans against uncertainty…",
-    fitH: "Fit to priorities", fitNote: "Say what matters most. Microsoft Decision 1.1 reads the plans above (the model's numbers, nothing else) and scores which one fits, with how sure it is.", fitAsk: "Score the plans", fitPh: "e.g. Keep spending low, but never break in a busy week", closeCall: "Close call: the priority does not separate these plans clearly.", fitBy: "Decision 1.1 · confidence",
-    priCost: "Lowest cost", priSurge: "Never break in a surge", priFast: "Fastest service",
+    robustH: "Robust decision", robustNote: "Each plan tested in 9 futures: demand × capacity effect.", holds: "Holds", worst: "Worst case", expected: "Expected", futures: "futures", robustPick: "Robust choice", robustTag: "Robust", robustWhy: "the cheapest plan that reaches the goal in the most futures", testing: "Testing plans…",
   },
   ar: {
     title: "مخطط السيناريوهات", whatif: "ماذا لو", goal: "البحث عن الهدف", today: "الحالي", scenario: "السيناريو", reset: "إعادة", share: "نسخ الرابط", copied: "تم النسخ", tuck: "إخفاء",
@@ -43,15 +41,11 @@ const T = {
     parking: "المواقف الرئيسية", bays: "موقف", process: "أدوات الإجراءات", prefile: "بيانات مقدمة قبل الوصول", green: "المسار الأخضر للبضائع غير المقيدة", overlap: "تداخل تسليم المناوبات",
     limits: "الحدود", min: "أدنى", max: "أقصى", save: "حفظ", cancel: "إلغاء",
     target: "المستهدف", hours: "س", metric: "المقياس", horizon: "الطلب في", run: "ابحث عن الخطط", running: "جارٍ البحث…", visualize: "اعرض في التوأم",
-    cost5: "تكلفة 5 سنوات", leadT: "التشغيل خلال", months: "أشهر", saves: "أثر كل أداة", none: "بلا تغيير", noPlan: "لا يوجد إعداد يحقق المستهدف ضمن الحدود؛ هذه أقرب الخطط.",
+    cost5: "تكلفة 5 سنوات", leadT: "التشغيل خلال", month: "شهر", months: "أشهر", saves: "أثر كل أداة", none: "بلا تغيير", noPlan: "لا يوجد إعداد يحقق المستهدف ضمن الحدود؛ هذه أقرب الخطط.",
     proj: "وسيط زمن البقاء حتى 2030", doNothing: "بلا تغيير", costVs: "التكلفة مقابل الساعات الموفرة",
-    robustH: "قرار متين", robustNote: "أُعيد تشغيل كل خطة في 9 احتمالات: طلب منخفض أو متوقع أو مرتفع، مع مقدار ما تزيله الطاقة الإضافية من الانتظار. وهما أقل رقمين يقين في النموذج.", holds: "تحقق الهدف", worst: "أسوأ حالة", expected: "المتوقع", futures: "احتمالات", robustPick: "الخيار المتين", robustWhy: "أرخص خطة تحقق الهدف في أكثر الاحتمالات", testing: "جارٍ اختبار الخطط أمام عدم اليقين…",
-    fitH: "الملاءمة للأولويات", fitNote: "اكتب ما يهم أكثر. يقرأ نموذج Microsoft Decision 1.1 الخطط أعلاه (أرقام النموذج فقط) ويقيّم أيها أنسب ومدى ثقته.", fitAsk: "قيّم الخطط", fitPh: "مثال: إنفاق منخفض دون انهيار في الأسابيع المزدحمة", closeCall: "النتيجة متقاربة: الأولوية لا تميز بين هذه الخطط بوضوح.", fitBy: "Decision 1.1 · الثقة",
-    priCost: "أقل تكلفة", priSurge: "لا انهيار وقت الذروة", priFast: "أسرع خدمة",
+    robustH: "قرار متين", robustNote: "كل خطة مختبرة في 9 احتمالات: الطلب × أثر الطاقة.", holds: "تحقق الهدف", worst: "أسوأ حالة", expected: "المتوقع", futures: "احتمالات", robustPick: "الخيار المتين", robustTag: "متين", robustWhy: "أرخص خطة تحقق الهدف في أكثر الاحتمالات", testing: "جارٍ اختبار الخطط…",
   },
 };
-import { ai } from "./ai.js";
-
 const LEVER_NAME = { xray: "X-ray lanes", docks: "Inspection docks", prefile: "Pre-arrival filing", green: "Green channel", overlap: "Shift overlap", parking: "Parking" };
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -140,7 +134,7 @@ export class Planner {
     this.root.innerHTML = `
       <button type="button" class="tuck-btn" id="pl-tuck" title="${t("tuck")}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <div class="pl-head">
-        <div><span class="pl-kicker">WASL · ${t("title")}</span><div class="seg small pl-tabs"><button type="button" data-tab="whatif">${t("whatif")}</button><button type="button" data-tab="goal">${t("goal")}</button></div></div>
+        <div><span class="pl-kicker">${t("title")}</span><div class="seg small pl-tabs"><button type="button" data-tab="whatif">${t("whatif")}</button><button type="button" data-tab="goal">${t("goal")}</button></div></div>
         <div class="pl-acts"><span class="pl-tag" id="pl-tag">${t("scenario")}</span><button type="button" class="pl-reset pl-icon" id="pl-share" title="${t("share")}"><svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></button><button type="button" class="pl-reset" id="pl-reset">${t("reset")}</button></div>
       </div>
 
@@ -191,7 +185,7 @@ export class Planner {
 
       <div class="pl-pane" data-pane="goal">
         <section class="pl-sec">
-          <p class="pl-note">Goal seeking runs the learned port model in reverse: it tries every combination of the levers within their limits, keeps those that reach the target, and prices each from the unit costs.</p>
+          <p class="pl-note">${this.lang() === "ar" ? "أرخص الخطط التي تحقق المستهدف." : "Cheapest plans that reach a target."}</p>
           <div class="gs-form">
             <label>${t("target")}<span><input type="number" id="gs-target" min="1" max="24" step="0.5" value="${this.goal.target}"> ${t("hours")}</span></label>
             <label>${t("metric")}<span class="seg small" id="gs-metric"><button type="button" data-v="median">Median</button><button type="button" data-v="p90">P90</button></span></label>
@@ -436,7 +430,6 @@ export class Planner {
     g.result = await this.m.goalSeek({ target: g.target, metric: g.metric, year: g.year, surge: this.state.surge, physical: !!g.physical, onProgress: (f) => (prog.firstElementChild.style.width = `${Math.round(f * 80)}%`) });
     btn.textContent = this.t("testing");
     g.result.robust = await this.m.robust({ candidates: g.result.candidates, target: g.target, year: g.year, surge: this.state.surge, metric: g.metric, onProgress: (f) => (prog.firstElementChild.style.width = `${Math.round(80 + f * 20)}%`) });
-    g.fit = null;
     g.busy = false;
     btn.textContent = this.t("run");
     btn.disabled = false;
@@ -460,7 +453,7 @@ export class Planner {
       const maxC = Math.max(0.1, ...lever.map((c) => c.hours));
       return `<article class="gs-card" style="--pc:${PLAN_COLORS[p.id]}">
         <header><b>${p.name}</b><span class="gs-res">${fmtH(p.value)}</span></header>
-        <div class="gs-meta"><span><em>${t("cost5")}</em>${fmtQAR(p.cost)}</span><span><em>${t("leadT")}</em>${p.lead} ${t("months")}</span><span><em>saves</em>${fmtH(bv - p.value)}</span><span title="Same plan in a week like the busiest of 2026 (+${Math.round(this.m.L.demand.busiestWeek.vsCurrent)}% trucks)"><em>busy week</em><b class="${p.stress <= g.target ? "good" : "bad"}">${fmtH(p.stress)}</b></span></div>
+        <div class="gs-meta"><span><em>${t("cost5")}</em>${fmtQAR(p.cost)}</span><span><em>${t("leadT")}</em>${p.lead} ${p.lead === 1 ? t("month") : t("months")}</span><span><em>saves</em>${fmtH(bv - p.value)}</span><span title="Same plan in a week like the busiest of 2026 (+${Math.round(this.m.L.demand.busiestWeek.vsCurrent)}% trucks)"><em>busy week</em><b class="${p.stress <= g.target ? "good" : "bad"}">${fmtH(p.stress)}</b></span></div>
         <ul class="gs-items">${p.items.map((i) => `<li><span>${esc(i.label)}</span><em>${fmtQAR(i.capex + i.opex * this.m.cost(p.s).years)}</em></li>`).join("") || `<li>${t("none")}</li>`}</ul>
         ${lever.length ? `<div class="gs-contrib"><div class="pl-label">${t("saves")}</div>${lever.map((c) => `<div class="gs-c"><span>${LEVER_NAME[c.lever] || c.lever}</span><i style="width:${(c.hours / maxC) * 100}%"></i><b>−${fmtH(c.hours)}</b></div>`).join("")}</div>` : ""}
         <button type="button" class="gs-vis" data-plan="${p.id}">${t("visualize")}</button>
@@ -470,7 +463,6 @@ export class Planner {
       <p class="pl-note">${g.searched.toLocaleString()} scenarios evaluated · ${g.feasible.toLocaleString()} reach ${fmtH(g.target)}.</p>
       ${g.plans.map(card).join("")}
       ${this.robustHTML(g)}
-      ${this.fitHTML(g)}
       <section class="pl-sec"><div class="pl-label">${t("proj")}</div><div class="gs-chart" id="gs-proj"></div></section>
       <section class="pl-sec"><div class="pl-label">${t("costVs")}</div><div class="gs-chart" id="gs-cost"></div></section>`;
     out.querySelectorAll("[data-plan]").forEach((b) =>
@@ -482,13 +474,12 @@ export class Planner {
         this.onVisualize(p);
       })
     );
-    this.bindRobust(out, g);
     drawProjection(out.querySelector("#gs-proj"), this.m, g, this.state.surge, t("doNothing"));
     drawCost(out.querySelector("#gs-cost"), g, bv);
   }
 }
 
-/* ---------- robust decision and priority fit (methods added to Planner) ---------- */
+/* ---------- robust decision (methods added to Planner) ---------- */
 const sameS = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const planLevers = (m, s) => {
   const t = m.today;
@@ -519,7 +510,7 @@ Planner.prototype.robustHTML = function (g) {
   const opts = this.robustOptions(g);
   const none = rb.rows[0];
   const dots = (row) => `<span class="rb-dots">${row.values.map((v, j) => `<i class="${v <= rb.target ? "ok" : Number.isFinite(v) ? "no" : "bad"}" title="${esc(rb.futures[j].demand.label)} · ${esc(rb.futures[j].kappa.label)}: ${fmtH(v)}"></i>`).join("")}</span>`;
-  const line = (o) => `<tr class="${sameS(o.s, rb.pick.s) ? "pick" : ""}"><td><i class="rb-c" style="background:${o.color}"></i>${esc(o.name)}${sameS(o.s, rb.pick.s) ? ` <b class="rb-tag">${t("robustPick")}</b>` : ""}<small>${esc(planLevers(this.m, o.s))}</small></td>
+  const line = (o) => `<tr class="${sameS(o.s, rb.pick.s) ? "pick" : ""}"><td><i class="rb-c" style="background:${o.color}"></i>${esc(o.name)}${sameS(o.s, rb.pick.s) && o.id !== "robust" ? ` <b class="rb-tag">${t("robustTag")}</b>` : ""}<small>${esc(planLevers(this.m, o.s))}</small></td>
     <td>${fmtQAR(o.cost)}</td><td>${fmtH(o.row.expected)}</td><td>${fmtH(o.row.worst)}</td><td>${dots(o.row)}<b>${o.row.held}/${n}</b></td></tr>`;
   return `<section class="pl-sec rb">
     <div class="pl-label">${t("robustH")}</div>
@@ -527,82 +518,7 @@ Planner.prototype.robustHTML = function (g) {
     <table class="rb-t"><thead><tr><th></th><th>${t("cost5")}</th><th>${t("expected")}</th><th>${t("worst")}</th><th>${t("holds")}</th></tr></thead>
     <tbody>${opts.map(line).join("")}
     <tr class="none"><td>${t("doNothing")}</td><td>—</td><td>${fmtH(none.expected)}</td><td>${fmtH(none.worst)}</td><td>${dots(none)}<b>${none.held}/${n}</b></td></tr></tbody></table>
-    <p class="pl-note rb-why"><b>${t("robustPick")}:</b> ${t("robustWhy")} (${rb.pick.held}/${n}, ${fmtQAR(rb.pick.cost)}).</p>
   </section>`;
-};
-
-Planner.prototype.fitHTML = function (g) {
-  if (!g.robust || !ai.status.decision) return "";
-  const t = (k) => this.t(k);
-  return `<section class="pl-sec fit">
-    <div class="pl-label">${t("fitH")} <span class="ai-tag">AI</span></div>
-    <p class="pl-note">${t("fitNote")}</p>
-    <div class="fit-chips">${["priCost", "priSurge", "priFast"].map((k) => `<button type="button" data-pri="${k}">${t(k)}</button>`).join("")}</div>
-    <div class="fit-row"><input type="text" id="fit-text" maxlength="300" placeholder="${esc(t("fitPh"))}" value="${esc(g.fitText || "")}"><button type="button" id="fit-run">${t("fitAsk")}</button></div>
-    <div id="fit-out">${g.fit ? this.fitResult(g) : ""}</div>
-  </section>`;
-};
-
-Planner.prototype.fitResult = function (g) {
-  const f = g.fit;
-  if (f.error) return `<p class="pl-note warn">${esc(f.error)}</p>`;
-  if (f.busy) return `<div class="gs-prog on fit-wait"><i></i></div>`;
-  const opts = this.robustOptions(g);
-  const rows = opts
-    .map((o) => ({ o, p: f.probabilities[o.id] ?? 0 }))
-    .sort((a, b) => b.p - a.p)
-    .map(({ o, p }) => `<div class="fit-bar${o.id === f.choice ? " top" : ""}"><span>${esc(o.name)}</span><i style="width:${Math.max(1, p * 100)}%;background:${o.color}"></i><b>${Math.round(p * 100)}%</b></div>`)
-    .join("");
-  const sorted = Object.values(f.probabilities).sort((a, b) => b - a);
-  const close = sorted.length > 1 && sorted[0] - sorted[1] < 0.3;
-  return `${rows}<p class="pl-note fit-meta">${close ? `<b>${this.t("closeCall")}</b> ` : ""}${this.t("fitBy")} ${Math.round(f.confidence * 100)}% · “${esc(f.text)}”</p>`;
-};
-
-/* What Decision 1.1 reads: the plans and the model's numbers for them, then the priority. */
-Planner.prototype.fitState = function (g, text) {
-  const rb = g.robust;
-  const n = rb.futures.length;
-  const unit = rb.metric === "p90" ? "slowest-10% (P90) time in port" : "median time in port";
-  const lines = this.robustOptions(g).map((o) => {
-    const r = o.row;
-    return `${o.name}: ${planLevers(this.m, o.s)}; 5-year cost QAR ${(o.cost / 1e6).toFixed(0)} million; expected ${unit} ${r.expected.toFixed(1)} h; worst case across the futures ${Number.isFinite(r.worst) ? `${r.worst.toFixed(1)} h` : "queues grow without limit"}; reaches the goal in ${r.held} of ${n} possible futures.`;
-  });
-  return `Abu Samra land port, decision for ${rb.year}. Goal: ${unit} at or under ${rb.target} h. Today with no change: expected ${rb.rows[0].expected.toFixed(1)} h, reaches the goal in ${rb.rows[0].held} of ${n} futures. The futures cover low, expected and high demand and how much of the waiting more capacity can remove. Options:\n${lines.join("\n")}\nDecision maker's priority: ${text}`;
-};
-
-Planner.prototype.bindRobust = function (out, g) {
-  const input = out.querySelector("#fit-text");
-  if (!input) return;
-  out.querySelectorAll("[data-pri]").forEach((b) =>
-    b.addEventListener("click", () => {
-      input.value = this.t(b.dataset.pri);
-      this.runFit(g, input.value);
-    })
-  );
-  out.querySelector("#fit-run").addEventListener("click", () => this.runFit(g, input.value));
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") this.runFit(g, input.value);
-  });
-};
-
-Planner.prototype.runFit = async function (g, text) {
-  text = (text || "").trim();
-  if (!text) return;
-  const box = this.root.querySelector("#fit-out");
-  g.fitText = text;
-  g.fit = { busy: true };
-  if (box) box.innerHTML = this.fitResult(g);
-  const opts = this.robustOptions(g);
-  const criteria = Object.fromEntries(opts.map((o) => [o.id, `${o.name} best fits the decision maker's stated priority`]));
-  try {
-    const res = await ai.decide(this.fitState(g, text), { plan: { type: "choice", criteria } });
-    const a = res.answers.plan;
-    g.fit = { text, choice: a.choice, confidence: a.confidence, probabilities: a.probabilities };
-  } catch (e) {
-    g.fit = { text, error: e.message };
-  }
-  const now = this.root.querySelector("#fit-out");
-  if (now) now.innerHTML = this.fitResult(g);
 };
 
 /* The bottleneck stage, the hottest resource and the attributes over-represented there. */
@@ -611,10 +527,10 @@ export function bottleneckHTML(r, lang = "en") {
   const b = r.bottleneck;
   const res = { xray: "X-ray lanes", chem: "Chemical & others docks", oga: "OGA docks", health: "Health & food docks", parking: "Main parking" }[b.resource];
   const pat = b.pattern.length
-    ? `<ul class="bn-pat">${b.pattern.map((p) => `<li><span>${esc(PATTERN_LABEL[p.key] || p.key)}</span><b>${p.lift.toFixed(1)}×</b><em>${Math.round(p.inSlow)}% of the slowest quarter vs ${Math.round(p.overall)}% of all trucks</em></li>`).join("")}</ul>`
+    ? `<ul class="bn-pat">${b.pattern.map((p) => `<li title="${Math.round(p.inSlow)}% of the slowest quarter vs ${Math.round(p.overall)}% of all trucks"><span>${esc((PATTERN_LABEL[p.key] || p.key).replace(/\s*\(.*\)\s*$/, ""))}</span><b>${p.lift.toFixed(1)}×</b></li>`).join("")}</ul>`
     : "";
   return `<div class="bn-box"><div class="bn-h"><i></i>Bottleneck · <b>${esc(SL[b.stage])}</b></div>
-    <div class="bn-s">${Math.round(b.share)}% of all truck-hours · median ${fmtMin(b.median)} · busiest resource: ${res} at ${Math.round(b.util * 100)}%</div>${pat}</div>`;
+    <div class="bn-s"><b class="bn-n">${Math.round(b.share)}% of hours</b> · busiest: ${res} ${Math.round(b.util * 100)}%</div>${pat}</div>`;
 }
 
 /* Median time in port each year to 2030: no change against each plan, same demand path. */

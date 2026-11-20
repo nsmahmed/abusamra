@@ -54,8 +54,9 @@ Open the twin through this server, not as a file. It needs no connection beyond 
 
 With a `.env` holding the Azure keys (see the variables in `.env`, which git ignores), `python view/serve.py` also serves two AI endpoints and the twin shows two more features:
 
-- **Ask WASL** (top bar): questions in Arabic or English. A language model answers by calling the twin's own model as tools (figures, what-ifs, goal seek, camera), so every number comes from the model.
-- **Robust decision and Fit to priorities** (goal seek): each plan is re-tested in 9 futures (demand × how much capacity helps), the robust choice is marked, and Microsoft Decision 1.1 scores which plan fits a priority you type, with its confidence.
+- **Ask WASL** (top bar): questions in Arabic or English. A language model answers by calling the twin's own model as tools (figures, what-ifs, goal seek, camera).
+- **Fact check:** Microsoft Decision 1.1 checks every figure in an assistant answer against the model's results and marks it Verified, Check figures or Not verified.
+- **Robust decision** (goal seek, no AI service needed): each plan is re-tested in 9 futures (demand × how much capacity helps) and the robust choice is marked.
 
 The keys never reach the browser. Without the server (GitHub Pages) these features hide themselves. [docs/AI.md](docs/AI.md) sections 7 to 9 describe them.
 
