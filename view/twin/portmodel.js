@@ -324,8 +324,6 @@ export class PortModel {
       ["multi", (p) => p.n > 1],
       ["shared", (p) => p.sh === 1],
       ["xray", (p) => p.x === 1],
-      ["SA", (p) => p.co === "SA"],
-      ["QA", (p) => p.co === "QA"],
     ];
     let slow = 0;
     const hit = tests.map(() => [0, 0]);
@@ -412,9 +410,11 @@ export class PortModel {
       return out;
     };
     const xs = grid(t.xray, lim.xray[1], 1);
-    const ds = grid(t.docks, lim.docks[1], Math.max(5, Math.round((lim.docks[1] - t.docks) / 6 / 5) * 5 || 10));
-    const ps = physical ? [t.prefile] : grid(0, lim.prefile[1], 10);
-    const gs = physical ? [t.green] : grid(0, lim.green[1], 10);
+    const ds = grid(t.docks, lim.docks[1], physical ? 5 : Math.max(5, Math.round((lim.docks[1] - t.docks) / 6 / 5) * 5 || 10));
+    /* pre-arrival filing and the green channel are learned from the data as they are today,
+       not levers the search moves */
+    const ps = [t.prefile];
+    const gs = [t.green];
     const os = physical ? [t.overlap] : [0, 1];
     const busyPct = Math.round(this.L.demand.busiestWeek.vsCurrent);
     const combos = [];
@@ -465,9 +465,9 @@ export class PortModel {
     const best = (budget.length ? budget : rest).sort((a, b) => a.value - b.value || a.cost - b.cost)[0] || resilient;
     for (const p of [cheap, best, resilient]) stress(p);
     const plans = [
-      { id: "cheap", name: "Cost-smart", ...cheap },
-      { id: "resilient", name: "Resilient", ...resilient },
-      { id: "best", name: "Best result", ...best },
+      { id: "cheap", name: "Cost-smart", ...cheap, idx: tried.indexOf(cheap) },
+      { id: "resilient", name: "Resilient", ...resilient, idx: tried.indexOf(resilient) },
+      { id: "best", name: "Best result", ...best, idx: tried.indexOf(best) },
     ];
     /* what each lever contributes: take it out and see how far the result moves */
     for (const p of plans) {
@@ -489,7 +489,8 @@ export class PortModel {
       }
       p.contrib.sort((a, b) => b.hours - a.hours);
     }
-    return { plans, reached: ok.length > 0, searched: tried.length, feasible: ok.length, target, year, metric };
+    const trials = tried.map((p) => ({ ok: p.value <= target && !p.unstable }));
+    return { plans, trials, reached: ok.length > 0, searched: tried.length, feasible: ok.length, target, year, metric };
   }
 
   /* Median time in port each year to 2030 for a fixed set of resources. */
@@ -510,7 +511,6 @@ export class PortModel {
     const d = this.L.demand;
     const fmt = (s) => new Date(`${s}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
     const list = [
-      { pct: Math.round((d.p90PerDay / d.currentPerDay - 1) * 100), label: "Busy day (1 in 10)", sub: `${d.p90PerDay} trucks` },
       { pct: Math.round(d.busiestWeek.vsCurrent), label: "Busiest week", sub: `${fmt(d.busiestWeek.from)}–${fmt(d.busiestWeek.to)}` },
     ];
     const top = d.episodes[0];

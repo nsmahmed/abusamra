@@ -77,7 +77,7 @@ export class Planner {
       saved = JSON.parse(localStorage.getItem(LS) || "{}");
     } catch {}
     const c = this.cfg;
-    for (const k of ["parking", "xray", "docks", "surge", "prefile", "green"]) if (saved[k]) Object.assign(c[k], saved[k]);
+    for (const k of ["parking", "xray", "docks", "surge"]) if (saved[k]) Object.assign(c[k], saved[k]);
     this.m.cfg = c;
   }
 
@@ -106,7 +106,7 @@ export class Planner {
     const st = this.initial();
     const lim = this.m.limits();
     const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
-    for (const k of ["surge", "parking", "xray", "docks", "prefile", "green"]) if (Number.isFinite(s[k])) st[k] = clamp(s[k], lim[k]);
+    for (const k of ["surge", "parking", "xray", "docks"]) if (Number.isFinite(s[k])) st[k] = clamp(s[k], lim[k]);
     if (Number.isFinite(s.overlap)) st.overlap = s.overlap ? 1 : 0;
     if (s.alloc && CATS.every((c) => Number.isFinite(s.alloc[c])) && CATS.reduce((n, c) => n + s.alloc[c], 0) === st.docks) st.alloc = { ...s.alloc };
     else if (st.docks !== this.m.today.docks) st.alloc = this.m.smartAlloc(st.docks, st);
@@ -177,10 +177,6 @@ export class Planner {
         </section>
 
         <section class="pl-sec">
-          <div class="pl-row sub"><span class="pl-label">${t("prefile")} ${gear("prefile")}</span><span class="pl-val"><b id="pl-pf-v"></b></span></div>
-          ${range("pf", "prefile", 5)}
-          <div class="pl-row sub"><span class="pl-label">${t("green")} ${gear("green")}</span><span class="pl-val"><b id="pl-gr-v"></b></span></div>
-          ${range("gr", "green", 5)}
           <label class="sw pl-sw"><input type="checkbox" id="pl-ov"><span>${t("overlap")}</span><i></i></label>
         </section>
       </div>
@@ -217,8 +213,6 @@ export class Planner {
     num($("pl-surge"), "surge");
     num($("pl-docks"), "docks");
     num($("pl-park"), "parking");
-    num($("pl-pf"), "prefile");
-    num($("pl-gr"), "green");
     $("pl-ov").checked = !!this.state.overlap;
     $("pl-ov").addEventListener("change", (e) => {
       this.state.overlap = e.target.checked ? 1 : 0;
@@ -361,8 +355,6 @@ export class Planner {
     delta($("pl-park-d"), s.parking - today.parking, "proposed", "closed");
     delta($("pl-xray-d"), s.xray - today.xray, "proposed", "out of service");
     this.root.querySelectorAll("#pl-xray button").forEach((el) => el.classList.toggle("on", Number(el.dataset.n) === s.xray));
-    $("pl-pf-v").textContent = `${s.prefile}%`;
-    $("pl-gr-v").textContent = `${s.green}%`;
     $("pl-park-n").innerHTML = r.overflow > 0 ? `<span class="warn">Full at peak: ${Math.round(r.peakYard)} trucks for ${s.parking} bays</span>` : `Peak use ${Math.round(r.peakYard)} of ${s.parking} bays (${Math.round(r.occupancy * 100)}%)`;
     this.allocBar.set(s.alloc);
 

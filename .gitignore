@@ -4,3 +4,9 @@ __pycache__/
 .venv/
 data/cache/
 portinfo/
+# big video masters (ProRes and other uncompressed exports) stay out of git
+*.mov
+*.avi
+*.mkv
+*.m4v
+*.prores

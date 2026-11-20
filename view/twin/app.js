@@ -18,6 +18,7 @@ import { Planner, fmtH, bottleneckHTML } from "./planner.js";
 import { PortModel, CATS } from "./portmodel.js";
 import { makePlate, drawCountry, COUNTRY } from "./plates.js";
 import { createDemo } from "./demo.js";
+import { buildInspectors } from "./people.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -88,6 +89,9 @@ async function main() {
   for (const st of data.stations) if (st.shown === undefined) st.shown = st.n;
   /* Planner defaults and limits: parking bays, x-ray scanners, inspection categories, model. */
   const cfg = await (await fetch("config.json", { cache: "no-store" })).json();
+  /* the shipped limits, before any the viewer saved in this browser: the demo runs on these so
+     every viewer sees the same numbers */
+  const cfgDefault = JSON.parse(JSON.stringify(cfg));
   /* The learned port model (ml/learn.py → learned.json): synthetic trucks, calibrated queues,
      demand profile. Every KPI on the dashboards and the planner comes from it. */
   status("Loading the learned port model");
@@ -97,14 +101,24 @@ async function main() {
   await wait();
 
   const stage = $("stage");
-  const renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+  /* ?film=1 or 2: a clean capture mode for video. No interface, a transparent background, and
+     the port builds itself frame by frame when the capture script calls __film.frame(t).
+     1 sweeps and rises the whole site seen from above; 2 is the architect's reveal (side view
+     of the core, then pulling up to the plan view while the site grows outwards). */
+  const filmStyle = params.get("film");
+  const film = filmStyle === "1" || filmStyle === "2";
+  const renderer = new THREE.WebGLRenderer({ antialias: film, alpha: film, preserveDrawingBuffer: film, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+  if (film) {
+    renderer.setClearColor(0x000000, 0);
+    document.body.classList.add("film");
+  }
   /* The picture is fill-rate bound on integrated graphics, so the default draws about a
      1080p frame whatever the display scaling, and smooths edges in post. ?quality=high lifts
      the cap and switches to multisampling for machines with a discrete GPU. */
   const high = params.get("quality") === "high";
   /* Phone view (?m=1, or a small touch screen): the live twin with three numbers and a few
      big buttons; panels, planner and feeds stay hidden. ?m=0 forces the full view. */
-  const mobile = params.get("m") === "1" || (params.get("m") !== "0" && matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").matches);
+  const mobile = params.get("m") === "1" || matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").matches;
   document.body.classList.toggle("mobile", mobile);
   const budget = high ? 6.5e6 : mobile ? 1.1e6 : 2.2e6;
   const fitRatio = () => Math.min(window.devicePixelRatio, high ? 2 : 1.5, Math.sqrt(budget / Math.max(1, stage.clientWidth * stage.clientHeight)));
@@ -204,6 +218,8 @@ async function main() {
   world.yardSlots.forEach((slot) => placeStatic(slot, "yard"));
   world.rampSlots.forEach((slot) => placeStatic(slot, "ramp"));
   sim.setBays(world.rampBays);
+  /* customs officers at every bay where a truck is being inspected */
+  const inspectors = buildInspectors(scene, world.rampBays);
   sim.reserveParked([...world.yardSlots, ...world.parkSlots]);
 
   /* ---------- trucks the capacity model sets ----------
@@ -468,6 +484,7 @@ async function main() {
       xCollecting: "Collecting data…",
       uQueue: "queued", uRoute: "en route", uFull: "", uHour: "/ h", uRamps: "in use", uReleased: "cleared", uParked: "trucks", uCleared: "travellers",
       eRelease: "Released", eXray: "X-ray scan complete", eRamp: "Inspection complete", eGate: "Gate check passed",
+      mkStay: "hours in port\nmedian truck", mkDay: "trucks\na day", mkPark: "parking\nin use", mPort: "Port", mTruck: "A truck", mHint: "Drag to move · pinch to zoom",
     },
     ar: {
       subtitle: "التوأم الرقمي · العمليات الجمركية", import: "الوارد", export: "الصادر", passengers: "المسافرون",
@@ -489,6 +506,7 @@ async function main() {
       xCollecting: "جارٍ جمع البيانات…",
       uQueue: "بالانتظار", uRoute: "في الطريق", uFull: "", uHour: "/ س", uRamps: "قيد الاستخدام", uReleased: "خُلّصت", uParked: "شاحنة", uCleared: "مسافر",
       eRelease: "تم الإفراج", eXray: "اكتمل المسح بالأشعة", eRamp: "اكتمل التفتيش", eGate: "اجتياز البوابة",
+      mkStay: "ساعة في المنفذ\nللشاحنة الوسيطة", mkDay: "شاحنة\nيوميًا", mkPark: "إشغال\nالمواقف", mPort: "المنفذ", mTruck: "شاحنة", mHint: "اسحب للتحريك · قرّب بإصبعين",
     },
   };
   const FLOWS = {
@@ -638,6 +656,7 @@ async function main() {
       el.lang = lang;
     });
     $("lang").textContent = lang === "ar" ? "EN" : "ع";
+    $("m-lang").textContent = lang === "ar" ? "EN" : "ع";
     $("brand-title").innerHTML = lang === "ar" ? "منفذ أبو سمرة <span>البري</span>" : "Abu Samra <span>Land Port</span>";
     paintPins();
     renderRail();
@@ -979,7 +998,7 @@ async function main() {
       el.innerHTML = `<div class="chg-in down"><b>${s.title}</b><span>${s.value}</span></div>`;
       const o = new CSS2DObject(el);
       o.center.set(0.5, 1);
-      o.position.copy(v3(s.x, s.y, 70));
+      o.position.copy(v3(s.x, s.y, s.z ?? 70));
       scene.add(o);
       pulseTags.push(o);
     }
@@ -997,10 +1016,12 @@ async function main() {
     const [rx, ry] = rampInfo ? centroid(rampInfo.categories) : [station("inbound", 6).x, station("inbound", 6).y];
     const [xx, xy] = centroid(data.xrays);
     const full = Math.round(Math.min(1, r.util.parking) * 100);
+    const d = (m) => (lang === "ar" ? (m >= 90 ? `${(m / 60).toFixed(1)} ساعة` : `${Math.round(m)} دقيقة`) : dur(m));
+    const out = Math.round(r.overflow);
     return [
-      { x: yard.x, y: yard.y, r: 230, title: "Main parking", value: `${full}% full at peak${r.overflow >= 1 ? ` · ${Math.round(r.overflow)} wait outside` : ""}` },
-      { x: xx, y: xy, r: 150, title: "X-ray queue", value: dur(r.stages.xq.median) },
-      { x: rx, y: ry, r: 200, title: "Wait for inspection", value: dur(r.stages.iq.median) },
+      { x: yard.x, y: yard.y, r: 230, title: P2("Main parking", "المواقف الرئيسية"), value: P2(`${full}% full at peak${out >= 1 ? ` · ${out} wait outside` : ""}`, `ممتلئة ${full}% وقت الذروة${out >= 1 ? ` · ${out} تنتظر خارجًا` : ""}`) },
+      { x: xx, y: xy, r: 150, title: P2("X-ray queue", "طابور الأشعة"), value: d(r.stages.xq.median) },
+      { x: rx, y: ry, r: 200, title: P2("Wait for inspection", "انتظار التفتيش"), value: d(r.stages.iq.median) },
     ];
   }
   let changeTour = null;
@@ -1226,11 +1247,15 @@ async function main() {
 
   /* ---------- demo: the WASL story played with the twin's own features ---------- */
   let demoSpeed = 0;
+  let demoCfg = null;
   const demo = createDemo({
     pm,
     /* true while the camera is still moving, so the story waits before counting down */
     moving: () => !!flight,
+    lang: () => lang,
     prepare() {
+      demoCfg = pm.cfg;
+      pm.cfg = cfgDefault;
       stopTour();
       stopFollow();
       setExec(false);
@@ -1247,6 +1272,8 @@ async function main() {
     finish() {
       setExec(false);
       clearPulses();
+      if (demoCfg) pm.cfg = demoCfg;
+      demoCfg = null;
       if (demoSpeed) document.querySelector(`[data-speed="${demoSpeed}"]`)?.click();
       demoSpeed = 0;
       $("demo-btn").classList.remove("on");
@@ -1268,6 +1295,16 @@ async function main() {
     },
     stopFollow,
     setScenario: (s) => demoScenario(s),
+    /* fly to one inspection shed and pulse it, with a tag */
+    focusShed(id, title, value) {
+      stopFollow();
+      cancelChanges();
+      const c = rampInfo && rampInfo.categories.find((x) => x.id === id);
+      if (!c) return;
+      flyTo(camPose(c.x, c.y, 260, 60, 128), 4.5);
+      document.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("on"));
+      pulseSpots([{ x: c.x, y: c.y, r: 60, z: 16, title, value }]);
+    },
     pulseBottlenecks(r) {
       pulseSpots(bottleneckSpots(r));
     },
@@ -1672,6 +1709,7 @@ async function main() {
     sim.render();
     fleet.commit();
     world.update(elapsed, dt, sim);
+    inspectors.update(elapsed);
     flows.uniforms.uTime.value = elapsed;
     zones.uniforms.uTime.value = elapsed;
     beacons.shared.uTime.value = elapsed;
@@ -1741,7 +1779,214 @@ async function main() {
     requestAnimationFrame(frame);
   }
   renderKpis();
-  requestAnimationFrame(frame);
+  if (film) setupFilm();
+  else requestAnimationFrame(frame);
+  /* The port assembles itself: a vertical clipping plane sweeps across the site drawing the
+     ground and roads, then a rising plane grows every building from the ground up, then the
+     trucks roll. Desert, sea, sky, fog, overlays and labels are hidden; the background stays
+     transparent. The capture script steps time with __film.frame(t, dt). */
+  function setupFilm() {
+    if (ground) ground.mesh.visible = false;
+    world.setGround(true);
+    atmosphere.dome.visible = false;
+    scene.traverse((o) => {
+      if (o.isMesh && o.material && (o.material.isShaderMaterial || o.material.isRawShaderMaterial)) o.visible = false;
+    });
+    labels.domElement.style.display = "none";
+    applyLighting(params.get("light") || "day");
+    /* The film shows the port as a cut-out model: everything is clipped to a box laid along
+       the site's axis (the Saudi-Doha road, 44 degrees), round the operational core, standing
+       on a sand plate whose edges fade to transparent. u runs along the axis, v across it. */
+    const ang = THREE.MathUtils.degToRad(44);
+    const U = [Math.cos(ang), Math.sin(ang)];
+    const V = [-Math.sin(ang), Math.cos(ang)];
+    const BOX = { u0: -850, u1: 1600, v0: -480, v1: 780 };
+    const cu = (BOX.u0 + BOX.u1) / 2;
+    const cvv = (BOX.v0 + BOX.v1) / 2;
+    const cx = cu * U[0] + cvv * V[0];
+    const cy = cu * U[1] + cvv * V[1];
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 256;
+    const g2 = cv.getContext("2d");
+    const img = g2.createImageData(256, 256);
+    for (let y = 0; y < 256; y += 1) {
+      for (let x = 0; x < 256; x += 1) {
+        const e = Math.min(x / 255, 1 - x / 255, (y / 255) * 2, (1 - y / 255) * 2);
+        const a = Math.min(1, Math.max(0, e / 0.08));
+        const v = Math.round(255 * a * a * (3 - 2 * a));
+        const k = (y * 256 + x) * 4;
+        img.data[k] = img.data[k + 1] = img.data[k + 2] = v;
+        img.data[k + 3] = 255;
+      }
+    }
+    g2.putImageData(img, 0, 0);
+    const alphaMap = new THREE.CanvasTexture(cv);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(BOX.u1 - BOX.u0 + 80, BOX.v1 - BOX.v0 + 80), new THREE.MeshStandardMaterial({ color: "#d8c29a", roughness: 1, transparent: true, alphaMap, depthWrite: false }));
+    plate.rotation.order = "YXZ";
+    plate.rotation.set(-Math.PI / 2, ang, 0);
+    plate.position.set(cx, -0.3, -cy);
+    plate.receiveShadow = true;
+    plate.renderOrder = -1;
+    scene.add(plate);
+    /* in the scene, map (x, y) is (x, h, -y): u = x*U0 - z*U1 */
+    const keep = (nu, nv, c) => new THREE.Plane(new THREE.Vector3(nu * U[0] + nv * V[0], 0, -(nu * U[1] + nv * V[1])), c);
+    if (filmStyle === "2") {
+      setupReveal({ keep, BOX, cx, cy });
+      $("loader")?.remove();
+      return;
+    }
+    const sweep = keep(-1, 0, 0);
+    const rise = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    renderer.clippingPlanes = [sweep, rise, keep(1, 0, -BOX.u0), keep(0, 1, -BOX.v0), keep(0, -1, BOX.v1)];
+    const x0 = BOX.u0;
+    const x1 = BOX.u1;
+    const ease = (f) => (f <= 0 ? 0 : f >= 1 ? 1 : f < 0.5 ? 4 * f ** 3 : 1 - (-2 * f + 2) ** 3 / 2);
+    const lerp = (a, b, f) => a + (b - a) * f;
+    const T = { sweep: [0, 2.4], rise: [1.6, 4.4] };
+    const phase = (t, [a, b]) => ease((t - a) / (b - a));
+    $("loader")?.remove();
+    window.__film = {
+      extent: [x0, x1],
+      frame(t, dt = 1 / 30) {
+        elapsed += dt;
+        sim.advance(dt * 5);
+        sim.render();
+        fleet.commit();
+        world.update(elapsed, dt, sim);
+        inspectors.update(elapsed);
+        const fs = phase(t, T.sweep);
+        sweep.constant = Math.min(x1, lerp(x0 - 20, x1 + 20, fs));
+        const fr = phase(t, T.rise);
+        rise.constant = t >= T.rise[1] ? 1e6 : lerp(0.45, 70, fr);
+        /* a slow orbit, closing in a little */
+        const f = Math.min(1, t / 8);
+        const pose = camPose(cx, cy, lerp(3200, 2750, ease(f)), lerp(58, 50, f), lerp(146, 160, f));
+        camera.position.copy(pose.position);
+        controls.target.copy(pose.target);
+        camera.lookAt(controls.target);
+        atmosphere.update(dt, elapsed, camera, controls.target, camera.position.distanceTo(controls.target));
+        if (scene.fog) {
+          scene.fog.near = 1e8;
+          scene.fog.far = 2e8;
+        }
+        renderer.render(scene, camera);
+        return true;
+      },
+    };
+  }
+  /* The architect's reveal (?film=2). Every surface is drawn through a small shader patch:
+     anything farther than R from the heart of the port (ramps, X-ray, main parking) is cut away,
+     and buildings near that edge are pressed into the ground, so as R grows the port rises out
+     of the sand from the middle outwards. The camera starts low at the side of the core, moves
+     in, then pulls up and out to the plan view while R grows to take in the whole site. */
+  function setupReveal({ keep, BOX, cx, cy }) {
+    renderer.clippingPlanes = [keep(1, 0, -BOX.u0), keep(-1, 0, BOX.u1), keep(0, 1, -BOX.v0), keep(0, -1, BOX.v1)];
+    const rp = rampInfo ? centroid(rampInfo.categories) : [station("inbound", 6).x, station("inbound", 6).y];
+    const xr = centroid(data.xrays);
+    const yd = station("inbound", 4);
+    /* the heart of the port, a third of the way from the inspection ramps to the X-ray: the
+       opening shot looks from beside the ramps, X-ray behind, main parking to the side */
+    const F = [rp[0] + (xr[0] - rp[0]) * 0.35, rp[1] + (xr[1] - rp[1]) * 0.35];
+    const sideBearing = THREE.MathUtils.radToDeg(Math.atan2(rp[0] - xr[0], rp[1] - xr[1]));
+    const ang = THREE.MathUtils.degToRad(44);
+    let reach = 0;
+    for (const u of [BOX.u0, BOX.u1]) {
+      for (const v of [BOX.v0, BOX.v1]) {
+        const x = u * Math.cos(ang) - v * Math.sin(ang);
+        const y = u * Math.sin(ang) + v * Math.cos(ang);
+        reach = Math.max(reach, Math.hypot(x - F[0], y - F[1]));
+      }
+    }
+    const U = { uC: { value: new THREE.Vector2(F[0], -F[1]) }, uR: { value: 0 }, uRamp: { value: 110 } };
+    const decl = "uniform vec2 uC;\nuniform float uR;\nuniform float uRamp;\nvarying vec2 vFilmXZ;\n";
+    const project = [
+      "vec4 mvPosition = vec4( transformed, 1.0 );",
+      "#ifdef USE_BATCHING",
+      "  mvPosition = batchingMatrix * mvPosition;",
+      "#endif",
+      "#ifdef USE_INSTANCING",
+      "  mvPosition = instanceMatrix * mvPosition;",
+      "#endif",
+      "vec4 filmW = modelMatrix * mvPosition;",
+      "vFilmXZ = filmW.xz;",
+      "float filmG = clamp( ( uR - length( filmW.xz - uC ) ) / uRamp, 0.0, 1.0 );",
+      "filmG = filmG * filmG * ( 3.0 - 2.0 * filmG );",
+      "if ( filmW.y > 0.6 ) filmW.y = 0.6 + ( filmW.y - 0.6 ) * filmG;",
+      "mvPosition = viewMatrix * filmW;",
+      "gl_Position = projectionMatrix * mvPosition;",
+    ].join("\n");
+    const patched = new WeakSet();
+    function patch(m, soft) {
+      if (!m || patched.has(m) || m.isShaderMaterial || m.isRawShaderMaterial) return;
+      patched.add(m);
+      m.onBeforeCompile = (shader) => {
+        if (!shader.vertexShader.includes("#include <project_vertex>") || !shader.fragmentShader.includes("#include <clipping_planes_fragment>")) return;
+        Object.assign(shader.uniforms, U);
+        shader.vertexShader = shader.vertexShader.replace("#include <common>", "#include <common>\n" + decl).replace("#include <project_vertex>", project);
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\n" + decl)
+          .replace("#include <clipping_planes_fragment>", "float vFilmD = length( vFilmXZ - uC );\nif ( vFilmD > uR ) discard;\n#include <clipping_planes_fragment>");
+        if (soft) shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", "#include <dithering_fragment>\ngl_FragColor.a *= 1.0 - smoothstep( uR - 80.0, uR, vFilmD );");
+      };
+      m.customProgramCacheKey = () => (soft ? "film-reveal-soft" : "film-reveal");
+      m.needsUpdate = true;
+    }
+    /* shadows are cast from a depth pass, which needs the same patch or flattened buildings
+       would still throw full-height shadows */
+    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    patch(depth, false);
+    const plate = scene.children.find((o) => o.isMesh && o.material?.alphaMap && o.renderOrder === -1);
+    function patchScene() {
+      scene.traverse((o) => {
+        if (!(o.isMesh || o.isLine || o.isPoints) || !o.visible) return;
+        for (const m of [].concat(o.material)) patch(m, o === plate);
+        if (o.isMesh && o.castShadow && !o.customDepthMaterial) o.customDepthMaterial = depth;
+      });
+    }
+    patchScene();
+    const ease = (f) => (f <= 0 ? 0 : f >= 1 ? 1 : f < 0.5 ? 4 * f ** 3 : 1 - (-2 * f + 2) ** 3 / 2);
+    const out = (f) => (f <= 0 ? 0 : f >= 1 ? 1 : 1 - (1 - f) ** 3);
+    const lerp = (a, b, f) => a + (b - a) * f;
+    const seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+    /* timeline, seconds */
+    const T = { push: [0, 4.6], pull: [4.6, 10.8], end: 12.5 };
+    window.__film = {
+      style: 2,
+      duration: T.end,
+      focus: F,
+      points: { ramps: rp, xray: xr, yard: [yd.x, yd.y] },
+      frame(t, dt = 1 / 30) {
+        elapsed += dt;
+        sim.advance(dt * 5);
+        sim.render();
+        fleet.commit();
+        world.update(elapsed, dt, sim);
+        inspectors.update(elapsed);
+        patchScene();
+        const a = ease(seg(t, ...T.push));
+        const b = ease(seg(t, ...T.pull));
+        /* the core rises in front of a low camera, then the rest grows as the camera climbs */
+        const core = 540;
+        U.uR.value = t < T.pull[0] ? lerp(0, core, out(seg(t, 0.15, 4.2))) : lerp(core, reach + 140, out(seg(t, T.pull[0] + 0.4, T.pull[1] - 0.2)));
+        const dist = lerp(lerp(700, 470, a), 2700, b);
+        const polar = lerp(lerp(77, 73, a), 6, b ** 0.8);
+        const bearing = lerp(lerp(sideBearing - 14, sideBearing + 6, a), 136, b);
+        const tx = lerp(F[0], cx, b);
+        const ty = lerp(F[1], cy, b);
+        const pose = camPose(tx, ty, dist, polar, bearing);
+        camera.position.copy(pose.position);
+        controls.target.copy(pose.target);
+        camera.lookAt(controls.target);
+        atmosphere.update(dt, elapsed, camera, controls.target, dist);
+        if (scene.fog) {
+          scene.fog.near = 1e8;
+          scene.fog.far = 2e8;
+        }
+        renderer.render(scene, camera);
+        return true;
+      },
+    };
+  }
   window.__twin = { plan, sim, world, fleet, camera, controls, renderer, flyTo, VIEWS, applyLighting, camPose, atmosphere, ground, select, scene, composer };
 }
 
