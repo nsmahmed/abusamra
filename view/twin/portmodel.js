@@ -490,7 +490,99 @@ export class PortModel {
       p.contrib.sort((a, b) => b.hours - a.hours);
     }
     const trials = tried.map((p) => ({ ok: p.value <= target && !p.unstable }));
-    return { plans, trials, reached: ok.length > 0, searched: tried.length, feasible: ok.length, target, year, metric };
+    /* Candidates for the robustness test: the named plans, the cheapest distinct plans that reach
+       the goal and the best distinct results, at most 30. */
+    const seen = new Set();
+    const candidates = [];
+    const take = (p) => {
+      if (!p || seen.has(key(p)) || candidates.length >= 30) return;
+      seen.add(key(p));
+      candidates.push({ s: p.s, cost: p.cost, items: p.items, lead: p.lead, value: p.value });
+    };
+    plans.forEach(take);
+    [...pool].sort(byCost).slice(0, 40).forEach(take);
+    [...tried].filter((p) => !p.unstable).sort((a, b) => a.value - b.value).slice(0, 20).forEach(take);
+    return { plans, trials, candidates, reached: ok.length > 0, searched: tried.length, feasible: ok.length, target, year, metric, surge };
+  }
+
+  /* ---------- robust decision: the plans under the futures the model is unsure about ----------
+     Two inputs carry most of the uncertainty: demand (the 2030 growth is an assumption; a single
+     year has busy and quiet stretches) and the congestion share (the part of today's X-ray and
+     dock waits that more capacity can remove, fitted to one set of weeks). Each candidate plan is
+     run in all 9 combinations of low, expected and high for both. The robust choice is the
+     cheapest plan that reaches the target in the most futures; ties go to the better worst case.
+     Plain arithmetic over the calibrated model: every number can be traced. */
+  variant(kappa) {
+    this._variants ??= new Map();
+    const k = Math.round(kappa * 100) / 100;
+    if (Math.abs(k - this.kappa) < 1e-9) return this;
+    if (!this._variants.has(k)) {
+      const cfg = { ...this.cfg, model: { ...(this.cfg.model || {}), congestionShare: k } };
+      this._variants.set(k, new PortModel(this.L, cfg));
+    }
+    return this._variants.get(k);
+  }
+
+  futures(year = 2026) {
+    const G = this.growthFactor(year);
+    const later = year > 2026;
+    /* demand relative to the expected: half or one and a half times the growth after 2026;
+       in 2026 itself a quiet stretch (-8%) and a week like the busiest of 2026 */
+    const busy = Math.round(this.L.demand.busiestWeek?.vsCurrent ?? 16);
+    const demand = later
+      ? [
+          { id: "low", label: "Slower growth", f: (1 + (G - 1) * 0.5) / G },
+          { id: "mid", label: "Expected growth", f: 1 },
+          { id: "high", label: "Faster growth", f: (1 + (G - 1) * 1.5) / G },
+        ]
+      : [
+          { id: "low", label: "Quiet stretch (−8%)", f: 0.92 },
+          { id: "mid", label: "Expected demand", f: 1 },
+          { id: "high", label: `Busiest-week demand (+${busy}%)`, f: 1 + busy / 100 },
+        ];
+    const k0 = this.kappa;
+    const kappa = [
+      { id: "low", label: `Capacity helps less (${Math.round(Math.max(0.1, k0 * 0.6) * 100)}% of waits)`, k: Math.max(0.1, k0 * 0.6) },
+      { id: "mid", label: `As calibrated (${Math.round(k0 * 100)}%)`, k: k0 },
+      { id: "high", label: `Capacity helps more (${Math.round(Math.min(0.6, k0 * 1.6) * 100)}%)`, k: Math.min(0.6, k0 * 1.6) },
+    ];
+    const out = [];
+    for (const d of demand) for (const c of kappa) out.push({ id: `${d.id}-${c.id}`, demand: d, kappa: c });
+    return out;
+  }
+
+  async robust({ candidates, target, year = 2026, surge = 0, metric = "median", onProgress } = {}) {
+    const futures = this.futures(year);
+    const value = (r) => (metric === "p90" ? r.p90 : r.median);
+    const base = { ...this.today };
+    const rows = [{ id: "none", name: "No change", s: base, cost: 0, items: [], lead: 0 }, ...candidates.map((c, i) => ({ id: `c${i}`, ...c }))];
+    for (const row of rows) row.values = [];
+    let n = 0;
+    for (const fu of futures) {
+      const m = this.variant(fu.kappa.k);
+      const sg = ((1 + surge / 100) * fu.demand.f - 1) * 100;
+      for (const row of rows) {
+        const r = m.evaluate({ ...row.s, year, surge: sg }, true);
+        row.values.push(r.unstable ? Infinity : value(r));
+      }
+      n += 1;
+      if (onProgress) onProgress(n / futures.length);
+      await new Promise((ok) => setTimeout(ok, 0));
+    }
+    for (const row of rows) {
+      row.held = row.values.filter((v) => v <= target).length;
+      row.worst = Math.max(...row.values);
+      row.expected = row.values[futures.findIndex((f) => f.id === "mid-mid")];
+    }
+    /* regret: in each future, how far the plan is from the best plan in that future */
+    const bestIn = futures.map((_, j) => Math.min(...rows.map((r) => r.values[j])));
+    for (const row of rows) row.regret = Math.max(...row.values.map((v, j) => (Number.isFinite(v) ? v - bestIn[j] : Infinity)));
+    const pickable = rows.filter((r) => r.id !== "none");
+    const maxHeld = Math.max(...pickable.map((r) => r.held));
+    const pick = maxHeld > 0
+      ? pickable.filter((r) => r.held === maxHeld).sort((a, b) => a.cost - b.cost || a.worst - b.worst)[0]
+      : [...pickable].sort((a, b) => a.worst - b.worst || a.cost - b.cost)[0];
+    return { futures, rows, pick, maxHeld, target, metric, year };
   }
 
   /* Median time in port each year to 2030 for a fixed set of resources. */

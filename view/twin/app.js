@@ -19,6 +19,8 @@ import { PortModel, CATS } from "./portmodel.js";
 import { makePlate, drawCountry, COUNTRY } from "./plates.js";
 import { createDemo } from "./demo.js";
 import { buildInspectors } from "./people.js";
+import { ai } from "./ai.js";
+import { mountAssistant } from "./assistant.js";
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -98,6 +100,8 @@ async function main() {
   const learned = await (await fetch("learned.json")).json();
   const pm = new PortModel(learned, cfg);
   const plan = { pins: [], open: false };
+  /* the Ask WASL panel, mounted once the AI services report in */
+  let assistant = null;
   await wait();
 
   const stage = $("stage");
@@ -662,6 +666,8 @@ async function main() {
     renderRail();
     feedDirty = true;
     exec.build();
+    if (assistant) assistant.relabel();
+    if (plan.planner && plan.planner.goal.result) plan.planner.renderGoal();
     if (plan.planner) {
       plan.planner.build();
       plan.paint();
@@ -1107,6 +1113,54 @@ async function main() {
   }
   $("plan-btn").addEventListener("click", () => setPlanner(!plan.open));
 
+  /* ---------- AI services (only with the local server and a .env; hidden otherwise) ----------
+     Ask WASL: a language model that answers by calling the twin's own model as tools.
+     Priority fit (in goal seek): Decision 1.1 scores which computed plan fits a stated priority. */
+  ai.check().then((st) => {
+    if (plan.planner.goal.result) plan.planner.renderGoal();
+    if (!st.llm) return;
+    assistant = mountAssistant({
+      pm,
+      planner: plan.planner,
+      lang: () => lang,
+      showScenario(s) {
+        const pl = plan.planner;
+        if (!plan.open) setPlanner(true);
+        pl.setTab("whatif");
+        pl.load(s);
+        pl.onChange(pl.state);
+      },
+      async findPlans(target, metric, year) {
+        if (!plan.open) setPlanner(true);
+        const pl = plan.planner;
+        pl.goal.physical = false;
+        pl.goal.target = target;
+        pl.goal.metric = metric === "p90" ? "p90" : "median";
+        pl.goal.year = year === 2026 ? 2026 : 2030;
+        pl.setTab("goal");
+        const box = $("gs-target");
+        if (box) box.value = target;
+        document.querySelectorAll("#gs-year button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(pl.goal.year)));
+        document.querySelectorAll("#gs-metric button").forEach((b) => b.classList.toggle("on", b.dataset.v === pl.goal.metric));
+        pl.renderGoalNow();
+        await pl.runGoal();
+        return pl.goal.result;
+      },
+      showPlace(place) {
+        stopTour();
+        stopFollow();
+        const shed = { chemical_docks: "chem", oga_docks: "oga", health_docks: "health" }[place];
+        if (shed && rampInfo) {
+          const c = rampInfo.categories.find((x) => x.id === shed);
+          if (c) flyTo(camPose(c.x, c.y, 260, 60, 128), 3);
+          return;
+        }
+        const view = place === "parking" ? "yard" : place;
+        if (VIEWS[view]) flyTo(VIEWS[view](), 3);
+      },
+    });
+  });
+
   /* ---------- dashboard and presentation mode ---------- */
   let showDash = params.get("dash") !== "0";
   const applyDash = () => {
@@ -1207,6 +1261,7 @@ async function main() {
     else if (k === "c") setPlanner(!plan.open);
     else if (k === "p") togglePresent();
     else if (k === "escape") {
+      if (assistant && assistant.open) return assistant.setOpen(false);
       if (exec.open) return setExec(false);
       if (plan.open) return setPlanner(false);
       togglePresent(false);

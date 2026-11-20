@@ -13,3 +13,14 @@ portinfo/
 
 # Office lock files
 ~$*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+
+# Data
+reference/data/customs
+
+

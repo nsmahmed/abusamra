@@ -50,6 +50,15 @@ Open the twin through this server, not as a file. It needs no connection beyond 
 - **Trucks:** every inbound truck is a synthetic truck drawn from the learned distributions. Its plate is in its country's format, and its goods category sets its ramp. Click a truck to see its expected journey and its delay risk with the reasons.
 - **2030 story:** `view/twin/story.html` presents the port today, 2030 without change, a goal, the plans and the port after the decision.
 
+### AI services (local server only)
+
+With a `.env` holding the Azure keys (see the variables in `.env`, which git ignores), `python view/serve.py` also serves two AI endpoints and the twin shows two more features:
+
+- **Ask WASL** (top bar): questions in Arabic or English. A language model answers by calling the twin's own model as tools (figures, what-ifs, goal seek, camera), so every number comes from the model.
+- **Robust decision and Fit to priorities** (goal seek): each plan is re-tested in 9 futures (demand × how much capacity helps), the robust choice is marked, and Microsoft Decision 1.1 scores which plan fits a priority you type, with its confidence.
+
+The keys never reach the browser. Without the server (GitHub Pages) these features hide themselves. [docs/AI.md](docs/AI.md) sections 7 to 9 describe them.
+
 ### Demo and publishing
 
 - **Demo** (next to Tour) plays the WASL story inside the twin, with headline numbers at the top. It moves through Watch (today), Anticipate (2030 as is), Simulate (goal seek to 3.5 h) and Lead (the plan applied, before and after on the executive board). Use ‹ › or the arrow keys to step, and Esc to end.

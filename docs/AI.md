@@ -126,3 +126,38 @@ Replace these with GAC procurement figures before using the numbers for a decisi
 - `growthDamping` 0.5: the learned 43% growth is halved each year.
 - `peakFactor` 1.2: peak-hour parking over the daily mean.
 - The figures on screen are **synthetic**. They are produced by the learned models to behave like the port; they are not a report of it.
+
+## 7. Robust decision: testing plans against what the model is unsure of (`portmodel.js` → `robust`)
+
+- **Why.** Two inputs carry most of the uncertainty: future demand (the 2030 growth is an assumption) and the congestion share (how much of today's waiting more capacity can remove, fitted to one set of weeks). A plan that only works if both guesses are right is not a safe recommendation.
+- **How.** After a goal seek, up to 30 distinct candidate plans (the three named plans, the cheapest that reach the goal, the best results) are re-run in 9 futures:
+  - **Demand:** low, expected or high. After 2026 that is half, the same or one and a half times the growth; in 2026 itself, a quiet stretch (−8%) or a week like the busiest of 2026.
+  - **Congestion share:** 0.6×, 1× or 1.6× the calibrated value. The model is recalibrated for each.
+- **Rule.** The **robust choice** is the cheapest plan that reaches the goal in the most futures; ties go to the better worst case. The table shows, for every plan, the 5-year cost, the expected value, the worst case and the futures it holds in.
+- **What it is.** Decision analysis under uncertainty over the calibrated model. Plain arithmetic, about 0.5 s in the browser, every number traceable.
+
+## 8. Priority fit: Microsoft Decision 1.1 (Azure AI Foundry)
+
+- **The gap it fills.** The model computes the options; it cannot know what the decision maker values. Executives state priorities in words ("keep spending low", "never break in a surge").
+- **How.** The planner sends Decision 1.1 a text description of the compared plans, with the model's own figures for each (levers, 5-year cost, expected and worst-case time, futures held), plus the priority as written. Decision 1.1's `/score` endpoint returns calibrated probabilities over the plans (a `choice` question).
+- **Output.** Which plan fits the priority, with how sure it is. When the top two are within 30 points, the planner says it is a close call: the priority does not separate the plans.
+- **What it does not do.** It produces no figures and searches nothing; it only weighs the computed options against the stated priority. Only model outputs are sent.
+
+## 9. Ask WASL: language model with the twin's model as tools (Azure OpenAI)
+
+- **Why a language model.** Executives ask in natural language, in Arabic and English. That is a language job.
+- **How.** The model (GPT-5.1 on Azure OpenAI) receives the question and six tools that call the twin itself:
+  - `port_status`
+  - `evaluate_scenario`
+  - `show_scenario`
+  - `find_plans` (goal seek plus the robust test)
+  - `show_place` (camera)
+  - `about_the_model` (data, learned models, assumptions)
+
+  It answers from the tool results and can drive the twin to show what it says. Each answer lists the tools it used.
+- **Guard rails (system prompt).** Every number must come from a tool result; it reports what the data shows without adding causes; it names the assumption a forecast rests on; it explains that AUC is not accuracy. It replies in the language of the latest question.
+- **Data.** Only the conversation and the tool results (model outputs and aggregates) are sent. There is no real truck, plate or declaration in the browser.
+
+## Keys and hosting
+
+The keys live in `.env` (ignored by git). `view/serve.py` reads them and forwards only two requests: `/api/chat` (fixed model, token cap) and `/api/decide` (fixed model). The browser never sees a key. On GitHub Pages there is no server, so the AI features hide themselves and everything else works.
