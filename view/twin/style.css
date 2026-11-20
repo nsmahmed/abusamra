@@ -691,7 +691,10 @@ body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
 @media (max-width: 1280px) {
   .rail { width: 210px; }
   .dash { width: 244px; }
-  .views button:nth-child(n+5) { display: none; }
+  .views button[data-view="booths"] { display: none; }
+}
+@media (max-width: 1120px) {
+  .views button[data-view="gates"] { display: none; }
   .t2 { display: none; }
 }
 @media (max-width: 1000px) {
@@ -924,6 +927,20 @@ body.ar .pill.icon-pill:hover span { margin-left: 0; margin-right: 7px; }
 .dm-dots i.on { background: #5fe0d8; }
 body.demo-on .vehicle-hint, body.demo-on #intro { display: none; }
 @media (max-width: 700px) { .dm-big { font-size: 40px; } #demo { top: 70px; } }
+/* finale: the card keeps only its controls; the name is written over the whole twin */
+#demo.finale .dm-big, #demo.finale .dm-line, #demo.finale .dm-sub, #demo.finale .dm-chart, #demo.finale .dm-grid { display: none; }
+#dm-finale { position: fixed; inset: 0; z-index: 39; display: none; place-items: center; pointer-events: none; background: radial-gradient(ellipse 60% 55% at 50% 52%, rgba(6, 9, 13, 0.62), rgba(6, 9, 13, 0.18) 75%, transparent); }
+#dm-finale.on { display: grid; }
+body.dm-fin .labels { opacity: 0; transition: opacity 0.6s; }
+.fn-box { direction: ltr; text-align: left; padding: 0 16px; }
+.fn-w { font-size: clamp(38px, 6.4vw, 96px); font-weight: 700; line-height: 1.04; letter-spacing: -0.01em; color: #f4f6f8; white-space: nowrap; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55); }
+.fn-w span, .fn-w em, .fn-name, .fn-tag { display: inline-block; opacity: 0; transform: translateY(0.22em); transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.fn-w .in, .fn-name.in, .fn-tag.in { opacity: 1; transform: none; }
+.fn-w .fn-l { color: #5fe0d8; text-shadow: 0 0 28px rgba(95, 224, 216, 0.55), 0 4px 30px rgba(0, 0, 0, 0.55); }
+.fn-w em { font-style: normal; font-weight: 500; font-size: 0.3em; color: var(--gold-2); margin-left: 0.6em; vertical-align: 0.55em; font-family: "IBM Plex Sans Arabic", "Segoe UI", sans-serif; }
+.fn-name { display: block; margin-top: 18px; font-size: clamp(20px, 2.6vw, 36px); font-weight: 600; letter-spacing: 0.08em; background: linear-gradient(120deg, #5fe0d8, var(--gold-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fn-tag { display: block; margin-top: 4px; font-size: clamp(13px, 1.3vw, 18px); color: var(--ink-2); }
+body.ar .fn-tag { font-family: "IBM Plex Sans Arabic", "Segoe UI", sans-serif; }
 
 /* what changed: tag over the changed place, pins flash */
 .chg-tag { pointer-events: none; left: 0; top: 0; z-index: 99999 !important; }

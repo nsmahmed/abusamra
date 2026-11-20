@@ -64,6 +64,10 @@ export function createDemo(api) {
     </div>`;
   document.body.appendChild(root);
   const q = (s) => root.querySelector(s);
+  /* the closing name, written large over the whole twin */
+  const fin = document.createElement("div");
+  fin.id = "dm-finale";
+  document.body.appendChild(fin);
 
   const ar = () => api.lang() === "ar";
   const T = (en, arText) => (ar() ? arText : en);
@@ -76,10 +80,11 @@ export function createDemo(api) {
   /* Fixed facts from the learned model, the same for every viewer. */
   const facts = (() => {
     const r = pm.baseRun;
-    let over8 = 0;
-    for (const v of r.stay) if (v > 480) over8 += 1;
+    /* share of real trucks that stayed over 8 hours, counted in the gate-pass data by ml/learn.py
+       (the delay-risk model's base rate): the one figure used everywhere for "over 8 hours" */
+    const over8 = pm.L.risk?.baseRate != null ? pm.L.risk.baseRate * 100 : (r.stay.filter((v) => v > 480).length / r.stay.length) * 100;
     const oga = (pm.pattern(r, "iq") || []).find((p) => p.key === "oga");
-    return { over8: (over8 / r.stay.length) * 100, ogaLift: oga ? oga.lift : null, ogaHours: r.byCat ? r.byCat.oga : null };
+    return { over8, ogaLift: oga ? oga.lift : null, ogaHours: r.byCat ? r.byCat.oga : null };
   })();
 
   /* Each scene: chapter letter, enter() sets the twin up and returns the caption, hold seconds. */
@@ -111,9 +116,14 @@ export function createDemo(api) {
       enter() {
         const lift = facts.ogaLift;
         api.focusShed("oga", T("OGA inspection", "تفتيش الجهات الحكومية"), lift ? T(`${lift.toFixed(1)}× among the slowest`, `${lift.toFixed(1)}× بين الأبطأ`) : "");
-        return lift
-          ? { count: [1, lift, (v) => `${v.toFixed(1)}×`], line: T("OGA trucks (restricted goods) are over-represented among the slowest to get inspected", "شاحنات الجهات الحكومية الأخرى (بضائع مقيدة) هي الأكثر حضورًا بين الأبطأ في التفتيش"), sub: T("Bottleneck analysis: WASL reads every truck's journey in the data to find where time is lost", "تحليل الاختناقات: يقرأ وصل رحلة كل شاحنة في البيانات ليجد أين يضيع الوقت") }
-          : { big: T("Analysis", "تحليل"), line: T("WASL reads every truck's journey to find where time is lost", "يقرأ وصل رحلة كل شاحنة ليجد أين يضيع الوقت") };
+        /* the analysis is the message; the bottleneck it finds is only the example */
+        return {
+          count: [0, 198665, fmtN], unit: T("truck journeys", "رحلة شاحنة"),
+          line: T("Bottleneck analysis: WASL reads every truck's journey in the data to find where time is lost", "تحليل الاختناقات: يقرأ وصل رحلة كل شاحنة في البيانات ليجد أين يضيع الوقت"),
+          sub: lift
+            ? T(`For example, OGA trucks (restricted goods) are ${lift.toFixed(1)}× over-represented among the slowest to get inspected`, `مثال: شاحنات الجهات الحكومية الأخرى (بضائع مقيدة) أكثر حضورًا بين الأبطأ في التفتيش بـ ${lift.toFixed(1)}×`)
+            : "",
+        };
       },
     },
     {
@@ -207,10 +217,10 @@ export function createDemo(api) {
       },
     },
     {
-      L: "", chap: () => "WASL", hold: 12,
+      L: "", chap: () => "WASL", hold: 14,
       enter() {
         api.view("overview");
-        return { big: "WASL · وصل", line: T("We connect you to your vision", "نوصلك إلى رؤيتك"), sub: T("Watch · Anticipate · Simulate · Lead", "راقب · توقّع · حاكِ · قُد"), title: true };
+        return { finale: true, big: "", line: "", sub: "" };
       },
     },
   ];
@@ -249,10 +259,39 @@ export function createDemo(api) {
     }, ms));
   }
 
+  /* The finale: WASL spelled out over the twin, each word typed letter by letter after its
+     initial, the initials in the WASL teal so the name reads down the left edge. */
+  const WORDS = [["W", "atch", "راقب"], ["A", "nticipate", "توقّع"], ["S", "imulate", "حاكِ"], ["L", "ead", "قُد"]];
+  let finTimers = [];
+  function finale(on) {
+    finTimers.forEach(clearTimeout);
+    finTimers = [];
+    fin.classList.toggle("on", on);
+    document.body.classList.toggle("dm-fin", on);
+    if (!on) {
+      fin.innerHTML = "";
+      return;
+    }
+    fin.innerHTML = `<div class="fn-box"><div class="fn-words">${WORDS.map(([a, rest, arw]) => `<div class="fn-w"><span class="fn-l">${a}</span>${[...rest].map((ch) => `<span>${ch}</span>`).join("")}<em>${arw}</em></div>`).join("")}</div>
+      <div class="fn-name">WASL · وصل</div><div class="fn-tag">${T("We connect you to your vision", "نوصلك إلى رؤيتك")}</div></div>`;
+    let t = 400;
+    for (const w of fin.querySelectorAll(".fn-w")) {
+      [...w.children].forEach((el, j) => {
+        finTimers.push(setTimeout(() => el.classList.add("in"), t));
+        t += j === 0 ? 320 : 75;
+      });
+      t += 280;
+    }
+    finTimers.push(setTimeout(() => fin.querySelector(".fn-name").classList.add("in"), t + 200));
+    finTimers.push(setTimeout(() => fin.querySelector(".fn-tag").classList.add("in"), t + 800));
+  }
+
   function show(c) {
     cancelAnimationFrame(anim);
     const big = q(".dm-big");
     root.classList.toggle("title", !!c.title);
+    root.classList.toggle("finale", !!c.finale);
+    if (!!c.finale !== fin.classList.contains("on")) finale(!!c.finale);
     root.dir = ar() ? "rtl" : "ltr";
     big.className = `dm-big ${c.bad ? "bad" : c.good ? "good" : ""}`;
     const unit = c.unit ? `<small>${c.unit}</small>` : "";
@@ -342,8 +381,9 @@ export function createDemo(api) {
     clearInterval(timer);
     cancelAnimationFrame(anim);
     gridTimers.forEach(clearTimeout);
+    finale(false);
     k = -1;
-    root.classList.remove("on");
+    root.classList.remove("on", "finale");
     document.body.classList.remove("demo-on");
     api.finish();
   }

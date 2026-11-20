@@ -1234,8 +1234,9 @@ async function main() {
     tour.k = (tour.k + 1) % tour.order.length;
     const index = tour.order[tour.k];
     const { st } = stationObjects[index];
-    flyTo(camPose(st.x, st.y, focusDistance(st) * 0.9, 64, 100 + (tour.k % 4) * 28), 2.6);
-    tour.hold = 6;
+    /* about 4 seconds a stop: a 1.6 s flight, then 2.6 s looking */
+    flyTo(camPose(st.x, st.y, focusDistance(st) * 0.9, 64, 100 + (tour.k % 4) * 28), 1.6);
+    tour.hold = 2.6;
     highlightStep(index);
   }
   function stopTour() {
