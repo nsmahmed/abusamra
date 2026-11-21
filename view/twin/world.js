@@ -1614,6 +1614,23 @@ export function buildWorld(scene, data, renderer) {
   /* Holding lines beside each x-ray lane, where trucks wait when the scanners cannot keep up:
      one truck every 19 m back from the first gantry, on the side away from the hall, clear of
      every road and building. */
+  const onRoad = (x, y) => {
+    for (const road of data.roads) {
+      if (road.c === "dirt") continue;
+      const half = road.w / 2 + 1.6;
+      const P = road.p;
+      for (let i = 1; i < P.length; i += 1) {
+        const [ax, ay] = P[i - 1];
+        const [bx, by] = P[i];
+        if (Math.max(ax, bx) + half < x || Math.min(ax, bx) - half > x || Math.max(ay, by) + half < y || Math.min(ay, by) - half > y) continue;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(x - ax - dx * t, y - ay - dy * t) < half) return true;
+      }
+    }
+    return false;
+  };
   const holdLines = [];
   for (const xr of data.xrays) {
     const route = data.routes.find((r) => r.stops.some((st) => st.ref === xr.id));
@@ -1634,6 +1651,8 @@ export function buildWorld(scene, data, renderer) {
         const px = x - Math.cos(h) * off;
         const py = y + Math.sin(h) * off;
         if (!slotFree(px, py, h, 3.4)) continue;
+        /* clear of every road, not only the trucks' routes: no parked truck on a carriageway */
+        if ([-8, -4, 0, 4, 8].some((k) => onRoad(px + Math.sin(h) * k, py + Math.cos(h) * k))) continue;
         if (data.buildings.some((bl) => [-7, 0, 7].some((k) => inside(px + Math.sin(h) * k, py + Math.cos(h) * k, openRing(bl.ring))))) continue;
         const away = hall ? Math.hypot(px - hall[0], py - hall[1]) : 0;
         if (!best || away > best.away) best = { x: px, y: py, h, away };

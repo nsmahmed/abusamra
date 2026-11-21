@@ -298,9 +298,13 @@ async function main() {
         }
       }
     }
-    /* x-ray holding lines: the model's queue, shared by the lanes in service */
+    /* x-ray holding lines: only the queue a scenario adds above today. Today's x-ray queue is
+       already there as moving trucks in the simulation; these parked trucks show the extra the
+       model expects, so with today's settings there are none. Only x-rayed trucks count. */
     const lanes = world.holdLines.filter((l) => !sim.xrayOff.has(l.ref));
-    const queued = Number.isFinite(res.xray.wait) ? res.lam * res.xray.wait : Infinity;
+    const lamX = (res.lamDay / 24) * pm.xrayShare;
+    const extraWait = Number.isFinite(res.xray.wait) ? Math.max(0, res.xray.wait - pm.baseRun.xray.wait) : Infinity;
+    const queued = lamX * extraWait;
     for (const line of world.holdLines) {
       const on = lanes.includes(line);
       const count = on ? Math.min(line.slots.length, Math.round(queued / Math.max(1, lanes.length))) : 0;
